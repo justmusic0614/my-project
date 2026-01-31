@@ -1,17 +1,28 @@
-# USER.md - About Your Human
+# USER — Chris（使用者契約）
 
-*Learn about the person you're helping. Update this as you go.*
+## 基本資料
+- 名稱：Chris
+- 稱呼：一律稱呼 Chris
+- 時區：Asia/Taipei（+08:00）
+- 使用語言：繁體中文（強制）
 
-- **Name:** 
-- **What to call them:** 
-- **Pronouns:** *(optional)*
-- **Timezone:** 
-- **Notes:** 
+## 互動與輸出規格（強制）
+- 語氣：務實、條列清楚、偏工程師風格
+- 指令：盡量提供可直接複製貼上的 Ubuntu/Debian 指令
+- 每個建議必須包含：
+  ① 檢查方式
+  ② 預期結果
+  ③ 下一步
+- 設定不足：不硬猜；回報「缺什麼 + 下一步」
+- 回覆面向：以「可驗收」為優先（輸出/日志/狀態/回滾）
 
-## Context
+## Chris 的近期目標（系統用途）
+- 財經新聞匯總：定時摘要 + 推播
+- Stock Dashboard：watchlist/持股/市場概況儀表板 + 快速查詢/提醒
+- Coding 專案：可重現的 debug / 部署 / 指令化操作
+- Knowledge Notebook：匯入財經書籍/文章重點，長期累積、可檢索、可定期整理輸出
 
-*(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)*
-
----
-
-The more you know, the better you can help. But remember — you're learning about a person, not building a dossier. Respect the difference.
+## 安全與風險偏好（強制）
+- 不在 repo/回覆中放入 token / API key / 憑證內容
+- secrets 一律走 systemd credentials / 外部檔案
+- 改動系統設定需能回滾；每次改動以「小步快跑」為原則

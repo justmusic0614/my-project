@@ -1,0 +1,23 @@
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# logs / tmp
+*.log
+tmp/
+.cache/
+
+# secrets / credentials (hard block)
+**/*secret*
+**/*credential*
+**/*credentials*
+**/*.key
+**/*.pem
+**/*.p12
+**/*.env
+.env
+.env.*
+.clawdbot/

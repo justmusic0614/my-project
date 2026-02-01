@@ -1,0 +1,76 @@
+{
+  "data_sources": {
+    "tw_news": [
+      {
+        "name": "Yahoo 奇摩股市",
+        "type": "rss",
+        "url": "https://tw.stock.yahoo.com/rss",
+        "enabled": true
+      },
+      {
+        "name": "MoneyDJ",
+        "type": "rss",
+        "url": "https://www.moneydj.com/rss/NS/MB00.xml",
+        "enabled": false
+      },
+      {
+        "name": "鉅亨網",
+        "type": "rss",
+        "url": "https://news.cnyes.com/rss/tw_stock.xml",
+        "enabled": false
+      }
+    ],
+    "intl_news": [
+      {
+        "name": "Bloomberg",
+        "type": "rss",
+        "url": "https://feeds.bloomberg.com/markets/news.rss",
+        "enabled": true
+      },
+      {
+        "name": "Reuters",
+        "type": "rss",
+        "url": "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
+        "enabled": false
+      }
+    ],
+    "market_data": {
+      "tw_stock": {
+        "provider": "yahoo",
+        "symbol": "^TWII",
+        "enabled": true
+      },
+      "us_stock": {
+        "provider": "yahoo",
+        "symbols": ["^GSPC", "^IXIC", "^DJI"],
+        "enabled": true
+      },
+      "fx": {
+        "provider": "yahoo",
+        "pair": "TWD=X",
+        "enabled": true
+      }
+    }
+  },
+  "processing": {
+    "dedup_threshold": 0.85,
+    "min_news_count": 5,
+    "max_age_hours": 24
+  },
+  "technical_indicators": {
+    "ma_periods": [5, 20],
+    "rsi_period": 14,
+    "enabled": true
+  },
+  "importance_rules": {
+    "critical_keywords": ["Fed", "央行", "升息", "降息", "台積電", "TSMC"],
+    "high_keywords": ["財報", "法說會", "GDP", "CPI", "聯電", "鴻海", "台股", "加權指數"],
+    "taiwan_keywords": ["台股", "台積電", "聯電", "鴻海", "大立光", "台灣", "TSMC"],
+    "volume_spike_threshold": 1.5,
+    "price_change_threshold": 2.0
+  },
+  "telegram": {
+    "preview_max_items": 3,
+    "full_report_items": 10
+  }
+}

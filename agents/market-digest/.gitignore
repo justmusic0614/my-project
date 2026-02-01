@@ -1,0 +1,29 @@
+# Secrets & credentials
+*.key
+*.pem
+*.env
+.env.*
+secrets/
+credentials/
+
+# API keys & tokens
+**/api-keys.json
+**/tokens.json
+
+# Cache & runtime data
+data/cache/
+data/runtime/
+*.log
+
+# Node modules
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup
+*.bak
+*.backup
+*~

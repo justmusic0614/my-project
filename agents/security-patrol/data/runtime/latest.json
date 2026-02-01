@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-02-01T18:34:29.904Z",
+  "checks": {
+    "ssh": {
+      "failed_logins": 0,
+      "success_logins": 0,
+      "top_failed_ips": [],
+      "alert": false
+    },
+    "updates": {
+      "total_updates": 69,
+      "security_updates": 0,
+      "alert": false
+    },
+    "firewall": {
+      "active": null,
+      "status": "unable to check (permission denied)",
+      "firewall_type": "ufw",
+      "alert": false,
+      "note": "需要 sudo 權限才能檢測 ufw 狀態"
+    },
+    "network": {
+      "total_connections": 17,
+      "established_connections": 9,
+      "alert": false
+    },
+    "disk": {
+      "usage_percent": 15,
+      "total": "48G",
+      "used": "6.8G",
+      "available": "41G",
+      "alert": false
+    },
+    "cpu": {
+      "load_1min": 0.08,
+      "load_5min": 0.04,
+      "load_15min": 0.01,
+      "cores": 1,
+      "usage_percent": 8,
+      "alert": false
+    },
+    "memory": {
+      "total_mb": 1968,
+      "used_mb": 930,
+      "available_mb": 1038,
+      "usage_percent": 47,
+      "alert": false
+    },
+    "processes": {
+      "processes": {
+        "clawdbot-gateway": {
+          "running": true,
+          "count": 2
+        },
+        "node": {
+          "running": true,
+          "count": 2
+        }
+      },
+      "alert": false
+    }
+  },
+  "alerts": []
+}

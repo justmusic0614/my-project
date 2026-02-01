@@ -1,0 +1,31 @@
+{
+  "patrol": {
+    "interval_minutes": 60,
+    "daily_report_time": "08:00"
+  },
+  "thresholds": {
+    "ssh_failed_logins": 10,
+    "disk_usage_percent": 85,
+    "cpu_usage_percent": 80,
+    "memory_usage_percent": 85
+  },
+  "monitors": [
+    "ssh",
+    "updates",
+    "firewall",
+    "network",
+    "disk",
+    "cpu",
+    "memory",
+    "processes"
+  ],
+  "processes": [
+    "clawdbot-gateway",
+    "node"
+  ],
+  "telegram": {
+    "chat_id": "1377531222",
+    "enable_instant_alerts": true,
+    "enable_daily_report": true
+  }
+}

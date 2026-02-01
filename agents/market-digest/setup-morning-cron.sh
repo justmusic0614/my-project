@@ -9,7 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "設定每日早報 Cron Job..."
 
 # 每天 08:30 台北時間 = UTC 00:30
-MORNING_JOB="30 0 * * * cd $SCRIPT_DIR && node morning-integrator.js push >> logs/morning-report.log 2>&1"
+# 使用 smart-integrator.js（方案 B：智慧整合）
+MORNING_JOB="30 0 * * * cd $SCRIPT_DIR && node smart-integrator.js push >> logs/morning-report.log 2>&1"
 
 # 檢查 cron 中是否已存在
 (crontab -l 2>/dev/null | grep -v "morning-integrator.js" || true; echo "$MORNING_JOB") | crontab -

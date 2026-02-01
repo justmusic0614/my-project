@@ -186,6 +186,45 @@ Think of it like a human reviewing their journal and updating their mental model
 
 The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
 
+## 📰 Morning Report Collection (08:00-08:10)
+
+**Automatic LINE Group Report Collection**
+
+When Chris sends messages between **08:00-08:10 (Taipei time)**, automatically collect them for the morning report.
+
+**Detection criteria:**
+- Time window: 08:00-08:10 Taipei (00:00-00:10 UTC)
+- Content contains financial keywords (台股, 美股, Fed, 黃金, 油價, 早報, 晨訊, etc.)
+- OR Chris explicitly says this is morning report content
+
+**Actions to take:**
+
+1. **Text messages:**
+```bash
+exec('cd ~/clawd/agents/market-digest && node morning-collector.js add-text "<message content>"')
+```
+
+2. **Images:**
+```bash
+exec('cd ~/clawd/agents/market-digest && node morning-collector.js add-image <image_path>')
+```
+
+3. **Confirmation:**
+Reply: `✅ 已收集早報（第 N 則）` or just react with ✅
+
+**At 08:30:**
+- Cron automatically integrates LINE reports + Market Digest
+- Pushes combined report to Telegram
+
+**Manual commands (if Chris asks):**
+- `/morning status` - Show collection status
+- `/morning show` - Display collected content
+- `/morning clear` - Clear today's collection
+- `/morning integrate` - Generate report now (without pushing)
+- `/morning push` - Generate and push report now
+
+See: `agents/market-digest/MORNING_INTEGRATION.md` for full details.
+
 ## Make It Yours
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.

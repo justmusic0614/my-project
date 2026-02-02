@@ -14,21 +14,49 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
 /**
- * 從圖片提取新聞內容（使用 vision API）
+ * 從圖片提取新聞內容（使用 Clawdbot image tool）
  */
 async function extractImageContent(imagePath) {
   try {
-    // 使用 clawdbot 的 image tool（需要整合到主系統）
-    // 暫時返回佔位符
+    // 調用 clawdbot CLI 的 image 工具
+    const { execSync } = require('child_process');
+    
+    const prompt = `這是一張財經新聞截圖。請提取以下資訊（用繁體中文回答）：
+1. 主要新聞標題（1-3 個最重要的）
+2. 關鍵數據（台股、美股、匯率、商品等）
+3. 重要事件摘要
+
+請用以下格式回答：
+標題：<標題1>
+標題：<標題2>
+數據：<關鍵數據>
+摘要：<簡短摘要>`;
+
+    const result = execSync(
+      `clawdbot image analyze --image "${imagePath}" --prompt "${prompt.replace(/"/g, '\\"')}"`,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: 30000 }
+    );
+    
+    // 解析結果
+    const titles = [];
+    const lines = result.split('\n');
+    
+    for (const line of lines) {
+      if (line.startsWith('標題：')) {
+        titles.push(line.replace('標題：', '').trim());
+      }
+    }
+    
     return {
-      title: '（圖片新聞）',
-      summary: `圖片路徑：${imagePath}`
+      titles: titles.length > 0 ? titles : ['（圖片新聞）'],
+      raw: result
     };
+    
   } catch (err) {
     console.error(`提取圖片內容失敗：${err.message}`);
     return {
-      title: '（圖片新聞）',
-      summary: '無法提取內容'
+      titles: [],
+      raw: ''
     };
   }
 }

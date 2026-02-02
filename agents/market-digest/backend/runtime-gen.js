@@ -12,6 +12,7 @@ const EnglishCleaner = require('./english-cleaner');
 const QuotaManager = require('./quota-manager');
 const BulletGuard = require('./bullet-guard');
 const idempotencyCache = require('./idempotency');
+const { applyResearchSignalPatch } = require('../research-signal-upgrade-patch');
 const fs = require('fs');
 const path = require('path');
 
@@ -132,6 +133,11 @@ class RuntimeInputGenerator {
       riskRadar = this.riskRadar.generate(criticalNews, marketData);
     }
     
+    // 16.5. RESEARCH_SIGNAL_UPGRADE_PATCH
+    console.log('🔬 應用 Research Signal Patch...');
+    const allEventTitles = normalizedNews.map(n => n.title);
+    const signalPatch = applyResearchSignalPatch(allEventTitles);
+    
     // 17. 組合 runtime input
     const runtimeInput = {
       report_metadata: {
@@ -141,11 +147,15 @@ class RuntimeInputGenerator {
         confidence_level: overallConfidence
       },
       section_bullets: sectionBullets,  // 新：按 section 組織
+      primary_signals: signalPatch.primarySignals,  // PATCH: Top 3 signals
+      secondary_context: signalPatch.secondaryContext,  // PATCH: Supporting context
+      regime_sentence: signalPatch.regimeSentence,  // PATCH: Driver + Behavior
       verified_key_data: verifiedKeyData,
       narrative_states: narrativeStates,
       health_components: healthComponents,
       risk_radar: riskRadar,
-      raw_news: normalizedNews  // 保留原始資料供進階處理
+      raw_news: normalizedNews,  // 保留原始資料供進階處理
+      signal_stats: signalPatch.stats  // PATCH: Statistics
     };
 
     // 13. 儲存

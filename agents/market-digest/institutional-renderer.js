@@ -8,10 +8,14 @@ function renderReport(runtimeInput) {
   const { 
     report_metadata, 
     section_bullets,
+    primary_signals,
+    secondary_context,
+    regime_sentence,
     verified_key_data, 
     narrative_states, 
     health_components,
-    risk_radar
+    risk_radar,
+    signal_stats
   } = runtimeInput;
 
   // Confidence Control (選項 A：週末寬容)
@@ -59,12 +63,17 @@ function renderReport(runtimeInput) {
   }
   report.push('');
   
-  // Market Regime (ONE sentence from templates)
+  // Market Regime (RESEARCH_SIGNAL_UPGRADE_PATCH: Driver + Market Behavior)
   report.push('📈 Market Regime');
   
-  // 使用固定模板
-  const regimeSentence = regimeTemplates.select(verified_key_data, narrative_states);
-  report.push(`• ${regimeSentence}`);
+  // 優先使用 PATCH 的 regime_sentence（Driver + Behavior）
+  if (regime_sentence) {
+    report.push(`• ${regime_sentence}`);
+  } else {
+    // Fallback: 使用舊模板
+    const fallbackRegime = regimeTemplates.select(verified_key_data, narrative_states);
+    report.push(`• ${fallbackRegime}`);
+  }
   report.push('');
   
   // Key Data
@@ -115,6 +124,24 @@ function renderReport(runtimeInput) {
   }
   
   report.push('');
+  
+  // PRIMARY SIGNALS (RESEARCH_SIGNAL_UPGRADE_PATCH: Top 3 by Macro Hierarchy)
+  if (primary_signals && primary_signals.length > 0) {
+    report.push('🔴 Primary Signals (Top 3 by Macro Impact)');
+    primary_signals.forEach((signal, idx) => {
+      report.push(`${idx + 1}. ${signal}`);
+    });
+    report.push('');
+  }
+  
+  // SECONDARY CONTEXT (Supporting signals)
+  if (secondary_context && secondary_context.length > 0) {
+    report.push('🔵 Secondary Context');
+    secondary_context.forEach(ctx => {
+      report.push(`• ${ctx}`);
+    });
+    report.push('');
+  }
   
   // Macro & Policy (0-3 bullets)
   report.push('🌐 Macro & Policy');
@@ -196,6 +223,11 @@ function renderReport(runtimeInput) {
   
   // OCR Summary
   report.push(`• OCR: not implemented`);
+  
+  // Signal Stats (RESEARCH_SIGNAL_UPGRADE_PATCH)
+  if (signal_stats) {
+    report.push(`• Signal Stats: Input:${signal_stats.input} → Collapsed:${signal_stats.collapsed} → Primary:${signal_stats.primary} | Secondary:${signal_stats.secondary}`);
+  }
   
   if (health_components.alerts.length > 0) {
     report.push(`• Alerts:`);

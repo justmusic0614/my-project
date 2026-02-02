@@ -99,16 +99,17 @@ function extractNews(text) {
   
   // 排除市場數據行的關鍵字
   const dataKeywords = [
-    '台股', '美股', 'S&P', 'Nasdaq', '道瓊', '美元', '台幣', 
-    '黃金', '原油', 'VIX', '指數', '收盤', '成交量',
-    '💵', '🥇', '🛢️', '📊', '📈'
+    '指數', '收盤', '成交量', '殖利率', '漲幅', '跌幅',
+    '💵', '🥇', '🛢️', '📊', '📈', '📉'
   ];
   
   // 匹配常見的新聞格式
   const patterns = [
     /[•●▪︎▫︎◦‣⁃]\s*(.+?)(?:\n|$)/g,  // bullet points
     /[✅☑️]\s*(.+?)(?:\n|$)/g,         // checkmarks
-    /^\d+[、.）)]?\s*(.+?)(?:\n|$)/gm, // numbered lists
+    /^\d+[、.）)]?\s*(.+?)$/gm,         // numbered lists (1、2、etc)
+    /💡\s*(.+?)$/gm,                   // 💡 開頭
+    /[-−]\s*(.+?)$/gm,                 // - 開頭
   ];
   
   for (const pattern of patterns) {
@@ -117,13 +118,31 @@ function extractNews(text) {
       const title = match[1].trim();
       
       // 過濾條件
-      const isValidLength = title.length > 15 && title.length < 200;
-      const isNotDataLine = !dataKeywords.some(kw => title.startsWith(kw) || title.includes(`${kw}：`) || title.includes(`${kw}:`));
+      const isValidLength = title.length > 10 && title.length < 300;
       
-      if (isValidLength && isNotDataLine) {
+      // 更寬鬆的數據行判斷：只排除明確的數據格式
+      const hasNumberPattern = /^\d+\.\d+%?$|^[0-9,]+點$|^[0-9,]+億$/.test(title);
+      const startsWithDataKeyword = dataKeywords.some(kw => title.startsWith(kw));
+      const isNotDataLine = !hasNumberPattern && !startsWithDataKeyword;
+      
+      // 排除純符號或太短的內容
+      const hasSubstantiveContent = title.replace(/[^\w\u4e00-\u9fa5]/g, '').length > 8;
+      
+      if (isValidLength && isNotDataLine && hasSubstantiveContent) {
         news.push(title);
       }
     }
+  }
+  
+  // 額外提取段落標題（如「台股重點」「本週關鍵趨勢」）
+  const sectionTitles = text.match(/(?:台股|美股|本週|今日|市場)[\w\s]{2,15}[:：]/g);
+  if (sectionTitles) {
+    sectionTitles.forEach(title => {
+      const clean = title.replace(/[:：]$/, '').trim();
+      if (clean.length > 4 && clean.length < 20) {
+        // 不加入，這些是標題而非新聞
+      }
+    });
   }
   
   return [...new Set(news)]; // 去重

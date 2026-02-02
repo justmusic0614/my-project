@@ -8,7 +8,7 @@ const { execSync } = require('child_process');
 const collector = require('./morning-collector');
 const MarketDataFetcher = require('./backend/fetcher');
 const RuntimeInputGenerator = require('./backend/runtime-gen');
-const { applyPatch } = require('./patch-minimal-upgrade-v1');
+const { applyResearchSignalPatch } = require('./research-signal-upgrade-patch');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -218,13 +218,14 @@ async function smartIntegrate() {
   const uniqueLineNews = deduplicateNews(lineNews, marketNews);
   console.log(`🔍 去重後 LINE 新聞：${uniqueLineNews.length} 條`);
   
-  // 4.5. 套用 patch: minimal_upgrade_news_to_research_signal v1
-  const patchResult = applyPatch(uniqueLineNews, marketDigest);
-  const finalNews = patchResult.events;
-  const marketRegime = patchResult.regime;
+  // 4.5. 套用 RESEARCH_SIGNAL_UPGRADE_PATCH
+  const patchResult = applyResearchSignalPatch(uniqueLineNews);
+  const finalNews = patchResult.primarySignals; // Top 3 signals
+  const marketRegime = patchResult.regimeSentence; // Driver + Market Behavior
+  const secondaryContext = patchResult.secondaryContext; // 補充訊號
   
   // 5. 生成整合報告
-  const report = generateIntegratedReport(lineMarketData, finalNews, marketDigest, marketRegime);
+  const report = generateIntegratedReport(lineMarketData, finalNews, marketDigest, marketRegime, secondaryContext);
   
   // 6. 儲存報告
   const outputPath = path.join(__dirname, 'data/runtime/morning-report.txt');
@@ -239,7 +240,7 @@ async function smartIntegrate() {
 /**
  * 生成整合報告（統一格式）
  */
-function generateIntegratedReport(lineData, lineNews, marketDigest, marketRegime = null) {
+function generateIntegratedReport(lineData, lineNews, marketDigest, marketRegime = null, secondaryContext = []) {
   const lines = [];
   
   // 標題
@@ -353,6 +354,16 @@ function generateIntegratedReport(lineData, lineNews, marketDigest, marketRegime
       lines.push(`• ${news}`);
     });
     
+    lines.push('');
+  }
+  
+  // 🔵 補充訊號（Secondary Context）
+  if (secondaryContext && secondaryContext.length > 0) {
+    lines.push('🔵 補充訊號');
+    lines.push('');
+    secondaryContext.forEach(ctx => {
+      lines.push(`• ${ctx}`);
+    });
     lines.push('');
   }
   

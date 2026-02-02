@@ -8,6 +8,7 @@ const { execSync } = require('child_process');
 const collector = require('./morning-collector');
 const MarketDataFetcher = require('./backend/fetcher');
 const RuntimeInputGenerator = require('./backend/runtime-gen');
+const { applyPatch } = require('./patch-minimal-upgrade-v1');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -217,8 +218,13 @@ async function smartIntegrate() {
   const uniqueLineNews = deduplicateNews(lineNews, marketNews);
   console.log(`🔍 去重後 LINE 新聞：${uniqueLineNews.length} 條`);
   
+  // 4.5. 套用 patch: minimal_upgrade_news_to_research_signal v1
+  const patchResult = applyPatch(uniqueLineNews, marketDigest);
+  const finalNews = patchResult.events;
+  const marketRegime = patchResult.regime;
+  
   // 5. 生成整合報告
-  const report = generateIntegratedReport(lineMarketData, uniqueLineNews, marketDigest);
+  const report = generateIntegratedReport(lineMarketData, finalNews, marketDigest, marketRegime);
   
   // 6. 儲存報告
   const outputPath = path.join(__dirname, 'data/runtime/morning-report.txt');
@@ -233,7 +239,7 @@ async function smartIntegrate() {
 /**
  * 生成整合報告（統一格式）
  */
-function generateIntegratedReport(lineData, lineNews, marketDigest) {
+function generateIntegratedReport(lineData, lineNews, marketDigest, marketRegime = null) {
   const lines = [];
   
   // 標題
@@ -329,9 +335,17 @@ function generateIntegratedReport(lineData, lineNews, marketDigest) {
   
   lines.push('');
   
+  // 🔍 市場狀態（RULE 3: Market Regime）
+  if (marketRegime) {
+    lines.push('🔍 市場狀態');
+    lines.push('');
+    lines.push(`• ${marketRegime}`);
+    lines.push('');
+  }
+  
   // 🌐 重點新聞區塊
   if (lineNews.length > 0) {
-    lines.push('🌐 重點新聞');
+    lines.push('🌐 重點事件');
     lines.push('');
     
     // 只取前 10 條

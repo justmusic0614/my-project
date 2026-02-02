@@ -186,17 +186,24 @@ function applyResearchSignalPatch(newsItems) {
   const collapsed = collapseThemes(scored);
   console.log(`   ✅ STEP 2: 主題合併後：${collapsed.length} 條`);
   
-  // STEP 3: 選擇 PRIMARY_SIGNAL (limit=3)
-  const { primary, secondary } = selectPrimarySignals(collapsed);
-  console.log(`   ✅ STEP 3: Primary Signals: ${primary.length} | Secondary: ${secondary.length}`);
+  // STEP 2.5: SEMANTIC_UPGRADE_PATCH v1_integrated
+  const semanticPatch = require('./research-signal-semantic-patch');
+  const semanticResult = semanticPatch.applySemanticPatch(collapsed);
+  
+  // 使用語義升級後的結果
+  const primary = semanticResult.primary;
+  const secondary = semanticResult.secondary;
+  
+  console.log(`   ✅ STEP 3: Primary Signals (Semantic): ${primary.length} | Secondary: ${secondary.length}`);
   
   // STEP 4: 格式化為 causal signal
   const primaryFormatted = primary.map(formatAsCausalSignal);
   console.log(`   ✅ STEP 4: Causal mapping 完成`);
   
-  // STEP 5: 生成 Regime Sentence
+  // STEP 5: 生成 Regime Sentence（加入 confidence）
   const regime = generateRegimeSentence(primary);
-  console.log(`   ✅ STEP 5: Regime Sentence: "${regime}"`);
+  const regimeWithConfidence = `${regime} [Confidence: ${semanticResult.regimeConfidence}]`;
+  console.log(`   ✅ STEP 5: Regime Sentence: "${regimeWithConfidence}"`);
   
   // STEP 6: Secondary context
   const context = renderSecondaryContext(secondary);
@@ -205,10 +212,14 @@ function applyResearchSignalPatch(newsItems) {
   return {
     primarySignals: primaryFormatted,
     secondaryContext: context,
-    regimeSentence: regime,
+    regimeSentence: regimeWithConfidence,
+    regimeConfidence: semanticResult.regimeConfidence,
+    regimeEvidence: semanticResult.evidence,
     stats: {
       input: newsItems.length,
       collapsed: collapsed.length,
+      validated: semanticResult.stats.validated,
+      weighted: semanticResult.stats.weighted,
       primary: primary.length,
       secondary: secondary.length
     }

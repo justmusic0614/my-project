@@ -11,6 +11,8 @@ function renderReport(runtimeInput) {
     primary_signals,
     secondary_context,
     regime_sentence,
+    regime_confidence,
+    regime_evidence,
     verified_key_data, 
     narrative_states, 
     health_components,
@@ -69,6 +71,12 @@ function renderReport(runtimeInput) {
   // 優先使用 PATCH 的 regime_sentence（Driver + Behavior）
   if (regime_sentence) {
     report.push(`• ${regime_sentence}`);
+    
+    // 顯示跨資產證據（SEMANTIC_UPGRADE_PATCH）
+    if (regime_evidence) {
+      const evidenceStr = regime_evidence.classes.join(', ');
+      report.push(`  Cross-Asset Evidence: ${regime_evidence.count}/${regime_evidence.classes.length} drivers (${evidenceStr})`);
+    }
   } else {
     // Fallback: 使用舊模板
     const fallbackRegime = regimeTemplates.select(verified_key_data, narrative_states);

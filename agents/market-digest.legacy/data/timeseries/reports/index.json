@@ -14,14 +14,14 @@
   "2026-02-03": {
     "date": "2026-02-03",
     "symbol": null,
-    "timestamp": "2026-02-03T03:51:58.009Z",
+    "timestamp": "2026-02-03T08:03:48.784Z",
     "jsonFile": "/home/clawbot/clawd/agents/market-digest/data/timeseries/reports/2026/02/report-2026-02-03.json",
     "txtFile": "/home/clawbot/clawd/agents/market-digest/data/timeseries/reports/2026/02/report-2026-02-03.txt",
-    "length": 581,
+    "length": 136,
     "lineMessages": 1,
     "lineNews": 0,
     "marketDigest": true,
     "regime": "市場處於觀望狀態，等待關鍵數據與政策訊號 [Confidence: MEDIUM]",
-    "level": "standard"
+    "level": "minimal"
   }
 }

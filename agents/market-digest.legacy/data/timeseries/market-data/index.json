@@ -26,25 +26,25 @@
   "2026-02-03_TWII": {
     "date": "2026-02-03",
     "symbol": "TWII",
-    "timestamp": "2026-02-03T03:51:57.978Z",
+    "timestamp": "2026-02-03T08:03:48.755Z",
     "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/TWII-2026-02-03.json",
-    "close": 32027.119140625,
+    "close": 32195.359375,
     "volume": null
   },
   "2026-02-03_SPX": {
     "date": "2026-02-03",
     "symbol": "SPX",
-    "timestamp": "2026-02-03T03:51:57.979Z",
+    "timestamp": "2026-02-03T08:03:48.756Z",
     "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/SPX-2026-02-03.json",
     "close": 6976.43994140625,
-    "volume": 3598308000
+    "volume": 5772050000
   },
   "2026-02-03_USDTWD": {
     "date": "2026-02-03",
     "symbol": "USDTWD",
-    "timestamp": "2026-02-03T03:51:57.980Z",
+    "timestamp": "2026-02-03T08:03:48.757Z",
     "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/USDTWD-2026-02-03.json",
-    "close": 31.551000595092773,
+    "close": 31.509000778198242,
     "volume": null
   }
 }

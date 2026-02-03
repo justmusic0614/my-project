@@ -6,39 +6,6 @@ const fs = require('fs');
 const path = require('path');
 
 const COLLECT_DIR = path.join(__dirname, 'data/morning-collect');
-
-// --- SRE: atomic write + lock + safe json ---
-function sleep(ms){ Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms); }
-
-function withLock(lockPath, fn, retries=120, backoffMs=20){
-  for (let i=0;i<retries;i++){
-    try {
-      const fd = fs.openSync(lockPath, "wx", 0o600);
-      try { return fn(); }
-      finally { try{fs.closeSync(fd)}catch(e){}; try{fs.unlinkSync(lockPath)}catch(e){} }
-    } catch (e){
-      if (e && e.code === "EEXIST") { sleep(backoffMs); continue; }
-      throw e;
-    }
-  }
-  throw new Error(`lock timeout: ${lockPath}`);
-}
-
-function safeReadJSON(filePath, fallback){
-  try {
-    if (!fs.existsSync(filePath)) return fallback;
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (err){
-    console.warn(`⚠️  safeReadJSON fallback: ${filePath} (${err.message})`);
-    return fallback;
-  }
-}
-
-function atomicWrite(filePath, content){
-  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmp, content, { encoding: "utf8", mode: 0o640 });
-  fs.renameSync(tmp, filePath);
-}
 const TODAY = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
 // 確保目錄存在
@@ -67,7 +34,7 @@ function safeReadJSON(filePath, defaultValue = null) {
 function safeWriteJSON(filePath, data) {
   try {
     const content = JSON.stringify(data, null, 2);
-    atomicWrite(filePath, content);
+    fs.writeFileSync(filePath, content, 'utf8');
     return true;
   } catch (err) {
     console.error(`⚠️  JSON 寫入失敗 (${filePath}): ${err.message}`);

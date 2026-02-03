@@ -1,91 +1,35 @@
 // Market Data Fetcher - 協調所有數據源
-const YahooFinanceAdapter = require('./sources/yahoo');
-const RSSAdapter = require('./sources/rss');
+// 已更新：使用 Yahoo Finance Plugin，移除舊的 RSS 架構
+
+const YahooFinancePlugin = require('./sources/plugins/yahoo-finance/plugin');
 const fs = require('fs');
 const path = require('path');
 
 class MarketDataFetcher {
   constructor(config) {
     this.config = config;
-    this.yahooAdapter = new YahooFinanceAdapter(config);
-    this.rssAdapters = [];
     
-    // 初始化 RSS adapters
-    this.initRSSAdapters();
+    // 初始化 Yahoo Finance Plugin
+    this.yahooPlugin = new YahooFinancePlugin({
+      baseUrl: 'https://query1.finance.yahoo.com/v8/finance/chart/'
+    });
   }
 
-  initRSSAdapters() {
-    // 台股新聞
-    if (this.config.data_sources.tw_news) {
-      this.config.data_sources.tw_news
-        .filter(source => source.enabled)
-        .forEach(source => {
-          this.rssAdapters.push(
-            new RSSAdapter(source.name, source.url, this.config)
-          );
-        });
-    }
-
-    // 國際新聞
-    if (this.config.data_sources.intl_news) {
-      this.config.data_sources.intl_news
-        .filter(source => source.enabled)
-        .forEach(source => {
-          this.rssAdapters.push(
-            new RSSAdapter(source.name, source.url, this.config)
-          );
-        });
-    }
-  }
-
-  async fetchAllNews() {
-    const results = [];
-    
-    for (const adapter of this.rssAdapters) {
-      try {
-        const result = await adapter.fetchNews();
-        results.push(result);
-      } catch (err) {
-        console.error(`[${adapter.name}] 抓取失敗:`, err.message);
-      }
-    }
-
-    // 合併所有新聞
-    const allArticles = results.flatMap(r => r.data);
-    
-    // 儲存到 cache
-    const cacheFile = path.join(__dirname, '../data/cache/news-raw.json');
-    const cache = this.loadCache(cacheFile);
-    const newArticles = allArticles.filter(article => 
-      !cache.some(cached => cached.guid === article.guid)
-    );
-    
-    if (newArticles.length > 0) {
-      cache.push(...newArticles);
-      fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 2));
-      console.log(`✅ 新增 ${newArticles.length} 則新聞到快取`);
-    } else {
-      console.log(`ℹ️  無新增新聞`);
-    }
-
-    return {
-      total: allArticles.length,
-      new: newArticles.length,
-      cached: cache.length
-    };
-  }
-
+  /**
+   * 抓取市場數據（主要方法）
+   */
   async fetchMarketData() {
     const results = {};
 
     // 台股
-    if (this.config.data_sources.market_data.tw_stock.enabled) {
+    if (this.config.data_sources.market_data.tw_stock?.enabled) {
       try {
         const symbol = this.config.data_sources.market_data.tw_stock.symbol;
-        results.tw_stock = await this.yahooAdapter.fetchMarketData(symbol);
+        results.tw_stock = await this.yahooPlugin.fetchMarketData(symbol);
         
-        if (this.config.technical_indicators.enabled) {
-          results.tw_stock_indicators = await this.yahooAdapter.fetchTechnicalIndicators(
+        // 計算技術指標
+        if (this.config.technical_indicators?.enabled) {
+          results.tw_stock_indicators = await this.yahooPlugin.fetchTechnicalIndicators(
             symbol,
             this.config.technical_indicators
           );
@@ -96,13 +40,13 @@ class MarketDataFetcher {
     }
 
     // 美股
-    if (this.config.data_sources.market_data.us_stock.enabled) {
+    if (this.config.data_sources.market_data.us_stock?.enabled) {
       try {
         const symbols = this.config.data_sources.market_data.us_stock.symbols;
         results.us_stock = {};
         
         for (const symbol of symbols) {
-          const data = await this.yahooAdapter.fetchMarketData(symbol);
+          const data = await this.yahooPlugin.fetchMarketData(symbol);
           const key = symbol.replace('^', '').toLowerCase();
           results.us_stock[key] = data;
         }
@@ -112,10 +56,10 @@ class MarketDataFetcher {
     }
 
     // 匯率
-    if (this.config.data_sources.market_data.fx.enabled) {
+    if (this.config.data_sources.market_data.fx?.enabled) {
       try {
         const pair = this.config.data_sources.market_data.fx.pair;
-        results.fx = await this.yahooAdapter.fetchMarketData(pair);
+        results.fx = await this.yahooPlugin.fetchMarketData(pair);
       } catch (err) {
         console.error('[匯率數據] 抓取失敗:', err.message);
       }
@@ -124,23 +68,42 @@ class MarketDataFetcher {
     return results;
   }
 
+  /**
+   * 載入快取（保留以相容舊代碼）
+   */
   loadCache(file) {
     if (fs.existsSync(file)) {
-      return JSON.parse(fs.readFileSync(file, 'utf8'));
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch (err) {
+        console.error(`⚠️  快取檔案損壞 (${file}): ${err.message}`);
+        console.log('🔄 將使用空快取...');
+        return [];
+      }
     }
     return [];
   }
 
+  /**
+   * 取得最近新聞（保留以相容舊代碼，但實際不使用）
+   * @deprecated 當前系統使用 LINE 群組早報，不使用 RSS
+   */
   getRecentNews(maxAgeHours = 24) {
-    const cacheFile = path.join(__dirname, '../data/cache/news-raw.json');
-    const cache = this.loadCache(cacheFile);
-    
-    const cutoff = Date.now() - (maxAgeHours * 60 * 60 * 1000);
-    
-    return cache.filter(article => {
-      const pubDate = new Date(article.pubDate);
-      return pubDate.getTime() > cutoff;
-    });
+    console.warn('⚠️  getRecentNews() 已棄用：當前系統使用 LINE 群組早報');
+    return [];
+  }
+
+  /**
+   * 抓取所有新聞（已棄用）
+   * @deprecated 當前系統使用 LINE 群組早報，不使用 RSS
+   */
+  async fetchAllNews() {
+    console.warn('⚠️  fetchAllNews() 已棄用：當前系統使用 LINE 群組早報');
+    return {
+      total: 0,
+      new: 0,
+      cached: 0
+    };
   }
 }
 

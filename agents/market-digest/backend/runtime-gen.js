@@ -1,6 +1,16 @@
 // Runtime Input Generator
 // 將原始數據 + 處理結果 → 標準化 runtime input
 
+// 全局錯誤處理器（如果作為獨立進程運行）
+if (require.main === module) {
+  const errorHandler = require('../global-error-handler');
+  errorHandler.install({
+    appName: 'runtime-gen',
+    logDir: require('path').join(__dirname, '../logs'),
+    maxErrorRate: 10
+  });
+}
+
 const MarketDataFetcher = require('./fetcher');
 const NewsProcessor = require('./processor');
 const AITranslator = require('./ai-translator');
@@ -13,6 +23,7 @@ const QuotaManager = require('./quota-manager');
 const BulletGuard = require('./bullet-guard');
 const idempotencyCache = require('./idempotency');
 const { applyResearchSignalPatch } = require('../research-signal-upgrade-patch');
+const TimeSeriesStorage = require('./timeseries-storage');
 const fs = require('fs');
 const path = require('path');
 
@@ -29,6 +40,7 @@ class RuntimeInputGenerator {
     this.englishCleaner = new EnglishCleaner();
     this.quotaManager = new QuotaManager(config);
     this.bulletGuard = new BulletGuard();
+    this.timeseriesStorage = new TimeSeriesStorage();
   }
 
   async generate() {
@@ -166,6 +178,30 @@ class RuntimeInputGenerator {
     if (cachedNews.length > 0) {
       const lastItemTs = new Date(cachedNews[cachedNews.length - 1].pubDate).getTime();
       idempotencyCache.set(today, cachedNews.length, lastItemTs, runtimeInput);
+    }
+    
+    // 15. 儲存到時間序列資料庫
+    try {
+      // 儲存市場數據
+      if (marketData.tw_stock) {
+        await this.timeseriesStorage.saveMarketData(today, 'TWII', marketData.tw_stock.data);
+      }
+      if (marketData.us_stock?.gspc) {
+        await this.timeseriesStorage.saveMarketData(today, 'SPX', marketData.us_stock.gspc.data);
+      }
+      if (marketData.fx) {
+        await this.timeseriesStorage.saveMarketData(today, 'USDTWD', marketData.fx.data);
+      }
+      
+      // 儲存新聞
+      if (normalizedNews.length > 0) {
+        await this.timeseriesStorage.saveNews(today, normalizedNews);
+      }
+      
+      console.log('💾 時間序列資料已儲存');
+    } catch (err) {
+      console.error('⚠️  時間序列儲存失敗:', err.message);
+      // 不拋出錯誤，避免影響主流程
     }
     
     console.log(`\n✅ Runtime Input 已生成`);

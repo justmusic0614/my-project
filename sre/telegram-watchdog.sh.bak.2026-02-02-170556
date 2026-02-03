@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="${HOME:-/home/clawbot}"
+export PATH="/usr/bin:/bin"
+
+ENVF="$HOME/.config/clawdbot/env"
+[ -f "$ENVF" ] && . "$ENVF"
+: "${TELEGRAM_BOT_TOKEN:?missing TELEGRAM_BOT_TOKEN}"
+: "${TELEGRAM_CHAT_ID:?missing TELEGRAM_CHAT_ID}"
+
+STATE_DIR="$HOME/.local/state/clawdbot"
+mkdir -p "$STATE_DIR"
+STATE_FILE="$STATE_DIR/telegram_watchdog.state"
+
+GW_ACTIVE="$(systemctl --user is-active clawdbot-gateway.service || true)"
+
+PENDING="$(
+  curl -fsS --max-time 10 \
+    "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" \
+  | python3 - <<'PY2'
+import json,sys
+try:
+  d=json.load(sys.stdin)
+  print(int(d.get("result",{}).get("pending_update_count",0)))
+except Exception:
+  print(-1)
+PY2
+)"
+
+STUCK=0
+if [ -f "$STATE_FILE" ]; then
+  # shellcheck disable=SC1090
+  . "$STATE_FILE" || true
+fi
+
+ACTION="ok"
+NEW_STUCK="$STUCK"
+
+if [ "$PENDING" -lt 0 ]; then
+  ACTION="telegram_api_error"
+  NEW_STUCK=0
+elif [ "" != "active" ]; then
+  ACTION="gateway_down"
+  NEW_STUCK=$((STUCK+1))
+elif [ "$PENDING" -gt 0 ]; then
+  ACTION="pending_nonzero"
+  NEW_STUCK=$((STUCK+1))
+else
+  ACTION="ok"
+  NEW_STUCK=0
+fi
+
+cat > "$STATE_FILE" <<EOFSTATE
+STUCK=$NEW_STUCK
+EOFSTATE
+
+# Trigger policy:
+# - gateway_down: notify + restart immediately
+# - pending_nonzero: require 3 consecutive checks to restart
+# - telegram_api_error: notify only (no restart)
+if [ "$ACTION" = "gateway_down" ] || { [ "$ACTION" = "pending_nonzero" ] && [ "$NEW_STUCK" -ge 3 ]; }; then
+  MSG="clawdbot telegram watchdog: restart gw_active=${GW_ACTIVE} pending=${PENDING} stuck=${NEW_STUCK}"
+  "$HOME/clawd/sre/notify-telegram-generic.sh" "$MSG" || true
+  systemctl --user restart clawdbot-gateway.service || true
+  echo "⚠️ $MSG"
+  exit 0
+fi
+
+if [ "$ACTION" = "telegram_api_error" ]; then
+  MSG="clawdbot telegram watchdog: telegram API error (no restart)"
+  "$HOME/clawd/sre/notify-telegram-generic.sh" "$MSG" || true
+  echo "⚠️ $MSG"
+  exit 0
+fi
+
+echo "✅ watchdog ok: gw_active=${GW_ACTIVE} pending=${PENDING} stuck=${NEW_STUCK}"

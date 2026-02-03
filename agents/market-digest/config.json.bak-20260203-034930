@@ -1,10 +1,39 @@
 {
   "data_sources": {
-    "manual_input": {
-      "type": "line_group",
-      "description": "LINE 群組早報（主要資料源）",
-      "enabled": true
-    },
+    "tw_news": [
+      {
+        "name": "Yahoo 奇摩股市",
+        "type": "rss",
+        "url": "https://tw.stock.yahoo.com/rss",
+        "enabled": true
+      },
+      {
+        "name": "MoneyDJ",
+        "type": "rss",
+        "url": "https://www.moneydj.com/rss/NS/MB00.xml",
+        "enabled": false
+      },
+      {
+        "name": "鉅亨網",
+        "type": "rss",
+        "url": "https://news.cnyes.com/rss/tw_stock.xml",
+        "enabled": false
+      }
+    ],
+    "intl_news": [
+      {
+        "name": "Bloomberg",
+        "type": "rss",
+        "url": "https://feeds.bloomberg.com/markets/news.rss",
+        "enabled": true
+      },
+      {
+        "name": "Reuters",
+        "type": "rss",
+        "url": "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
+        "enabled": false
+      }
+    ],
     "market_data": {
       "tw_stock": {
         "provider": "yahoo",

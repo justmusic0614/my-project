@@ -2,6 +2,14 @@
 // Morning Integrator - 整合 LINE 群組早報 + Market Digest
 // 方案 A：原樣保留 LINE 群組內容，下方補充 Market Digest
 
+// 全局錯誤處理器 - SRE 版本
+const errorHandler = require('./global-error-handler');
+errorHandler.install({
+  appName: 'morning-integrator',
+  logDir: require('path').join(__dirname, 'logs'),
+  maxErrorRate: 10
+});
+
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -39,22 +47,39 @@ async function extractImageContent(imagePath) {
     
     // 解析結果
     const titles = [];
+    let summary = '';
     const lines = result.split('\n');
     
     for (const line of lines) {
       if (line.startsWith('標題：')) {
         titles.push(line.replace('標題：', '').trim());
+      } else if (line.startsWith('摘要：')) {
+        summary = line.replace('摘要：', '').trim();
       }
     }
     
+    const title = titles.length > 0 ? titles[0] : '（圖片新聞）';
+    
     return {
-      titles: titles.length > 0 ? titles : ['（圖片新聞）'],
+      title,
+      summary: summary || title,
+      titles,
       raw: result
     };
     
   } catch (err) {
-    console.error(`提取圖片內容失敗：${err.message}`);
+    console.error(`⚠️  提取圖片內容失敗：${err.message}`);
+    
+    // 提供診斷資訊
+    if (err.killed) {
+      console.error('   原因：執行超時（30秒）');
+    } else if (err.code === 'ENOENT') {
+      console.error('   原因：找不到 clawdbot 指令');
+    }
+    
     return {
+      title: '（圖片處理失敗）',
+      summary: `無法處理圖片: ${err.message}`,
       titles: [],
       raw: ''
     };
@@ -193,7 +218,11 @@ async function integrateAndPush() {
     
     const result = execSync(
       `clawdbot message send --channel telegram --target 1377531222 --message "${report.replace(/"/g, '\\"')}"`,
-      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+      { 
+        encoding: 'utf8', 
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 30000 // 30 秒超時
+      }
     );
     
     console.log('✅ 推播成功');
@@ -201,6 +230,16 @@ async function integrateAndPush() {
     
   } catch (err) {
     console.error(`❌ 整合或推播失敗：${err.message}`);
+    
+    // 如果是 timeout，提供建議
+    if (err.code === 'ETIMEDOUT' || err.killed) {
+      console.error('⚠️  推播超時（30秒），可能是：');
+      console.error('   1. Telegram API 回應緩慢');
+      console.error('   2. 報告內容過長');
+      console.error('   3. 網路連線問題');
+      console.error('   建議：檢查報告長度或稍後重試');
+    }
+    
     throw err;
   }
 }

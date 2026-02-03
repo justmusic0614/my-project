@@ -1,0 +1,50 @@
+{
+  "2026-02-02_TWII": {
+    "date": "2026-02-02",
+    "symbol": "TWII",
+    "timestamp": "2026-02-02T19:11:29.560Z",
+    "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/TWII-2026-02-02.json",
+    "close": 31624.029296875,
+    "volume": null
+  },
+  "2026-02-02_SPX": {
+    "date": "2026-02-02",
+    "symbol": "SPX",
+    "timestamp": "2026-02-02T19:11:29.561Z",
+    "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/SPX-2026-02-02.json",
+    "close": 6990.740234375,
+    "volume": 1949729000
+  },
+  "2026-02-02_USDTWD": {
+    "date": "2026-02-02",
+    "symbol": "USDTWD",
+    "timestamp": "2026-02-02T19:11:29.562Z",
+    "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/USDTWD-2026-02-02.json",
+    "close": 31.579999923706055,
+    "volume": null
+  },
+  "2026-02-03_TWII": {
+    "date": "2026-02-03",
+    "symbol": "TWII",
+    "timestamp": "2026-02-03T03:51:57.978Z",
+    "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/TWII-2026-02-03.json",
+    "close": 32027.119140625,
+    "volume": null
+  },
+  "2026-02-03_SPX": {
+    "date": "2026-02-03",
+    "symbol": "SPX",
+    "timestamp": "2026-02-03T03:51:57.979Z",
+    "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/SPX-2026-02-03.json",
+    "close": 6976.43994140625,
+    "volume": 3598308000
+  },
+  "2026-02-03_USDTWD": {
+    "date": "2026-02-03",
+    "symbol": "USDTWD",
+    "timestamp": "2026-02-03T03:51:57.980Z",
+    "file": "/home/clawbot/clawd/agents/market-digest/data/timeseries/market-data/2026/02/USDTWD-2026-02-03.json",
+    "close": 31.551000595092773,
+    "volume": null
+  }
+}

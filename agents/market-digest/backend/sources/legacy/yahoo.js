@@ -18,15 +18,44 @@ class YahooFinanceAdapter extends DataSourceAdapter {
       }
 
       const json = await response.json();
+      
+      // SRE: 數據驗證層
+      if (!json || !json.chart || !json.chart.result || json.chart.result.length === 0) {
+        throw new Error(`Yahoo Finance API returned invalid data structure for ${symbol}`);
+      }
+      
       const result = json.chart.result[0];
+      
+      if (!result.meta) {
+        throw new Error(`Missing meta data for ${symbol}`);
+      }
+      
+      if (!result.indicators || !result.indicators.quote || result.indicators.quote.length === 0) {
+        throw new Error(`Missing quote data for ${symbol}`);
+      }
+      
       const meta = result.meta;
       const quote = result.indicators.quote[0];
+      
+      // 驗證必要欄位
+      if (!quote.close || quote.close.length === 0) {
+        throw new Error(`Missing close prices for ${symbol}`);
+      }
       
       const latestIndex = quote.close.length - 1;
       const close = quote.close[latestIndex];
       const open = quote.open[latestIndex];
       const volume = quote.volume[latestIndex];
       const prevClose = meta.chartPreviousClose;
+      
+      // 驗證數值有效性
+      if (close === null || close === undefined || isNaN(close)) {
+        throw new Error(`Invalid close price for ${symbol}: ${close}`);
+      }
+      
+      if (prevClose === null || prevClose === undefined || isNaN(prevClose)) {
+        throw new Error(`Invalid previous close for ${symbol}: ${prevClose}`);
+      }
       
       const change = close - prevClose;
       const changePct = (change / prevClose) * 100;
@@ -65,9 +94,30 @@ class YahooFinanceAdapter extends DataSourceAdapter {
       }
 
       const json = await response.json();
+      
+      // SRE: 數據驗證層
+      if (!json || !json.chart || !json.chart.result || json.chart.result.length === 0) {
+        throw new Error(`Yahoo Finance API returned invalid data structure for ${symbol}`);
+      }
+      
       const result = json.chart.result[0];
+      
+      if (!result.indicators || !result.indicators.quote || result.indicators.quote.length === 0) {
+        throw new Error(`Missing quote data for ${symbol}`);
+      }
+      
       const quote = result.indicators.quote[0];
-      const closes = quote.close.filter(c => c !== null);
+      
+      if (!quote.close || quote.close.length === 0) {
+        throw new Error(`Missing close prices for ${symbol}`);
+      }
+      
+      const closes = quote.close.filter(c => c !== null && !isNaN(c));
+      
+      // 驗證有足夠的數據計算指標
+      if (closes.length < 20) {
+        throw new Error(`Insufficient data for technical indicators (${closes.length} < 20)`);
+      }
 
       // 計算移動平均線
       const ma5 = this.calculateMA(closes, 5);

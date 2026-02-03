@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TS="$(date -u +%Y%m%d-%H%M%SZ)"
+OUTDIR="$HOME/.local/share/clawbot/exports/host-leakscan-v1-$TS"
+mkdir -p "$OUTDIR"
+chmod 700 "$OUTDIR"
+
+# --- scan roots (v1) ---
+ROOTS=(
+  "$HOME/clawd"
+  "$HOME/.clawdbot"
+  "$HOME/bin"
+)
+
+# --- exclude noisy dirs ---
+EXCLUDES=(
+  -path "*/node_modules/*" -o
+  -path "*/.git/*" -o
+  -path "*/logs/*" -o
+  -path "*/cache/*" -o
+  -path "*/data/*" -o
+  -path "*/dist/*" -o
+  -path "*/build/*"
+)
+
+# --- high-confidence secret patterns (v1) ---
+# keep it strict to avoid alert fatigue
+PATTERN='(botToken"\s*:\s*"[0-9]{6,}:[0-9A-Za-z_-]{20,}")|(xox[baprs]-[0-9A-Za-z-]{10,})|(ghp_[0-9A-Za-z]{30,})|(AKIA[0-9A-Z]{16})|(-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----)|(sk-[0-9A-Za-z]{20,})'
+
+echo "OUTDIR=$OUTDIR" | tee "$OUTDIR/00-meta.txt"
+echo "TS=$TS" | tee -a "$OUTDIR/00-meta.txt"
+
+# produce candidate file list (only text-ish files)
+FILES="$OUTDIR/01-files.txt"
+: > "$FILES"
+for R in "${ROOTS[@]}"; do
+  [ -d "$R" ] || continue
+  find "$R" -type f \
+    \( "${EXCLUDES[@]}" \) -prune -o \
+    -type f -size -2M \
+    \( -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.json5" -o -name "*.yaml" -o -name "*.yml" -o -name "*.env" -o -name "*.sh" -o -name "*.py" -o -name "*.toml" -o -name "*.ini" -o -name "*.conf" \) \
+    -print >> "$FILES"
+done
+sort -u "$FILES" -o "$FILES"
+
+# scan
+HITS_RAW="$OUTDIR/02-hits.raw"
+HITS_TXT="$OUTDIR/02-hits.txt"
+umask 077
+: > "$HITS_RAW"
+while IFS= read -r f; do
+  # grep -nH outputs file:line:match
+  grep -nH -E "$PATTERN" "$f" 2>/dev/null >> "$HITS_RAW" || true
+done < "$FILES"
+
+# summarize to JSON (minimal)
+python3 - <<'PY' "$OUTDIR"
+import json, os, re, sys, hashlib
+outdir=sys.argv[1]
+hits_path=os.path.join(outdir,"02-hits.raw")
+items=[]
+if os.path.exists(hits_path):
+    with open(hits_path,"r",encoding="utf-8",errors="ignore") as f:
+        for line in f:
+            line=line.rstrip("\n")
+            if not line: 
+                continue
+            # file:line:...
+            parts=line.split(":",2)
+            if len(parts)<3:
+                continue
+            path,ln,rest=parts[0],parts[1],parts[2]
+            # mask long secrets in 'rest'
+            masked=rest
+            # generic masking: keep first/last 4, mask middle if long alnum
+            def mask_token(m):
+                s=m.group(0)
+                if len(s)<=10: return s
+                return s[:4]+"…"*(1)+s[-4:]
+            masked=re.sub(r"[A-Za-z0-9_\-]{18,}", mask_token, masked)
+            items.append({"file":path,"line":int(ln) if ln.isdigit() else ln,"preview":masked})
+report={
+  "version":"host-v1",
+  "outdir":outdir,
+  "hit_count":len(items),
+  "hits":items[:200],  # cap
+}
+with open(os.path.join(outdir,"report.json"),"w",encoding="utf-8") as w:
+    json.dump(report,w,ensure_ascii=False,indent=2)
+print("hit_count=",len(items))
+print("report=",os.path.join(outdir,"report.json"))
+PY
+
+# produce minimal hits list (file:line only) and remove raw
+if [ -f "" ]; then
+  awk -F: 'NF>=2{print print("report=",os.path.join(outdir,"report.json"))
+PY
+":"}' "" | sort -u > ""
+  chmod 600 ""
+  rm -f ""
+fi
+
+
+# --- SRE: finalize outputs (always) ---
+# ensure minimal hits file exists even when there are zero hits
+: > "$OUTDIR/02-hits.txt"
+chmod 600 "$OUTDIR/02-hits.txt" || true
+if [ -f "$OUTDIR/02-hits.raw" ]; then
+  awk -F: 'NF>=2{print ":"}' "$OUTDIR/02-hits.raw" | sort -u > "$OUTDIR/02-hits.txt" || true
+  chmod 600 "$OUTDIR/02-hits.txt" || true
+  rm -f "$OUTDIR/02-hits.raw"
+fi
+
+echo "✅ done: $OUTDIR"

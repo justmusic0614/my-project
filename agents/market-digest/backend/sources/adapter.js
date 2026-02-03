@@ -1,10 +1,20 @@
 // Data Source Adapter Base Class
 // 設計目標：可無痛替換數據源（免費 API → 付費 API）
 
+const { getManager } = require('../../sre/circuit-breaker');
+
 class DataSourceAdapter {
   constructor(name, config) {
     this.name = name;
     this.config = config;
+    
+    // 註冊 Circuit Breaker
+    this.circuitBreakerManager = getManager();
+    this.circuitBreaker = this.circuitBreakerManager.register(name, {
+      failureThreshold: 5,
+      timeout: 60000,
+      successThreshold: 2
+    });
   }
 
   // 所有 adapter 必須實作這些方法
@@ -20,16 +30,28 @@ class DataSourceAdapter {
     throw new Error('fetchTechnicalIndicators() must be implemented');
   }
 
-  // 統一的錯誤處理與重試邏輯
-  async withRetry(fn, maxRetries = 3) {
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        return await fn();
-      } catch (err) {
-        if (i === maxRetries - 1) throw err;
-        await this.sleep(1000 * (i + 1));
-      }
-    }
+  // 統一的錯誤處理與重試邏輯（帶 Circuit Breaker）
+  async withRetry(fn, maxRetries = 3, fallback = null) {
+    // 包裝在 Circuit Breaker 中
+    return await this.circuitBreaker.execute(
+      async () => {
+        // 內部重試邏輯
+        for (let i = 0; i < maxRetries; i++) {
+          try {
+            return await fn();
+          } catch (err) {
+            if (i === maxRetries - 1) throw err;
+            await this.sleep(1000 * (i + 1));
+          }
+        }
+      },
+      fallback
+    );
+  }
+  
+  // 取得 Circuit Breaker 狀態
+  getCircuitBreakerStatus() {
+    return this.circuitBreaker.getStatus();
   }
 
   sleep(ms) {

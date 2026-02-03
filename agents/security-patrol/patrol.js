@@ -241,87 +241,83 @@ function generateReport(results, mode = 'alert') {
   const lines = [];
   
   if (mode === 'daily') {
-    lines.push('🛡️ **資安日報**');
-    lines.push(`📅 ${new Date(results.timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`);
+    lines.push('🛡️ 資安日報');
+    lines.push(`📅 ${new Date(results.timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`);
     lines.push('');
   }
   
   if (results.alerts.length > 0) {
-    lines.push(`⚠️ **發現 ${results.alerts.length} 個異常**`);
+    lines.push(`⚠️ ${results.alerts.length} 個異常`);
     lines.push('');
     
     results.alerts.forEach(alert => {
       const icon = alert.severity === 'CRITICAL' ? '🔴' : alert.severity === 'HIGH' ? '🟠' : '🟡';
-      lines.push(`${icon} **${alert.type.toUpperCase()}** [${alert.severity}]`);
       
       switch (alert.type) {
         case 'ssh':
-          lines.push(`  失敗登入：${alert.data.failed_logins} 次`);
+          lines.push(`${icon} SSH | 失敗 ${alert.data.failed_logins} 次`);
           if (alert.data.top_failed_ips.length > 0) {
-            lines.push(`  Top 失敗 IP：`);
-            alert.data.top_failed_ips.forEach(({ ip, count }) => {
-              lines.push(`    - ${ip}: ${count} 次`);
+            alert.data.top_failed_ips.slice(0, 3).forEach(({ ip, count }) => {
+              lines.push(`  ${ip}: ${count}`);
             });
           }
           break;
         case 'firewall':
-          lines.push(`  防火牆未啟動`);
+          lines.push(`${icon} 防火牆 | 未啟動`);
           break;
         case 'disk':
-          lines.push(`  磁碟使用率：${alert.data.usage_percent}% (${alert.data.used}/${alert.data.total})`);
+          lines.push(`${icon} 磁碟 | ${alert.data.usage_percent}% (${alert.data.available} 可用)`);
           break;
         case 'cpu':
-          lines.push(`  CPU 使用率：${alert.data.usage_percent}% (load: ${alert.data.load_1min})`);
+          lines.push(`${icon} CPU | ${alert.data.usage_percent}% (load ${alert.data.load_1min})`);
           break;
         case 'memory':
-          lines.push(`  Memory 使用率：${alert.data.usage_percent}% (${alert.data.used_mb}MB/${alert.data.total_mb}MB)`);
+          lines.push(`${icon} RAM | ${alert.data.usage_percent}% (${alert.data.available_mb}MB 可用)`);
           break;
         case 'processes':
           Object.entries(alert.data.processes).forEach(([name, info]) => {
             if (!info.running) {
-              lines.push(`  Process 未執行：${name}`);
+              lines.push(`${icon} Process | ${name} 未執行`);
             }
           });
           break;
         case 'updates':
-          lines.push(`  安全性更新：${alert.data.security_updates} 個`);
+          lines.push(`${icon} 更新 | ${alert.data.security_updates} 個安全性更新`);
           break;
       }
-      lines.push('');
     });
+    lines.push('');
   } else if (mode === 'daily') {
-    lines.push('✅ **系統狀態正常**');
+    lines.push('✅ 系統正常');
     lines.push('');
   }
   
   if (mode === 'daily') {
-    lines.push('📊 **系統摘要**');
+    lines.push('📊 系統摘要');
+    const stats = [];
     Object.entries(results.checks).forEach(([type, data]) => {
       switch (type) {
-        case 'ssh':
-          lines.push(`  SSH：成功 ${data.success_logins} / 失敗 ${data.failed_logins}`);
-          break;
         case 'disk':
-          lines.push(`  磁碟：${data.usage_percent}% (可用 ${data.available})`);
+          stats.push(`磁碟 ${data.usage_percent}%`);
           break;
         case 'cpu':
-          lines.push(`  CPU：${data.usage_percent}% (load: ${data.load_1min})`);
+          stats.push(`CPU ${data.usage_percent}%`);
           break;
         case 'memory':
-          lines.push(`  Memory：${data.usage_percent}% (可用 ${data.available_mb}MB)`);
-          break;
-        case 'updates':
-          lines.push(`  更新：${data.total_updates} 個 (安全性 ${data.security_updates} 個)`);
-          break;
-        case 'firewall':
-          lines.push(`  防火牆：${data.active ? '啟動' : '未啟動'} (${data.firewall_type})`);
+          stats.push(`RAM ${data.usage_percent}%`);
           break;
         case 'processes':
           const runningCount = Object.values(data.processes).filter(p => p.running).length;
-          lines.push(`  Processes：${runningCount}/${Object.keys(data.processes).length} 執行中`);
+          stats.push(`Process ${runningCount}/${Object.keys(data.processes).length}`);
+          break;
+        case 'updates':
+          if (data.security_updates > 0) {
+            stats.push(`更新 ${data.security_updates}`);
+          }
           break;
       }
     });
+    lines.push(stats.join(' | '));
   }
   
   return lines.join('\n');

@@ -1,0 +1,28 @@
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "description": "A CLI tool built with JavaScript.",
+  "main": "index.js",
+  "bin": {
+  "my-project": "src/main/js/index.js"
+},
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justmusic0614/my-project.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/justmusic0614/my-project/issues"
+  },
+  "homepage": "https://github.com/justmusic0614/my-project#readme"
+}

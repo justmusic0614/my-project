@@ -8,15 +8,19 @@ my-project - a CLI tool
 Usage:
   my-project hello
   my-project backup --src <path> --dest <path> [--dry-run]
+  my-project digest <fetch|summarize|run> [--help]
   my-project --help
 
 Commands:
   hello     Print a greeting and timestamp
-  backup    (scaffold) Validate args and show what would run
+  backup    Copy files from source to destination
+  digest    Fetch and summarize news headlines
 
 Examples:
   my-project hello
   my-project backup --src ~/Documents --dest ~/backup --dry-run
+  my-project digest run
+  my-project digest --help
 `.trim());
 }
 
@@ -48,6 +52,7 @@ function cmdHello() {
 
 const fs = require("fs");
 const path = require("path");
+const { cmdDigest } = require("./commands/digest");
 
 function copyFile(srcFile, destFile) {
   fs.mkdirSync(path.dirname(destFile), { recursive: true });
@@ -122,6 +127,11 @@ function main() {
 
   if (cmd === "backup") {
     cmdBackup(args);
+    return;
+  }
+
+  if (cmd === "digest") {
+    cmdDigest(args);
     return;
   }
 

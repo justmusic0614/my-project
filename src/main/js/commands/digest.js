@@ -6,12 +6,14 @@ const path = require("path");
 const crypto = require("crypto");
 
 const ROOT = path.resolve(__dirname, "../../../..");
-const EXAMPLES_DIR = path.join(ROOT, "examples");
-const OUTPUT_DIR = path.join(ROOT, "output");
-const SAMPLE_INPUT = path.join(EXAMPLES_DIR, "sample_input.txt");
-const RAW_JSON = path.join(OUTPUT_DIR, "raw.json");
-const BRIEF_JSON = path.join(OUTPUT_DIR, "brief.json");
-const BRIEF_MD = path.join(OUTPUT_DIR, "brief.md");
+
+function resolveOutputDir() {
+  return process.env.DIGEST_OUTPUT_DIR || path.join(ROOT, "output");
+}
+
+function resolveExamplesDir() {
+  return process.env.DIGEST_EXAMPLES_DIR || path.join(ROOT, "examples");
+}
 
 const PRIORITY_KEYWORDS = ["Fed", "CPI", "台積電", "美股", "美元", "殖利率", "AI"];
 
@@ -52,15 +54,20 @@ function ensureDir(dir) {
 }
 
 function digestFetch() {
-  ensureDir(EXAMPLES_DIR);
-  ensureDir(OUTPUT_DIR);
+  const examplesDir = resolveExamplesDir();
+  const outputDir = resolveOutputDir();
+  const sampleInput = path.join(examplesDir, "sample_input.txt");
+  const rawJson = path.join(outputDir, "raw.json");
 
-  if (!fs.existsSync(SAMPLE_INPUT)) {
+  ensureDir(examplesDir);
+  ensureDir(outputDir);
+
+  if (!fs.existsSync(sampleInput)) {
     console.log("sample_input.txt 不存在，建立預設範例...");
-    fs.writeFileSync(SAMPLE_INPUT, DEFAULT_HEADLINES.join("\n") + "\n", "utf-8");
+    fs.writeFileSync(sampleInput, DEFAULT_HEADLINES.join("\n") + "\n", "utf-8");
   }
 
-  const content = fs.readFileSync(SAMPLE_INPUT, "utf-8");
+  const content = fs.readFileSync(sampleInput, "utf-8");
   const lines = content
     .split("\n")
     .map((l) => l.trim())
@@ -75,8 +82,8 @@ function digestFetch() {
     raw: line,
   }));
 
-  fs.writeFileSync(RAW_JSON, JSON.stringify(items, null, 2), "utf-8");
-  console.log(`fetch 完成：${items.length} 筆寫入 ${RAW_JSON}`);
+  fs.writeFileSync(rawJson, JSON.stringify(items, null, 2), "utf-8");
+  console.log(`fetch 完成：${items.length} 筆寫入 ${rawJson}`);
 }
 
 function scoreItem(item) {
@@ -85,13 +92,18 @@ function scoreItem(item) {
 }
 
 function digestSummarize() {
-  if (!fs.existsSync(RAW_JSON)) {
-    console.error("錯誤：output/raw.json 不存在，請先執行 digest fetch");
+  const outputDir = resolveOutputDir();
+  const rawJson = path.join(outputDir, "raw.json");
+  const briefJson = path.join(outputDir, "brief.json");
+  const briefMd = path.join(outputDir, "brief.md");
+
+  if (!fs.existsSync(rawJson)) {
+    console.error("錯誤：raw.json 不存在，請先執行 digest fetch");
     process.exitCode = 1;
     return;
   }
 
-  const items = JSON.parse(fs.readFileSync(RAW_JSON, "utf-8"));
+  const items = JSON.parse(fs.readFileSync(rawJson, "utf-8"));
 
   const scored = items.map((item) => {
     const s = scoreItem(item);
@@ -105,9 +117,9 @@ function digestSummarize() {
 
   const top5 = scored.slice(0, 5).map(({ _keywordCount, _titleLength, ...rest }) => rest);
 
-  ensureDir(OUTPUT_DIR);
+  ensureDir(outputDir);
 
-  fs.writeFileSync(BRIEF_JSON, JSON.stringify(top5, null, 2), "utf-8");
+  fs.writeFileSync(briefJson, JSON.stringify(top5, null, 2), "utf-8");
 
   const now = new Date().toISOString();
   const mdLines = [
@@ -121,9 +133,9 @@ function digestSummarize() {
     `共 ${items.length} 筆來源，篩選 ${top5.length} 筆重點新聞。`,
     "",
   ];
-  fs.writeFileSync(BRIEF_MD, mdLines.join("\n"), "utf-8");
+  fs.writeFileSync(briefMd, mdLines.join("\n"), "utf-8");
 
-  console.log(`summarize 完成：Top ${top5.length} 寫入 ${BRIEF_JSON} 及 ${BRIEF_MD}`);
+  console.log(`summarize 完成：Top ${top5.length} 寫入 ${briefJson} 及 ${briefMd}`);
 }
 
 function digestRun() {
@@ -156,4 +168,4 @@ function cmdDigest(args) {
   }
 }
 
-module.exports = { cmdDigest };
+module.exports = { cmdDigest, digestFetch, digestSummarize, digestRun };

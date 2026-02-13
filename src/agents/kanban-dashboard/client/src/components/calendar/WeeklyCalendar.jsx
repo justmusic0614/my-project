@@ -1,0 +1,89 @@
+import React, { useState, useEffect } from 'react';
+import { format, addDays, startOfWeek } from 'date-fns';
+import ScheduleBlock from './ScheduleBlock';
+import { api } from '../../api/client';
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+export default function WeeklyCalendar({ onAgentClick }) {
+  const [weekStart, setWeekStart] = useState(() => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: 1 });
+  });
+  const [schedule, setSchedule] = useState([]);
+
+  useEffect(() => {
+    const weekStr = format(weekStart, 'yyyy-MM-dd');
+    api.getAgentSchedule(weekStr)
+      .then(data => setSchedule(data.schedule || []))
+      .catch(() => setSchedule([]));
+  }, [weekStart]);
+
+  const prevWeek = () => setWeekStart(prev => addDays(prev, -7));
+  const nextWeek = () => setWeekStart(prev => addDays(prev, 7));
+  const today = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+
+  const weekEnd = addDays(weekStart, 6);
+  const weekLabel = `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`;
+
+  // Group schedule by day and hour
+  const getBlocksForCell = (dayIdx, hour) => {
+    const dayDate = addDays(weekStart, dayIdx);
+    return schedule.filter(entry => {
+      const d = new Date(entry.start);
+      return d.getDate() === dayDate.getDate() &&
+             d.getMonth() === dayDate.getMonth() &&
+             d.getHours() === hour;
+    });
+  };
+
+  return (
+    <div>
+      <div className="calendar-nav">
+        <button className="calendar-nav-btn" onClick={prevWeek}>{'\u2190'}</button>
+        <button className="calendar-nav-btn" onClick={today}>Today</button>
+        <button className="calendar-nav-btn" onClick={nextWeek}>{'\u2192'}</button>
+        <span className="calendar-week-label">{weekLabel}</span>
+      </div>
+
+      <div className="calendar-grid" style={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
+        {/* Header row */}
+        <div className="calendar-corner" />
+        {DAYS.map((day, i) => {
+          const d = addDays(weekStart, i);
+          return (
+            <div key={day} className="calendar-day-header">
+              <div>{day}</div>
+              <div className="calendar-day-header-date">{format(d, 'M/d')}</div>
+            </div>
+          );
+        })}
+
+        {/* Time rows */}
+        {HOURS.map(hour => (
+          <React.Fragment key={hour}>
+            <div className="calendar-time-label">
+              {String(hour).padStart(2, '0')}:00
+            </div>
+            {Array.from({ length: 7 }, (_, dayIdx) => {
+              const blocks = getBlocksForCell(dayIdx, hour);
+              return (
+                <div key={dayIdx} className="calendar-cell">
+                  {blocks.map((entry, bi) => (
+                    <ScheduleBlock
+                      key={`${entry.agent}-${bi}`}
+                      entry={entry}
+                      style={{ top: `${bi * 20}px` }}
+                      onClick={() => onAgentClick && onAgentClick(entry.agent)}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}

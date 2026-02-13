@@ -1,0 +1,116 @@
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.calendar-nav-btn {
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.calendar-nav-btn:hover {
+  background: var(--bg-hover);
+}
+
+.calendar-week-label {
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 220px;
+  text-align: center;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: 60px repeat(7, 1fr);
+  grid-template-rows: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.calendar-corner {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.calendar-day-header {
+  background: var(--bg-tertiary);
+  padding: 10px 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.calendar-day-header:last-child {
+  border-right: none;
+}
+
+.calendar-day-header-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.calendar-time-label {
+  padding: 4px 8px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  height: 40px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.calendar-cell {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  height: 40px;
+  position: relative;
+  padding: 1px;
+}
+
+.calendar-cell:nth-child(8n) {
+  border-right: none;
+}
+
+.schedule-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  min-height: 18px;
+  line-height: 14px;
+  z-index: 1;
+}
+
+.schedule-block:hover {
+  opacity: 0.85;
+  z-index: 2;
+}
+
+.schedule-block-time {
+  font-size: 9px;
+  opacity: 0.7;
+}

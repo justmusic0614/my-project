@@ -11,7 +11,19 @@
     "example": "examples"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "dashboard:server": "node src/agents/kanban-dashboard/server/index.js",
+    "dashboard:client": "cd src/agents/kanban-dashboard/client && npm run dev",
+    "dashboard:dev": "npx concurrently \"npm run dashboard:server\" \"npm run dashboard:client\"",
+    "dashboard:build": "cd src/agents/kanban-dashboard/client && npm run build"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
   },
   "repository": {
     "type": "git",

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LogViewer from './LogViewer';
+import MarkdownViewer from '../common/MarkdownViewer';
+import '../../styles/markdown.css';
 
 const STATUS_COLORS = {
   running: 'var(--accent-green)',
@@ -46,12 +48,19 @@ const styles = {
 
 export default function AgentDetail({ agentName }) {
   const [detail, setDetail] = useState(null);
+  const [spec, setSpec] = useState(null);
 
   useEffect(() => {
     fetch(`/api/agents/${agentName}`)
       .then(r => r.json())
       .then(data => setDetail(data.agent))
       .catch(() => {});
+
+    // Load agent specification
+    fetch(`/api/agents/${agentName}/spec`)
+      .then(r => r.json())
+      .then(data => setSpec(data.spec))
+      .catch(() => setSpec(null)); // Spec is optional
   }, [agentName]);
 
   if (!detail) {
@@ -99,6 +108,8 @@ export default function AgentDetail({ agentName }) {
       </div>
 
       <LogViewer agentName={agentName} />
+
+      {spec && <MarkdownViewer content={spec} />}
     </div>
   );
 }

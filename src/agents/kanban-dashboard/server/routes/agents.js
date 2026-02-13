@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const { asyncHandler } = require('../middleware/error-handler');
 const agentService = require('../services/agent-service');
 
@@ -16,19 +18,7 @@ router.get('/schedule', asyncHandler(async (req, res) => {
   res.json({ schedule, week });
 }));
 
-// GET /api/agents/:name - Single agent detail
-router.get('/:name', asyncHandler(async (req, res) => {
-  const agent = agentService.getAgentStatus(req.params.name);
-  const logs = agentService.getAgentLogs(req.params.name, 50);
-  res.json({ agent, logs });
-}));
-
-// GET /api/agents/:name/logs - Agent logs
-router.get('/:name/logs', asyncHandler(async (req, res) => {
-  const lines = parseInt(req.query.lines) || 200;
-  const logs = agentService.getAgentLogs(req.params.name, lines);
-  res.json({ logs });
-}));
+// IMPORTANT: More specific routes must come BEFORE /:name
 
 // GET /api/agents/:name/logs/stream - SSE log streaming
 router.get('/:name/logs/stream', (req, res) => {
@@ -50,6 +40,37 @@ router.get('/:name/logs/stream', (req, res) => {
     }
   });
 });
+
+// GET /api/agents/:name/logs - Agent logs
+router.get('/:name/logs', asyncHandler(async (req, res) => {
+  const lines = parseInt(req.query.lines) || 200;
+  const logs = agentService.getAgentLogs(req.params.name, lines);
+  res.json({ logs });
+}));
+
+// GET /api/agents/:name/spec - Agent specification (README.md)
+router.get('/:name/spec', asyncHandler(async (req, res) => {
+  const agentName = req.params.name;
+  const agentDir = path.join(__dirname, '../../../', agentName);
+  const readmePath = path.join(agentDir, 'README.md');
+
+  if (!fs.existsSync(readmePath)) {
+    return res.status(404).json({
+      error: true,
+      message: `No specification found for agent: ${agentName}`
+    });
+  }
+
+  const content = fs.readFileSync(readmePath, 'utf8');
+  res.json({ spec: content, agent: agentName });
+}));
+
+// GET /api/agents/:name - Single agent detail (MUST be last)
+router.get('/:name', asyncHandler(async (req, res) => {
+  const agent = agentService.getAgentStatus(req.params.name);
+  const logs = agentService.getAgentLogs(req.params.name, 50);
+  res.json({ agent, logs });
+}));
 
 function getMonday(d) {
   const date = new Date(d);

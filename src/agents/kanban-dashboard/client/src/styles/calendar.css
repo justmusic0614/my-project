@@ -70,7 +70,7 @@
   color: var(--text-muted);
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  height: 40px;
+  min-height: 40px;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
@@ -79,9 +79,8 @@
 .calendar-cell {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  height: 40px;
+  min-height: 40px;
   position: relative;
-  padding: 1px;
 }
 
 .calendar-cell:nth-child(8n) {
@@ -89,28 +88,31 @@
 }
 
 .schedule-block {
-  position: absolute;
-  left: 2px;
-  right: 2px;
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-size: 10px;
-  font-weight: 500;
+  flex: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
-  min-height: 18px;
+  min-height: 20px;
   line-height: 14px;
-  z-index: 1;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s ease;
 }
 
 .schedule-block:hover {
-  opacity: 0.85;
-  z-index: 2;
+  transform: scale(1.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
 }
 
-.schedule-block-time {
-  font-size: 9px;
-  opacity: 0.7;
+.schedule-block-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
 }

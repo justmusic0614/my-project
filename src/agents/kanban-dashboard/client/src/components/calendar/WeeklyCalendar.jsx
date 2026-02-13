@@ -63,18 +63,42 @@ export default function WeeklyCalendar({ onAgentClick }) {
         {/* Time rows */}
         {HOURS.map(hour => (
           <React.Fragment key={hour}>
-            <div className="calendar-time-label">
-              {String(hour).padStart(2, '0')}:00
-            </div>
+            {(() => {
+              // Calculate max blocks in this hour across all days
+              const maxBlocks = Math.max(1, ...Array.from({ length: 7 }, (_, dayIdx) =>
+                getBlocksForCell(dayIdx, hour).length
+              ));
+              const rowHeight = Math.max(40, maxBlocks * 24);
+
+              return (
+                <div
+                  className="calendar-time-label"
+                  style={{ height: `${rowHeight}px` }}
+                >
+                  {String(hour).padStart(2, '0')}:00
+                </div>
+              );
+            })()}
             {Array.from({ length: 7 }, (_, dayIdx) => {
               const blocks = getBlocksForCell(dayIdx, hour);
+              const cellHeight = Math.max(40, blocks.length * 24); // Dynamic height
+
               return (
-                <div key={dayIdx} className="calendar-cell">
+                <div
+                  key={dayIdx}
+                  className="calendar-cell"
+                  style={{
+                    height: `${cellHeight}px`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                    padding: '2px'
+                  }}
+                >
                   {blocks.map((entry, bi) => (
                     <ScheduleBlock
                       key={`${entry.agent}-${bi}`}
                       entry={entry}
-                      style={{ top: `${bi * 20}px` }}
                       onClick={() => onAgentClick && onAgentClick(entry.agent)}
                     />
                   ))}

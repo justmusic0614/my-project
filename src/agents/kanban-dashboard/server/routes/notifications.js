@@ -3,6 +3,16 @@ const router = express.Router();
 const { asyncHandler } = require('../middleware/error-handler');
 const notificationService = require('../services/notification-service');
 
+// POST /api/notifications
+router.post('/', asyncHandler(async (req, res) => {
+  const { type, title, message, metadata } = req.body;
+  if (!type || !title || !message) {
+    return res.status(400).json({ error: true, message: 'type, title, message are required' });
+  }
+  const notification = notificationService.addNotification(type, title, message, metadata || {});
+  res.status(201).json(notification);
+}));
+
 // GET /api/notifications
 router.get('/', asyncHandler(async (req, res) => {
   const unread = req.query.unread === 'true';

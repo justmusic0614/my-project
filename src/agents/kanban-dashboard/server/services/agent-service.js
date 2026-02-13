@@ -6,17 +6,13 @@ const { readLastLines, watchAndStream } = require('../utils/log-reader');
 
 const ENV = process.env.KANBAN_ENV || 'dev';
 
-// Mock data for development
+// Mock data for development (Real agents from VPS)
 const MOCK_AGENTS = [
-  { name: 'knowledge-digest', cron: '30 3 * * *', status: 'scheduled' },
-  { name: 'kanban-patrol', cron: '0 * * * *', status: 'scheduled' },
-  { name: 'twitter-digest', cron: '0 0 * * *', status: 'scheduled' },
-  { name: 'daily-wrap-up', cron: '0 1 * * *', status: 'scheduled' },
-  { name: 'overnight-improvement', cron: '0 2 * * *', status: 'scheduled' },
-  { name: 'daily-title-optimization', cron: '0 3 * * *', status: 'scheduled' },
-  { name: 'second-brain-embedding', cron: '30 3 * * *', status: 'scheduled' },
-  { name: 'content-analytics', cron: '0 4 * * *', status: 'scheduled' },
-  { name: 'seo-ctr-tracking', cron: '0 6 * * *', status: 'scheduled' }
+  { name: 'knowledge-digest', cron: '0 0 * * *', status: 'scheduled' },
+  { name: 'market-digest', cron: '0 0 * * *', status: 'scheduled' },
+  { name: 'deploy-monitor', cron: '0 * * * *', status: 'scheduled' },
+  { name: 'optimization-advisor', cron: null, status: 'stopped' },
+  { name: 'security-patrol', cron: null, status: 'stopped' }
 ];
 
 function getAgentsDir() {

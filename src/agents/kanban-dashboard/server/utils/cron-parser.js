@@ -29,6 +29,7 @@ function parseCronField(field, min, max) {
 }
 
 function parseCron(expression) {
+  if (!expression) return null;
   const parts = expression.trim().split(/\s+/);
   if (parts.length !== 5) return null;
 
@@ -44,6 +45,7 @@ function parseCron(expression) {
 }
 
 function getNextRun(expression, from = new Date()) {
+  if (!expression) return null;
   const cron = parseCron(expression);
   if (!cron) return null;
 
@@ -68,6 +70,7 @@ function getNextRun(expression, from = new Date()) {
 }
 
 function humanReadable(expression) {
+  if (!expression) return 'Manual';
   const cron = parseCron(expression);
   if (!cron) return expression;
 
@@ -83,6 +86,7 @@ function humanReadable(expression) {
 }
 
 function expandForWeek(expression, weekStart) {
+  if (!expression) return [];
   const cron = parseCron(expression);
   if (!cron) return [];
 

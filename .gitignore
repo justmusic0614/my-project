@@ -36,3 +36,4 @@ temp/
 src/agents/kanban-dashboard/client/dist/
 src/agents/kanban-dashboard/data/uploads/
 src/agents/kanban-dashboard/data/*.lock
+src/agents/kanban-dashboard/data/

@@ -292,19 +292,11 @@ async function addUrl(url, tags = [], title = null) {
       ? Object.keys(JSON.parse(fs.readFileSync(INDEX_FILE, 'utf8')).tags || {})
       : [];
 
-    const prompt = `你是知識萃取助手。分析以下網頁內容，以繁體中文產出結構化摘要。
-
-現有標籤庫：${existingTags.join(', ') || '（無）'}
-
-請嚴格回傳以下 JSON，不要任何其他文字：
-{
-  "title": "20字內的精準標題",
-  "summary": "## 核心觀點\\n- 觀點1\\n- 觀點2\\n\\n## 關鍵數據\\n- 數據（若無則省略此節）\\n\\n## 重要結論\\n- 結論1\\n- 結論2",
-  "tags": ["標籤1", "標籤2"]
-}
-
-網頁內容（前 3000 字）：
-${rawContent.substring(0, 3000)}`;
+    const prompt = `以繁體中文摘要此文，回傳 JSON（無其他文字）：
+{"title":"20字標題","summary":"## 核心觀點\\n- ...\\n## 關鍵數據\\n- ...\\n## 結論\\n- ...","tags":["標籤"]}
+已有標籤：${existingTags.slice(0, 20).join(',') || '無'}
+內容：
+${rawContent.substring(0, 2000)}`;
 
     const llmResult = await callLLM(prompt, 1000);
     if (llmResult) {
@@ -507,17 +499,29 @@ async function semanticSearch(question) {
     return;
   }
 
-  // Claude ranking（知識庫 ≤ 80 則時使用，避免 context 過長）
+  // TF-IDF 預篩選
+  const { vectors, tokenize } = buildTFIDF(entries);
+  const queryTokens = tokenize(question);
+  const queryVec = {};
+  queryTokens.forEach(t => { queryVec[t] = 1; });
+
+  const scored = vectors
+    .map((vec, i) => ({ entry: entries[i], score: cosineSimilarity(queryVec, vec) }))
+    .sort((a, b) => b.score - a.score)
+    .filter(r => r.score > 0);
+
+  // 兩階段搜尋：TF-IDF 篩選 Top 5 → Claude 精排（固定 ~1000 tokens input）
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (apiKey && entries.length <= 80) {
-    console.log('🤖 AI 語意分析中...');
-    const entriesList = entries.map(e =>
-      `[${e.id}] ${e.title} | 標籤:${e.tags.join(',')} | ${e.content.replace(/\n/g, ' ').substring(0, 100)}`
+  const candidates = scored.slice(0, 5);
+  if (apiKey && candidates.length >= 2) {
+    console.log('🤖 AI 精排中...');
+    const entriesList = candidates.map(r =>
+      `[${r.entry.id}] ${r.entry.title} | ${r.entry.tags.join(',')} | ${r.entry.content.replace(/\n/g, ' ').substring(0, 50)}`
     ).join('\n');
 
-    const prompt = `知識庫條目：\n${entriesList}\n\n用戶問題：${question}\n\n請返回最相關的 3 個條目 ID（只回傳 ID 以逗號分隔，例：abc123,def456,ghi789）：`;
+    const prompt = `條目：\n${entriesList}\n\n問題：${question}\n\n回傳最相關3個ID（逗號分隔）：`;
 
-    const result = await callLLM(prompt, 100);
+    const result = await callLLM(prompt, 60);
     if (result) {
       const ids = result.trim().split(/[,\s]+/).filter(id => /^[0-9a-f]{16}$/.test(id));
       const found = ids.map(id => entries.find(e => e.id === id)).filter(Boolean);
@@ -534,25 +538,16 @@ async function semanticSearch(question) {
     }
   }
 
-  // Fallback: TF-IDF
+  // Fallback: 直接用 TF-IDF Top 3 結果
   console.log('🔍 TF-IDF 相似度搜尋中...');
-  const { vectors, tokenize } = buildTFIDF(entries);
-  const queryTokens = tokenize(question);
-  const queryVec = {};
-  queryTokens.forEach(t => { queryVec[t] = 1; });
-
-  const scored = vectors
-    .map((vec, i) => ({ entry: entries[i], score: cosineSimilarity(queryVec, vec) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .filter(r => r.score > 0);
+  const topResults = scored.slice(0, 3);
 
   console.log(`\n🔍 語意搜尋：「${question}」\n`);
-  if (scored.length === 0) {
+  if (topResults.length === 0) {
     console.log('（無相關結果）');
     return;
   }
-  scored.forEach((r, i) => {
+  topResults.forEach((r, i) => {
     console.log(`${i + 1}. 📄 ${r.entry.title}  (相似度: ${r.score.toFixed(3)})`);
     console.log(`   🏷️ ${r.entry.tags.join(', ')}`);
     console.log(`   ${r.entry.content.replace(/\n+/g, ' ').trim().substring(0, 150)}...`);

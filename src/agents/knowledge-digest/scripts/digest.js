@@ -499,50 +499,47 @@ async function semanticSearch(question) {
     return;
   }
 
-  // TF-IDF 預篩選
+  // 優先使用 OpenClaw memory search（向量 + BM25，0 Claude API token）
+  try {
+    const { execSync } = require('child_process');
+    const escaped = question.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+    const cmd = `export NVM_DIR=$HOME/.nvm && source $NVM_DIR/nvm.sh && openclaw memory search --json --max-results 3 "${escaped}"`;
+    const raw = execSync(cmd, { shell: '/bin/bash', timeout: 15000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    // openclaw 可能在 JSON 前輸出 config warning，取第一個 '{' 之後的內容
+    const jsonStart = raw.indexOf('{');
+    if (jsonStart < 0) throw new Error('No JSON in openclaw output');
+    const parsed = JSON.parse(raw.substring(jsonStart));
+    const results = parsed.results || parsed;
+    if (Array.isArray(results) && results.length > 0) {
+      console.log(`\n🔍 語意搜尋：「${question}」（向量搜尋）\n`);
+      results.forEach((r, i) => {
+        const title = r.path ? r.path.replace(/^.*\//, '').replace(/\.md$/, '') : 'Untitled';
+        const snippet = (r.snippet || '').replace(/\n+/g, ' ').trim().substring(0, 150);
+        console.log(`${i + 1}. 📄 ${title}  (score: ${(r.score || 0).toFixed(3)})`);
+        console.log(`   ${snippet}${snippet.length >= 150 ? '...' : ''}`);
+        console.log('');
+      });
+      return;
+    }
+  } catch (e) {
+    // OpenClaw memory search 不可用，fallback 到 TF-IDF
+    if (process.env.DEBUG) console.error('⚠️ openclaw search fallback:', e.message);
+  }
+
+  // Fallback: TF-IDF（0 Claude API token）
+  console.log('🔍 TF-IDF 相似度搜尋中...');
   const { vectors, tokenize } = buildTFIDF(entries);
   const queryTokens = tokenize(question);
   const queryVec = {};
   queryTokens.forEach(t => { queryVec[t] = 1; });
 
-  const scored = vectors
+  const topResults = vectors
     .map((vec, i) => ({ entry: entries[i], score: cosineSimilarity(queryVec, vec) }))
     .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
     .filter(r => r.score > 0);
 
-  // 兩階段搜尋：TF-IDF 篩選 Top 5 → Claude 精排（固定 ~1000 tokens input）
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  const candidates = scored.slice(0, 5);
-  if (apiKey && candidates.length >= 2) {
-    console.log('🤖 AI 精排中...');
-    const entriesList = candidates.map(r =>
-      `[${r.entry.id}] ${r.entry.title} | ${r.entry.tags.join(',')} | ${r.entry.content.replace(/\n/g, ' ').substring(0, 50)}`
-    ).join('\n');
-
-    const prompt = `條目：\n${entriesList}\n\n問題：${question}\n\n回傳最相關3個ID（逗號分隔）：`;
-
-    const result = await callLLM(prompt, 60);
-    if (result) {
-      const ids = result.trim().split(/[,\s]+/).filter(id => /^[0-9a-f]{16}$/.test(id));
-      const found = ids.map(id => entries.find(e => e.id === id)).filter(Boolean);
-      if (found.length > 0) {
-        console.log(`\n🔍 語意搜尋：「${question}」\n`);
-        found.forEach((e, i) => {
-          console.log(`${i + 1}. 📄 ${e.title}`);
-          console.log(`   🏷️ ${e.tags.join(', ')}`);
-          console.log(`   ${e.content.replace(/\n+/g, ' ').trim().substring(0, 150)}...`);
-          console.log('');
-        });
-        return;
-      }
-    }
-  }
-
-  // Fallback: 直接用 TF-IDF Top 3 結果
-  console.log('🔍 TF-IDF 相似度搜尋中...');
-  const topResults = scored.slice(0, 3);
-
-  console.log(`\n🔍 語意搜尋：「${question}」\n`);
+  console.log(`\n🔍 語意搜尋：「${question}」（TF-IDF）\n`);
   if (topResults.length === 0) {
     console.log('（無相關結果）');
     return;

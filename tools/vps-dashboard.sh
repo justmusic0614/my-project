@@ -8,6 +8,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/vps-lib.sh"
 
+# Load VPS config
+load_config
+
 DASHBOARD_DIR="src/agents/kanban-dashboard"
 REMOTE_DASHBOARD="${REMOTE_DEST}/${DASHBOARD_DIR}"
 
@@ -31,22 +34,22 @@ cmd_deploy() {
     "${VPS_USER}@${VPS_HOST}:${REMOTE_DASHBOARD}/"
 
   log_info "Installing server dependencies on VPS..."
-  ssh_cmd "cd ${REMOTE_DEST} && npm install --omit=dev"
+  run_ssh "export NVM_DIR=\$HOME/.nvm && source \$NVM_DIR/nvm.sh && cd ${REMOTE_DASHBOARD} && npm install --omit=dev"
 
   log_info "Restarting dashboard on VPS..."
-  ssh_cmd "cd ${REMOTE_DASHBOARD} && pm2 restart ecosystem.config.js --update-env 2>/dev/null || pm2 start ecosystem.config.js"
+  run_ssh "export NVM_DIR=\$HOME/.nvm && source \$NVM_DIR/nvm.sh && cd ${REMOTE_DASHBOARD} && pm2 restart ecosystem.config.js --update-env 2>/dev/null || pm2 start ecosystem.config.js"
 
   log_info "Dashboard deployed! Access via Tailscale."
 }
 
 cmd_restart() {
   log_info "Restarting dashboard on VPS..."
-  ssh_cmd "cd ${REMOTE_DASHBOARD} && pm2 restart kanban-dashboard"
+  run_ssh "cd ${REMOTE_DASHBOARD} && pm2 restart kanban-dashboard"
 }
 
 cmd_status() {
   log_info "Dashboard status:"
-  ssh_cmd "pm2 show kanban-dashboard 2>/dev/null || echo 'Not running'"
+  run_ssh "pm2 show kanban-dashboard 2>/dev/null || echo 'Not running'"
 }
 
 # Main

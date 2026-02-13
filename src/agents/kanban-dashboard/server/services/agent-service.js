@@ -10,9 +10,9 @@ const ENV = process.env.KANBAN_ENV || 'dev';
 const MOCK_AGENTS = [
   { name: 'knowledge-digest', cron: '0 0 * * *', status: 'scheduled' },
   { name: 'market-digest', cron: '0 0 * * *', status: 'scheduled' },
-  { name: 'deploy-monitor', cron: '0 * * * *', status: 'scheduled' },
-  { name: 'optimization-advisor', cron: null, status: 'stopped' },
-  { name: 'security-patrol', cron: null, status: 'stopped' }
+  { name: 'deploy-monitor', cron: '*/30 * * * *', status: 'scheduled' },
+  { name: 'optimization-advisor', cron: '15 1-23/2 * * *', status: 'scheduled' },
+  { name: 'security-patrol', cron: '0 * * * *', status: 'scheduled' }
 ];
 
 function getAgentsDir() {

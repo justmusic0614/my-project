@@ -32,8 +32,11 @@ function watchAndStream(filePath, onLine) {
 
       const buf = Buffer.alloc(newSize - offset);
       const fd = fs.openSync(filePath, 'r');
-      fs.readSync(fd, buf, 0, buf.length, offset);
-      fs.closeSync(fd);
+      try {
+        fs.readSync(fd, buf, 0, buf.length, offset);
+      } finally {
+        fs.closeSync(fd); // Always close fd even if readSync fails
+      }
       offset = newSize;
 
       const lines = buf.toString('utf8').split('\n').filter(Boolean);

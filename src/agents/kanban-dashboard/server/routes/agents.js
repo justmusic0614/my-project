@@ -43,7 +43,11 @@ router.get('/:name/logs/stream', (req, res) => {
   const watcher = agentService.streamAgentLogs(req.params.name, res);
 
   req.on('close', () => {
-    watcher.close();
+    try {
+      watcher.close();
+    } catch (err) {
+      console.error(`Failed to close watcher for ${req.params.name}:`, err.message);
+    }
   });
 });
 

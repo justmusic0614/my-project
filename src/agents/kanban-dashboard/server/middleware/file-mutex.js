@@ -25,9 +25,10 @@ function createMutex(filePath) {
           } catch (_) {
             continue;
           }
-          // Wait and retry
-          const start = Date.now();
-          while (Date.now() - start < RETRY_DELAY) { /* busy wait */ }
+          // Non-blocking sleep using Atomics
+          const buffer = new SharedArrayBuffer(4);
+          const view = new Int32Array(buffer);
+          Atomics.wait(view, 0, 0, RETRY_DELAY);
         } else {
           throw err;
         }

@@ -51,15 +51,32 @@ export default function LogViewer({ agentName }) {
     if (!streaming) return;
 
     const source = new EventSource(`/api/agents/${agentName}/logs/stream`);
+
+    // Batch log updates to reduce re-renders
+    let buffer = [];
+    let timer = null;
+
     source.onmessage = (e) => {
-      setLogs(prev => [...prev.slice(-500), e.data]);
+      buffer.push(e.data);
+      if (!timer) {
+        timer = setTimeout(() => {
+          setLogs(prev => [...prev, ...buffer].slice(-500));
+          buffer = [];
+          timer = null;
+        }, 200); // Batch updates every 200ms
+      }
     };
+
     source.onerror = () => {
       source.close();
       setStreaming(false);
+      if (timer) clearTimeout(timer);
     };
 
-    return () => source.close();
+    return () => {
+      source.close();
+      if (timer) clearTimeout(timer);
+    };
   }, [agentName, streaming]);
 
   // Auto scroll

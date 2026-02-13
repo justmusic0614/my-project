@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
 
-const POLL_INTERVAL = 10000;
+const POLL_INTERVAL = 30000; // Reduced from 10s to 30s
 
 export default function useTasks() {
   const [tasks, setTasks] = useState([]);
@@ -22,7 +22,14 @@ export default function useTasks() {
 
   useEffect(() => {
     fetchTasks();
-    const id = setInterval(fetchTasks, POLL_INTERVAL);
+
+    // Only poll when window is visible
+    const id = setInterval(() => {
+      if (!document.hidden) {
+        fetchTasks();
+      }
+    }, POLL_INTERVAL);
+
     return () => clearInterval(id);
   }, [fetchTasks]);
 

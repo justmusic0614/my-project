@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Column from './Column';
 import useDragDrop from '../../hooks/useDragDrop';
 
@@ -14,15 +14,18 @@ export default function Board({ tasks, onMoveTask, onTaskClick }) {
     }
   );
 
-  const grouped = {};
-  for (const col of COLUMNS) {
-    grouped[col] = [];
-  }
-  for (const task of tasks) {
-    if (grouped[task.column]) {
-      grouped[task.column].push(task);
+  const grouped = useMemo(() => {
+    const result = {};
+    for (const col of COLUMNS) {
+      result[col] = [];
     }
-  }
+    for (const task of tasks) {
+      if (result[task.column]) {
+        result[task.column].push(task);
+      }
+    }
+    return result;
+  }, [tasks]);
 
   return (
     <div className="board">

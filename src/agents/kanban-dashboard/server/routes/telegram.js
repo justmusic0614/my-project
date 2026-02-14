@@ -84,6 +84,7 @@ router.post('/webhook', asyncHandler(async (req, res) => {
 
   // Route through dispatcher (4-layer: prefix → time → keyword → fallback)
   const result = dispatcher.route(text, { chatId, username, timestamp: msg.date });
+  console.log('[Telegram] Dispatcher result:', JSON.stringify({action: result.action, agent: result.agent?.name, confidence: result.confidence}));
 
   if (result.action === 'ask') {
     // Fallback: 回覆選單讓使用者選擇

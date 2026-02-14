@@ -12,8 +12,8 @@
       "costTier": "low",
       "description": "快速回應，低成本",
       "pricing": {
-        "input": 1.0,
-        "output": 5.0,
+        "input": 1,
+        "output": 5,
         "unit": "per_million_tokens"
       }
     },
@@ -24,8 +24,8 @@
       "costTier": "medium",
       "description": "平衡效能與成本",
       "pricing": {
-        "input": 3.0,
-        "output": 15.0,
+        "input": 3,
+        "output": 15,
         "unit": "per_million_tokens"
       }
     },
@@ -36,8 +36,8 @@
       "costTier": "high",
       "description": "最強效能",
       "pricing": {
-        "input": 15.0,
-        "output": 75.0,
+        "input": 15,
+        "output": 75,
         "unit": "per_million_tokens"
       }
     },
@@ -49,7 +49,7 @@
       "description": "OpenAI 平衡模型",
       "pricing": {
         "input": 2.5,
-        "output": 10.0,
+        "output": 10,
         "unit": "per_million_tokens"
       }
     },
@@ -66,5 +66,6 @@
       }
     }
   ],
-  "lastUpdated": "2026-02-14T07:52:40.557Z"
+  "lastUpdated": "2026-02-14T12:20:08.565Z",
+  "agentModels": {}
 }

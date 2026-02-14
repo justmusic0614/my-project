@@ -60,11 +60,10 @@ function loadLLMConfig() {
 
 async function callLLM(prompt, maxTokens = 800) {
   const llmClient = require('../../kanban-dashboard/server/services/llm-client');
-  const modelId = loadLLMConfig();  // 動態載入模型
 
   try {
     const result = await llmClient.callLLM(prompt, {
-      model: modelId,
+      agentId: 'knowledge-digest',  // 新增 agentId，自動查詢 Agent 專用模型
       maxTokens,
       source: 'knowledge-digest'
     });

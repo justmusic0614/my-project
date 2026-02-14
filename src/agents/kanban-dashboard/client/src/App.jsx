@@ -10,6 +10,7 @@ import CalendarPage from './pages/CalendarPage';
 import AgentsPage from './pages/AgentsPage';
 import CostDashboard from './components/analytics/CostDashboard';
 import ABTest from './components/analytics/ABTest';
+import AgentModelConfig from './components/analytics/AgentModelConfig';
 
 export default function App() {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/analytics" element={<CostDashboard />} />
             <Route path="/ab-test" element={<ABTest />} />
+            <Route path="/agent-config" element={<AgentModelConfig />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

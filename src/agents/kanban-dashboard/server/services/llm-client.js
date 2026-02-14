@@ -199,20 +199,42 @@ async function trackUsage(callRecord) {
 // ============================================================
 
 /**
- * 統一 LLM 調用介面
+ * 統一 LLM 調用介面（支援 Per-Agent 模型配置）
  * @param {string} prompt - 提示詞
- * @param {object} options - {model, maxTokens, source}
+ * @param {object} options - {model, agentId, maxTokens, source}
  * @returns {object} - {text, usage, cost}
  */
 async function callLLM(prompt, options = {}) {
-  const { model: modelId, maxTokens = 800, source = 'unknown' } = options;
+  const { model: modelId, agentId, maxTokens = 800, source = 'unknown' } = options;
 
-  if (!modelId) {
+  // 智慧模型選擇邏輯
+  let selectedModel = modelId;
+
+  if (!selectedModel && agentId) {
+    // 若沒有指定 model，但有 agentId，查詢 Agent 專用模型
+    try {
+      const config = loadConfig();
+      selectedModel = config.agentModels?.[agentId] || config.currentModel;
+    } catch (error) {
+      console.warn(`⚠️ Failed to load agent model for ${agentId}, using fallback`);
+      selectedModel = 'claude-haiku-4-5-20251001';
+    }
+  } else if (!selectedModel) {
+    // 若都沒有，使用全局 currentModel
+    try {
+      const config = loadConfig();
+      selectedModel = config.currentModel;
+    } catch (error) {
+      selectedModel = 'claude-haiku-4-5-20251001';
+    }
+  }
+
+  if (!selectedModel) {
     throw new Error('Model ID is required');
   }
 
   const startTime = Date.now();
-  const modelConfig = getModelConfig(modelId);
+  const modelConfig = getModelConfig(selectedModel);
 
   let result;
   let error = null;
@@ -220,24 +242,24 @@ async function callLLM(prompt, options = {}) {
   try {
     // 根據 provider 調用對應的函數
     if (modelConfig.provider === 'anthropic') {
-      result = await callAnthropic(modelId, prompt, maxTokens);
+      result = await callAnthropic(selectedModel, prompt, maxTokens);
     } else if (modelConfig.provider === 'openai') {
-      result = await callOpenAI(modelId, prompt, maxTokens);
+      result = await callOpenAI(selectedModel, prompt, maxTokens);
     } else if (modelConfig.provider === 'ollama') {
-      result = await callOllama(modelId, prompt, maxTokens);
+      result = await callOllama(selectedModel, prompt, maxTokens);
     } else {
       throw new Error(`Unsupported provider: ${modelConfig.provider}`);
     }
 
     // 計算成本
-    const cost = calculateCost(modelId, result.usage);
+    const cost = calculateCost(selectedModel, result.usage);
     const latency = Date.now() - startTime;
 
     // 記錄使用資料（非阻塞）
     const callRecord = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
-      model: modelId,
+      model: selectedModel,
       provider: modelConfig.provider,
       usage: result.usage,
       cost,

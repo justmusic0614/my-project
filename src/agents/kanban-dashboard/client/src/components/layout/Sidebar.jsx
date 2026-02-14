@@ -7,7 +7,8 @@ const navItems = [
   { to: '/calendar', icon: '\u{1F4C5}', label: 'Calendar' },
   { to: '/agents', icon: '\u{1F916}', label: 'Agents' },
   { to: '/analytics', icon: '\u{1F4B0}', label: 'Analytics' },
-  { to: '/ab-test', icon: '\u{1F52C}', label: 'A/B Test' }
+  { to: '/ab-test', icon: '\u{1F52C}', label: 'A/B Test' },
+  { to: '/agent-config', icon: '\u{2699}', label: 'Agent Config' }
 ];
 
 const styles = {

@@ -88,9 +88,53 @@ async function updateCurrentModel(modelId) {
   });
 }
 
+/**
+ * 取得所有 Agent 的模型配置
+ * @returns {object} - { agentName: modelId }
+ */
+async function getAgentModels() {
+  const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+  return config.agentModels || {};
+}
+
+/**
+ * 更新單一 Agent 的模型配置
+ * @param {string} agentName - Agent 名稱
+ * @param {string|null} modelId - 模型 ID（null 代表刪除，回歸 currentModel）
+ */
+async function updateAgentModel(agentName, modelId) {
+  // 若 modelId 不為 null，驗證模型
+  if (modelId) {
+    const validation = await validateModel(modelId);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+  }
+
+  return mutex.withLock(() => {
+    const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+
+    if (!config.agentModels) {
+      config.agentModels = {};
+    }
+
+    if (modelId === null) {
+      delete config.agentModels[agentName];
+    } else {
+      config.agentModels[agentName] = modelId;
+    }
+
+    config.lastUpdated = new Date().toISOString();
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    return config;
+  });
+}
+
 module.exports = {
   getConfig,
   getAvailableModels,
   validateModel,
-  updateCurrentModel
+  updateCurrentModel,
+  getAgentModels,      // 新增
+  updateAgentModel     // 新增
 };

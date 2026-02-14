@@ -50,6 +50,10 @@ export const api = {
   getLLMConfig: () => apiFetch('/api/llm-config'),
   updateLLMModel: (modelId) => apiFetch('/api/llm-config/model', { method: 'PUT', body: { modelId } }),
 
+  // Agent Models
+  getAgentModels: () => apiFetch('/api/llm-config/agents'),
+  updateAgentModel: (agentName, modelId) => apiFetch(`/api/llm-config/agents/${agentName}`, { method: 'PUT', body: { modelId } }),
+
   // API Usage (Cost Tracking)
   getUsageSummary: () => apiFetch('/api/api-usage/summary'),
   getDailyUsage: (days = 7) => apiFetch(`/api/api-usage/daily?days=${days}`),

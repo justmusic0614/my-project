@@ -1,0 +1,45 @@
+{
+  "currentModel": "claude-haiku-4-5-20251001",
+  "apiKeys": {
+    "anthropic": "env:ANTHROPIC_API_KEY",
+    "openai": "env:OPENAI_API_KEY"
+  },
+  "models": [
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "name": "Claude Haiku 4.5",
+      "provider": "anthropic",
+      "costTier": "low",
+      "description": "快速回應，低成本"
+    },
+    {
+      "id": "claude-sonnet-4-5-20250929",
+      "name": "Claude Sonnet 4.5",
+      "provider": "anthropic",
+      "costTier": "medium",
+      "description": "平衡效能與成本"
+    },
+    {
+      "id": "claude-opus-4-6",
+      "name": "Claude Opus 4.6",
+      "provider": "anthropic",
+      "costTier": "high",
+      "description": "最強效能"
+    },
+    {
+      "id": "gpt-4o",
+      "name": "GPT-4o",
+      "provider": "openai",
+      "costTier": "medium",
+      "description": "OpenAI 平衡模型"
+    },
+    {
+      "id": "gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "provider": "openai",
+      "costTier": "low",
+      "description": "OpenAI 快速模型"
+    }
+  ],
+  "lastUpdated": "2026-02-14T00:00:00.000Z"
+}

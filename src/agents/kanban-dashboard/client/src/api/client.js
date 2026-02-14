@@ -13,7 +13,7 @@ export async function apiFetch(path, options = {}) {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data.message || `API error: ${res.status}`);
+    throw new Error(data.error || data.message || `API error: ${res.status}`);
   }
 
   return data;
@@ -45,4 +45,8 @@ export const api = {
   getNotifications: (unread) => apiFetch(`/api/notifications${unread ? '?unread=true' : ''}`),
   markRead: (id) => apiFetch(`/api/notifications/${id}/read`, { method: 'PUT' }),
   markAllRead: () => apiFetch('/api/notifications/read-all', { method: 'PUT' }),
+
+  // LLM Config
+  getLLMConfig: () => apiFetch('/api/llm-config'),
+  updateLLMModel: (modelId) => apiFetch('/api/llm-config/model', { method: 'PUT', body: { modelId } }),
 };

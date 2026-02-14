@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { formatDistanceToNow } from 'date-fns';
+import LLMSelector from './LLMSelector';
 
 const STATUS_COLORS = {
   running: 'var(--accent-green)',
@@ -91,6 +92,8 @@ export default function Summary() {
 
   return (
     <div>
+      <LLMSelector />
+
       {/* Overview cards */}
       <div style={styles.grid}>
         <div style={styles.card}>

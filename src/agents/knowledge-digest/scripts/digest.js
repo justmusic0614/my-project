@@ -46,9 +46,23 @@ function writeAllEntries(entries) {
 // P2 / P5 helper: 呼叫 Claude API
 // ============================================================
 
+const CONFIG_PATH = path.join(__dirname, '../../kanban-dashboard/data/llm-config.json');
+
+function loadLLMConfig() {
+  try {
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    return config.currentModel;
+  } catch (e) {
+    console.warn('⚠️ 無法讀取 LLM 配置，使用預設模型');
+    return 'claude-haiku-4-5-20251001';  // fallback
+  }
+}
+
 async function callLLM(prompt, maxTokens = 800) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
+
+  const model = loadLLMConfig();  // 動態載入模型
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -59,7 +73,7 @@ async function callLLM(prompt, maxTokens = 800) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model,  // 使用動態模型
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }]
       })

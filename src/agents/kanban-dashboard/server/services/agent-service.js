@@ -4,7 +4,25 @@ const path = require('path');
 const { parseCron, getNextRun, humanReadable, expandForWeek } = require('../utils/cron-parser');
 const { readLastLines, watchAndStream } = require('../utils/log-reader');
 
+const overrideService = require('./schedule-override-service');
+
 const ENV = process.env.KANBAN_ENV || 'dev';
+
+// Memory estimates per agent (MB)
+const AGENT_MEMORY_ESTIMATES = {
+  'knowledge-digest': 120,
+  'market-digest': 100,
+  'deploy-monitor': 50,
+  'security-patrol': 80,
+  'optimization-advisor': 150
+};
+
+const SYSTEM_MEMORY = {
+  baseMB: 400,
+  kanbanMB: 150,
+  totalRamMB: 2048,
+  availableMB: 1100
+};
 
 // Mock data for development (Real agents from VPS)
 const MOCK_AGENTS = [
@@ -150,7 +168,8 @@ function getWeeklySchedule(weekStart) {
     }
   }
 
-  return schedule.sort((a, b) => new Date(a.start) - new Date(b.start));
+  const sorted = schedule.sort((a, b) => new Date(a.start) - new Date(b.start));
+  return overrideService.applyOverrides(sorted);
 }
 
 function generateMockLogs(name, count) {
@@ -181,5 +200,7 @@ module.exports = {
   getAgentStatus,
   getAgentLogs,
   streamAgentLogs,
-  getWeeklySchedule
+  getWeeklySchedule,
+  AGENT_MEMORY_ESTIMATES,
+  SYSTEM_MEMORY
 };

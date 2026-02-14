@@ -18,6 +18,36 @@ router.get('/schedule', asyncHandler(async (req, res) => {
   res.json({ schedule, week });
 }));
 
+// Schedule Override endpoints
+const overrideService = require('../services/schedule-override-service');
+
+// POST /api/agents/schedule/override - Create/update schedule override
+router.post('/schedule/override', asyncHandler(async (req, res) => {
+  const { agent, originalStart, newStart } = req.body;
+  if (!agent || !originalStart || !newStart) {
+    return res.status(400).json({ error: 'Missing required fields: agent, originalStart, newStart' });
+  }
+  const override = overrideService.addOverride(agent, originalStart, newStart);
+  res.status(201).json(override);
+}));
+
+// DELETE /api/agents/schedule/override/:id - Remove schedule override
+router.delete('/schedule/override/:id', asyncHandler(async (req, res) => {
+  const removed = overrideService.removeOverride(req.params.id);
+  if (!removed) {
+    return res.status(404).json({ error: 'Override not found' });
+  }
+  res.json({ success: true });
+}));
+
+// GET /api/agents/memory-estimates - Memory estimates per agent
+router.get('/memory-estimates', asyncHandler(async (req, res) => {
+  res.json({
+    agents: agentService.AGENT_MEMORY_ESTIMATES,
+    system: agentService.SYSTEM_MEMORY
+  });
+}));
+
 // IMPORTANT: More specific routes must come BEFORE /:name
 
 // GET /api/agents/:name/logs/stream - SSE log streaming

@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { format, addDays, startOfWeek } from 'date-fns';
 import ScheduleBlock from './ScheduleBlock';
 import HighFrequencyPanel from './HighFrequencyPanel';
+import MemoryAnalysisPanel from './MemoryAnalysisPanel';
 import { api } from '../../api/client';
 import { classifyAgentByFrequency } from '../../utils/agent-classifier';
+import useCalendarDragDrop from '../../hooks/useCalendarDragDrop';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -17,9 +19,8 @@ export default function WeeklyCalendar({ onAgentClick }) {
   const [agents, setAgents] = useState([]);
   const [showEmptyHours, setShowEmptyHours] = useState(false);
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     const weekStr = format(weekStart, 'yyyy-MM-dd');
-
     Promise.all([
       api.getAgentSchedule(weekStr),
       api.getAgentsStatus()
@@ -34,6 +35,45 @@ export default function WeeklyCalendar({ onAgentClick }) {
         setAgents([]);
       });
   }, [weekStart]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Drag-drop handler
+  const handleScheduleDrop = useCallback((data, dayIdx, hour) => {
+    const newDay = addDays(weekStart, dayIdx);
+    const newStart = new Date(newDay);
+    newStart.setHours(hour, 0, 0, 0);
+
+    const originalStart = data.originalStart || data.start;
+
+    // Skip if dropped to same position
+    if (new Date(originalStart).getTime() === newStart.getTime()) return;
+
+    // Optimistic update
+    setSchedule(prev => prev.map(entry => {
+      if (entry.agent === data.agent && entry.start === data.start) {
+        return {
+          ...entry,
+          start: newStart.toISOString(),
+          originalStart: originalStart,
+          type: 'override'
+        };
+      }
+      return entry;
+    }));
+
+    // Persist to backend
+    api.createScheduleOverride({
+      agent: data.agent,
+      originalStart: originalStart,
+      newStart: newStart.toISOString()
+    }).catch(() => {
+      // Rollback on failure
+      fetchData();
+    });
+  }, [weekStart, fetchData]);
+
+  const { draggedEntry, dragOverCell, dragHandlers, dropHandlers } = useCalendarDragDrop(handleScheduleDrop);
 
   const prevWeek = () => setWeekStart(prev => addDays(prev, -7));
   const nextWeek = () => setWeekStart(prev => addDays(prev, 7));
@@ -95,7 +135,7 @@ export default function WeeklyCalendar({ onAgentClick }) {
             onClick={() => setShowEmptyHours(!showEmptyHours)}
             title={showEmptyHours ? 'Hide empty hours' : 'Show all hours'}
           >
-            {showEmptyHours ? '🗜️ Compact' : '📅 Expand'}
+            {showEmptyHours ? '\uD83D\uDDDC\uFE0F Compact' : '\uD83D\uDCC5 Expand'}
           </button>
         )}
       </div>
@@ -134,12 +174,15 @@ export default function WeeklyCalendar({ onAgentClick }) {
             })()}
             {Array.from({ length: 7 }, (_, dayIdx) => {
               const blocks = getBlocksForCell(dayIdx, hour);
-              const cellHeight = Math.max(40, blocks.length * 24); // Dynamic height
+              const cellHeight = Math.max(40, blocks.length * 24);
+              const isDropTarget = dragOverCell &&
+                dragOverCell.dayIdx === dayIdx &&
+                dragOverCell.hour === hour;
 
               return (
                 <div
                   key={dayIdx}
-                  className="calendar-cell"
+                  className={`calendar-cell${isDropTarget ? ' calendar-cell--drop-target' : ''}`}
                   style={{
                     height: `${cellHeight}px`,
                     display: 'flex',
@@ -147,12 +190,15 @@ export default function WeeklyCalendar({ onAgentClick }) {
                     gap: '2px',
                     padding: '2px'
                   }}
+                  {...dropHandlers(dayIdx, hour)}
                 >
                   {blocks.map((entry, bi) => (
                     <ScheduleBlock
                       key={`${entry.agent}-${bi}`}
                       entry={entry}
                       onClick={() => onAgentClick && onAgentClick(entry.agent)}
+                      dragProps={dragHandlers(entry)}
+                      isDragging={draggedEntry && draggedEntry.agent === entry.agent && draggedEntry.start === entry.start}
                     />
                   ))}
                 </div>
@@ -165,9 +211,9 @@ export default function WeeklyCalendar({ onAgentClick }) {
       {/* Empty state: shown when no tasks this week */}
       {visibleHours.length === 0 && !showEmptyHours && (
         <div className="calendar-empty-state">
-          <p>📭 No scheduled tasks this week</p>
+          <p>{'\uD83D\uDCED'} No scheduled tasks this week</p>
           <p className="calendar-empty-hint">
-            Click "📅 Expand" to view full calendar
+            Click "{'\uD83D\uDCC5'} Expand" to view full calendar
           </p>
         </div>
       )}
@@ -176,6 +222,14 @@ export default function WeeklyCalendar({ onAgentClick }) {
       <HighFrequencyPanel
         agents={agents}
         onAgentClick={onAgentClick}
+      />
+
+      {/* Memory OOM Analysis Panel */}
+      <MemoryAnalysisPanel
+        schedule={schedule}
+        agents={agents}
+        highlightCell={dragOverCell}
+        weekStart={weekStart}
       />
     </div>
   );

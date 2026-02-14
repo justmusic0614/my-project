@@ -17,25 +17,35 @@ function hashColor(name) {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
-export default function ScheduleBlock({ entry, onClick }) {
+export default function ScheduleBlock({ entry, onClick, dragProps, isDragging }) {
   const color = hashColor(entry.agent);
   const time = formatTaipeiTime(entry.start, 'HH:mm');
+  const isOverride = entry.type === 'override';
 
   // Shorten agent name for display
   const shortName = entry.agent.replace('kanban-', '').replace('knowledge-', 'know-');
 
+  const className = [
+    'schedule-block',
+    isDragging && 'schedule-block--dragging',
+    isOverride && 'schedule-block--overridden'
+  ].filter(Boolean).join(' ');
+
   return (
     <div
-      className="schedule-block"
+      className={className}
       style={{
         background: `${color}22`,
         borderLeft: `3px solid ${color}`,
         color: color
       }}
       onClick={() => onClick && onClick(entry.agent)}
-      title={`${entry.agent}\n${time}`}
+      title={`${entry.agent}\n${time}${isOverride ? ' (moved)' : ''}`}
+      {...(dragProps || {})}
     >
-      <span className="schedule-block-name">{shortName}</span>
+      <span className="schedule-block-name">
+        {isOverride && '\u21C4 '}{shortName}
+      </span>
     </div>
   );
 }

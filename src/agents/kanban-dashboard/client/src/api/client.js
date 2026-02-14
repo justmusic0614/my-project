@@ -37,6 +37,9 @@ export const api = {
   getAgentSchedule: (week) => apiFetch(`/api/agents/schedule${week ? '?week=' + week : ''}`),
   getAgent: (name) => apiFetch(`/api/agents/${name}`),
   getAgentLogs: (name, lines) => apiFetch(`/api/agents/${name}/logs${lines ? '?lines=' + lines : ''}`),
+  createScheduleOverride: (data) => apiFetch('/api/agents/schedule/override', { method: 'POST', body: data }),
+  deleteScheduleOverride: (id) => apiFetch(`/api/agents/schedule/override/${id}`, { method: 'DELETE' }),
+  getMemoryEstimates: () => apiFetch('/api/agents/memory-estimates'),
 
   // Dashboard
   getSummary: () => apiFetch('/api/dashboard/summary'),

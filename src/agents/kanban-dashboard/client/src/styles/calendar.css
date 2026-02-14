@@ -208,3 +208,146 @@
   color: var(--accent-blue);
   font-weight: 500;
 }
+
+/* ===== Drag & Drop Feedback ===== */
+
+.calendar-cell--drop-target {
+  background: rgba(59, 130, 246, 0.15) !important;
+  outline: 2px dashed var(--accent-blue);
+  outline-offset: -2px;
+}
+
+.schedule-block--dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.schedule-block--overridden {
+  border-style: dashed !important;
+}
+
+/* ===== Memory Analysis Panel ===== */
+
+.memory-analysis-panel {
+  margin-top: 32px;
+  padding: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.memory-analysis-panel h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.memory-section {
+  margin-bottom: 16px;
+}
+
+.memory-section:last-child {
+  margin-bottom: 0;
+}
+
+.memory-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.memory-no-data {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.memory-bar-container {
+  position: relative;
+  height: 24px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.memory-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.memory-bar-label {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.memory-safe {
+  background: #22c55e;
+}
+
+.memory-warning {
+  background: #f59e0b;
+}
+
+.memory-danger {
+  background: #ef4444;
+  animation: pulse-danger 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.memory-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.memory-dynamic {
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-blue);
+  border-radius: 6px;
+}
+
+.memory-breakdown {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.memory-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.memory-breakdown-row:last-child {
+  border-bottom: none;
+}
+
+.memory-breakdown-system {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.memory-oom-warning {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  border-radius: 4px;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 600;
+}

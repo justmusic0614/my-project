@@ -3,6 +3,7 @@ import { format, addDays, startOfWeek } from 'date-fns';
 import ScheduleBlock from './ScheduleBlock';
 import HighFrequencyPanel from './HighFrequencyPanel';
 import MemoryAnalysisPanel from './MemoryAnalysisPanel';
+import ScheduleOverrideModal from './ScheduleOverrideModal';
 import { api } from '../../api/client';
 import { classifyAgentByFrequency } from '../../utils/agent-classifier';
 import useCalendarDragDrop from '../../hooks/useCalendarDragDrop';
@@ -18,6 +19,8 @@ export default function WeeklyCalendar({ onAgentClick }) {
   const [schedule, setSchedule] = useState([]);
   const [agents, setAgents] = useState([]);
   const [showEmptyHours, setShowEmptyHours] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pendingDrop, setPendingDrop] = useState(null);
 
   const fetchData = useCallback(() => {
     const weekStr = format(weekStart, 'yyyy-MM-dd');
@@ -38,40 +41,67 @@ export default function WeeklyCalendar({ onAgentClick }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Drag-drop handler
+  // Drag-drop handler - open modal
   const handleScheduleDrop = useCallback((data, dayIdx, hour) => {
     const newDay = addDays(weekStart, dayIdx);
     const newStart = new Date(newDay);
     newStart.setHours(hour, 0, 0, 0);
 
+    setPendingDrop({ data, dayIdx, hour, newStart });
+    setModalOpen(true);
+  }, [weekStart]);
+
+  // Modal confirm handler
+  const handleModalConfirm = useCallback((mode) => {
+    if (!pendingDrop) return;
+    const { data, newStart } = pendingDrop;
     const originalStart = data.originalStart || data.start;
 
     // Skip if dropped to same position
-    if (new Date(originalStart).getTime() === newStart.getTime()) return;
+    if (new Date(originalStart).getTime() === newStart.getTime()) {
+      setModalOpen(false);
+      setPendingDrop(null);
+      return;
+    }
 
-    // Optimistic update
-    setSchedule(prev => prev.map(entry => {
-      if (entry.agent === data.agent && entry.start === data.start) {
-        return {
-          ...entry,
-          start: newStart.toISOString(),
-          originalStart: originalStart,
-          type: 'override'
-        };
-      }
-      return entry;
-    }));
+    if (mode === 'single') {
+      // Single override - optimistic update
+      setSchedule(prev => prev.map(entry => {
+        if (entry.agent === data.agent && entry.start === data.start) {
+          return {
+            ...entry,
+            start: newStart.toISOString(),
+            originalStart: originalStart,
+            type: 'override'
+          };
+        }
+        return entry;
+      }));
 
-    // Persist to backend
-    api.createScheduleOverride({
-      agent: data.agent,
-      originalStart: originalStart,
-      newStart: newStart.toISOString()
-    }).catch(() => {
-      // Rollback on failure
-      fetchData();
-    });
-  }, [weekStart, fetchData]);
+      api.createScheduleOverride({
+        agent: data.agent,
+        originalStart: originalStart,
+        newStart: newStart.toISOString()
+      }).catch(() => {
+        fetchData(); // Rollback on failure
+      });
+    } else {
+      // Recurring override - refetch to show all
+      api.createRecurringOverride({
+        agent: data.agent,
+        originalStart: originalStart,
+        newStart: newStart.toISOString(),
+        weeks: 4
+      }).then(() => {
+        fetchData(); // Refetch to show all overrides
+      }).catch(() => {
+        fetchData();
+      });
+    }
+
+    setModalOpen(false);
+    setPendingDrop(null);
+  }, [pendingDrop, fetchData]);
 
   const { draggedEntry, dragOverCell, dragHandlers, dropHandlers } = useCalendarDragDrop(handleScheduleDrop);
 
@@ -229,6 +259,18 @@ export default function WeeklyCalendar({ onAgentClick }) {
         schedule={schedule}
         agents={agents}
         highlightCell={dragOverCell}
+        weekStart={weekStart}
+      />
+
+      {/* Schedule Override Modal */}
+      <ScheduleOverrideModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setPendingDrop(null);
+        }}
+        onConfirm={handleModalConfirm}
+        dropData={pendingDrop}
         weekStart={weekStart}
       />
     </div>

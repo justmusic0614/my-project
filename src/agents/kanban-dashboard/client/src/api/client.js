@@ -39,6 +39,7 @@ export const api = {
   getAgentLogs: (name, lines) => apiFetch(`/api/agents/${name}/logs${lines ? '?lines=' + lines : ''}`),
   createScheduleOverride: (data) => apiFetch('/api/agents/schedule/override', { method: 'POST', body: data }),
   deleteScheduleOverride: (id) => apiFetch(`/api/agents/schedule/override/${id}`, { method: 'DELETE' }),
+  createRecurringOverride: (data) => apiFetch('/api/agents/schedule/override/recurring', { method: 'POST', body: data }),
   getMemoryEstimates: () => apiFetch('/api/agents/memory-estimates'),
 
   // Dashboard

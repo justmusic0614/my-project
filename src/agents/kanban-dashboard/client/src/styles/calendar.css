@@ -351,3 +351,85 @@
   font-size: 12px;
   font-weight: 600;
 }
+
+/* ===== Schedule Override Modal ===== */
+
+.schedule-override-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.schedule-override-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  min-width: 400px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.schedule-override-modal h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.schedule-override-modal-info {
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.schedule-override-modal-info p {
+  margin: 4px 0;
+}
+
+.schedule-override-modal-info strong {
+  color: var(--text-primary);
+}
+
+.schedule-override-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.schedule-override-modal-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.schedule-override-modal-btn-single {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.schedule-override-modal-btn-single:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-blue);
+}
+
+.schedule-override-modal-btn-recurring {
+  background: var(--accent-blue);
+  color: white;
+  border-color: var(--accent-blue);
+}
+
+.schedule-override-modal-btn-recurring:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}

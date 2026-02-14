@@ -63,6 +63,77 @@ function removeOverride(id) {
   return true;
 }
 
+function addRecurringOverride(agent, originalStart, newStart, weeks = 4) {
+  const agentService = require('./agent-service');
+  const { expandForWeek } = require('../utils/cron-parser');
+
+  const origDate = new Date(originalStart);
+  const newDate = new Date(newStart);
+
+  // Calculate time offset (ΔHour)
+  const deltaHours = newDate.getHours() - origDate.getHours();
+  const deltaMinutes = newDate.getMinutes() - origDate.getMinutes();
+
+  // Get agent's cron expression
+  const agents = agentService.getAgentList();
+  const agentData = agents.find(a => a.name === agent);
+  if (!agentData || !agentData.cron) {
+    throw new Error(`Agent ${agent} not found or has no cron`);
+  }
+
+  const overrides = readOverrides();
+  const created = [];
+
+  // Generate overrides for next N weeks
+  for (let week = 0; week < weeks; week++) {
+    const weekOffset = week * 7;
+    const weekStart = new Date(origDate);
+    weekStart.setDate(weekStart.getDate() + weekOffset);
+    weekStart.setHours(0, 0, 0, 0);
+
+    // Find all runs for this week
+    const runs = expandForWeek(agentData.cron, weekStart);
+
+    // Filter runs matching original day-of-week and hour
+    const matchingRuns = runs.filter(run => {
+      return run.getDay() === origDate.getDay() &&
+             run.getHours() === origDate.getHours() &&
+             run.getMinutes() === origDate.getMinutes();
+    });
+
+    // Create override for each matching run
+    for (const run of matchingRuns) {
+      const overrideNewStart = new Date(run);
+      overrideNewStart.setHours(run.getHours() + deltaHours);
+      overrideNewStart.setMinutes(run.getMinutes() + deltaMinutes);
+
+      const key = `${agent}:${run.toISOString()}`;
+      const existing = overrides.findIndex(o => `${o.agent}:${o.originalStart}` === key);
+
+      const override = {
+        id: 'so_' + crypto.randomBytes(6).toString('hex'),
+        agent,
+        originalStart: run.toISOString(),
+        newStart: overrideNewStart.toISOString(),
+        createdAt: new Date().toISOString(),
+        recurring: true
+      };
+
+      if (existing !== -1) {
+        override.id = overrides[existing].id;
+        overrides[existing] = override;
+      } else {
+        overrides.push(override);
+      }
+
+      created.push(override);
+    }
+  }
+
+  writeOverrides(overrides);
+  return created;
+}
+
 function applyOverrides(schedule) {
   const overrides = readOverrides();
   if (overrides.length === 0) return schedule;
@@ -88,5 +159,6 @@ module.exports = {
   getOverrides,
   addOverride,
   removeOverride,
+  addRecurringOverride,
   applyOverrides
 };

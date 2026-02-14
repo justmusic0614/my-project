@@ -40,6 +40,16 @@ router.delete('/schedule/override/:id', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
+// POST /api/agents/schedule/override/recurring - Create recurring overrides
+router.post('/schedule/override/recurring', asyncHandler(async (req, res) => {
+  const { agent, originalStart, newStart, weeks = 4 } = req.body;
+  if (!agent || !originalStart || !newStart) {
+    return res.status(400).json({ error: 'Missing required fields: agent, originalStart, newStart' });
+  }
+  const overrides = overrideService.addRecurringOverride(agent, originalStart, newStart, weeks);
+  res.status(201).json({ overrides, count: overrides.length });
+}));
+
 // GET /api/agents/memory-estimates - Memory estimates per agent
 router.get('/memory-estimates', asyncHandler(async (req, res) => {
   res.json({

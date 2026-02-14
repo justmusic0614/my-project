@@ -8,11 +8,16 @@
     "dev": "node --watch server/index.js"
   },
   "dependencies": {
-    "express": "^4.21.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.0",
     "multer": "^1.4.5-lts.1"
   },
-  "keywords": ["kanban", "dashboard", "agent-monitoring"],
+  "keywords": [
+    "kanban",
+    "dashboard",
+    "agent-monitoring"
+  ],
   "author": "",
   "license": "ISC"
 }

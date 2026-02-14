@@ -191,24 +191,18 @@ export default function LLMSelector() {
         </span>
       </div>
 
-      {/* Ollama Status Indicator */}
-      {config.apiKeysAvailable && (
+      {/* Ollama Status Indicator - only show when available */}
+      {config.apiKeysAvailable?.ollama && (
         <div style={styles.ollamaStatus}>
           <span style={styles.ollamaLabel}>Ollama:</span>
-          {config.apiKeysAvailable.ollama ? (
-            <span style={styles.ollamaAvailable}>
-              ✓ Running
-              {config.ollamaInstalledModels && config.ollamaInstalledModels.length > 0 && (
-                <span style={styles.ollamaModels}>
-                  ({config.ollamaInstalledModels.length} model{config.ollamaInstalledModels.length !== 1 ? 's' : ''})
-                </span>
-              )}
-            </span>
-          ) : (
-            <span style={styles.ollamaUnavailable}>
-              ✗ Not available
-            </span>
-          )}
+          <span style={styles.ollamaAvailable}>
+            ✓ Running
+            {config.ollamaInstalledModels && config.ollamaInstalledModels.length > 0 && (
+              <span style={styles.ollamaModels}>
+                ({config.ollamaInstalledModels.length} model{config.ollamaInstalledModels.length !== 1 ? 's' : ''})
+              </span>
+            )}
+          </span>
         </div>
       )}
     </>

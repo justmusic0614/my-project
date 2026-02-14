@@ -14,8 +14,8 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'REDACTED_TOKEN';
 function sendTelegramReply(chatId, text) {
   const data = JSON.stringify({
     chat_id: chatId,
-    text: text,
-    parse_mode: 'HTML'
+    text: text
+    // Removed parse_mode to avoid HTML parsing issues
   });
 
   const options = {

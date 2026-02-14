@@ -12,6 +12,8 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'REDACTED_TOKEN';
  * Send reply message to Telegram via direct API call
  */
 function sendTelegramReply(chatId, text) {
+  console.log('[sendTelegramReply] chatId:', chatId, 'text type:', typeof text, 'text length:', text?.length, 'text value:', JSON.stringify(text?.substring(0, 100)));
+
   const data = JSON.stringify({
     chat_id: chatId,
     text: text

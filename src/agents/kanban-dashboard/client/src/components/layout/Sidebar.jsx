@@ -5,7 +5,9 @@ const navItems = [
   { to: '/', icon: '\u{1F4CA}', label: 'Dashboard' },
   { to: '/board', icon: '\u{1F4CB}', label: 'Kanban' },
   { to: '/calendar', icon: '\u{1F4C5}', label: 'Calendar' },
-  { to: '/agents', icon: '\u{1F916}', label: 'Agents' }
+  { to: '/agents', icon: '\u{1F916}', label: 'Agents' },
+  { to: '/analytics', icon: '\u{1F4B0}', label: 'Analytics' },
+  { to: '/ab-test', icon: '\u{1F52C}', label: 'A/B Test' }
 ];
 
 const styles = {

@@ -21,6 +21,8 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/llm-config', require('./routes/llm-config'));
+app.use('/api/api-usage', require('./routes/api-usage'));
+app.use('/api/ab-test', require('./routes/ab-test'));
 
 // Serve uploaded files
 const uploadsDir = path.join(__dirname, '../data/uploads');

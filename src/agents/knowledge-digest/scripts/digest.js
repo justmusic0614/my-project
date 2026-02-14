@@ -59,32 +59,18 @@ function loadLLMConfig() {
 }
 
 async function callLLM(prompt, maxTokens = 800) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-
-  const model = loadLLMConfig();  // 動態載入模型
+  const llmClient = require('../../kanban-dashboard/server/services/llm-client');
+  const modelId = loadLLMConfig();  // 動態載入模型
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model,  // 使用動態模型
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    const result = await llmClient.callLLM(prompt, {
+      model: modelId,
+      maxTokens,
+      source: 'knowledge-digest'
     });
-    if (!res.ok) {
-      console.error(`⚠️ Claude API 回傳 ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    return data.content?.[0]?.text || null;
+    return result.text;
   } catch (e) {
+    console.error('⚠️  LLM call failed:', e.message);
     return null;
   }
 }

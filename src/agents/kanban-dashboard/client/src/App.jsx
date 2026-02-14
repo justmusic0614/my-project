@@ -8,6 +8,8 @@ import DashboardPage from './pages/DashboardPage';
 import BoardPage from './pages/BoardPage';
 import CalendarPage from './pages/CalendarPage';
 import AgentsPage from './pages/AgentsPage';
+import CostDashboard from './components/analytics/CostDashboard';
+import ABTest from './components/analytics/ABTest';
 
 export default function App() {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
@@ -45,6 +47,8 @@ export default function App() {
             <Route path="/board" element={<BoardPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/analytics" element={<CostDashboard />} />
+            <Route path="/ab-test" element={<ABTest />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

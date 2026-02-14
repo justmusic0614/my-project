@@ -49,4 +49,17 @@ export const api = {
   // LLM Config
   getLLMConfig: () => apiFetch('/api/llm-config'),
   updateLLMModel: (modelId) => apiFetch('/api/llm-config/model', { method: 'PUT', body: { modelId } }),
+
+  // API Usage (Cost Tracking)
+  getUsageSummary: () => apiFetch('/api/api-usage/summary'),
+  getDailyUsage: (days = 7) => apiFetch(`/api/api-usage/daily?days=${days}`),
+  getModelComparison: () => apiFetch('/api/api-usage/by-model'),
+  getRecentCalls: (limit = 50, offset = 0) => apiFetch(`/api/api-usage/calls?limit=${limit}&offset=${offset}`),
+
+  // A/B Testing
+  runABTest: (prompt, models, maxTokens = 800) => apiFetch('/api/ab-test/run', { method: 'POST', body: { prompt, models, maxTokens } }),
+  getABTestHistory: (limit = 50, offset = 0) => apiFetch(`/api/ab-test/history?limit=${limit}&offset=${offset}`),
+  getABTest: (id) => apiFetch(`/api/ab-test/${id}`),
+  rateABTest: (id, modelId, rating) => apiFetch(`/api/ab-test/${id}/rate`, { method: 'PUT', body: { modelId, rating } }),
+  getLeaderboard: () => apiFetch('/api/ab-test/stats/leaderboard'),
 };

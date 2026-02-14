@@ -42,6 +42,33 @@ const styles = {
   },
   statusError: {
     color: 'var(--accent-red)'
+  },
+  ollamaStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '20px',
+    padding: '8px 16px',
+    background: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    fontSize: '12px'
+  },
+  ollamaLabel: {
+    fontWeight: 600,
+    color: 'var(--text-secondary)'
+  },
+  ollamaAvailable: {
+    color: 'var(--accent-green)',
+    fontWeight: 600
+  },
+  ollamaUnavailable: {
+    color: 'var(--text-muted)'
+  },
+  ollamaModels: {
+    marginLeft: '6px',
+    color: 'var(--text-secondary)',
+    fontWeight: 'normal'
   }
 };
 
@@ -111,7 +138,8 @@ export default function LLMSelector() {
 
   const providerLabels = {
     anthropic: 'Claude (Anthropic)',
-    openai: 'OpenAI'
+    openai: 'OpenAI',
+    ollama: 'Ollama (Local)'
   };
 
   const getStatusStyle = () => {
@@ -129,37 +157,60 @@ export default function LLMSelector() {
   };
 
   return (
-    <div style={styles.container}>
-      <label style={styles.label}>AI Model:</label>
-      <select
-        style={styles.select}
-        value={currentModel}
-        onChange={handleChange}
-        disabled={status === 'saving'}
-      >
-        {Object.entries(groupedModels).map(([provider, models]) => (
-          <optgroup key={provider} label={providerLabels[provider] || provider}>
-            {models.map(model => {
-              const isAvailable = config.apiKeysAvailable[model.provider];
-              const label = `${model.name} (${model.costTier})`;
-              const fullLabel = isAvailable ? label : `${label} - API key missing`;
+    <>
+      <div style={styles.container}>
+        <label style={styles.label}>AI Model:</label>
+        <select
+          style={styles.select}
+          value={currentModel}
+          onChange={handleChange}
+          disabled={status === 'saving'}
+        >
+          {Object.entries(groupedModels).map(([provider, models]) => (
+            <optgroup key={provider} label={providerLabels[provider] || provider}>
+              {models.map(model => {
+                const isAvailable = config.apiKeysAvailable[model.provider];
+                const label = `${model.name} (${model.costTier})`;
+                const fullLabel = isAvailable ? label : `${label} - API key missing`;
 
-              return (
-                <option
-                  key={model.id}
-                  value={model.id}
-                  disabled={!isAvailable}
-                >
-                  {fullLabel}
-                </option>
-              );
-            })}
-          </optgroup>
-        ))}
-      </select>
-      <span style={{ ...styles.status, ...getStatusStyle() }}>
-        {getStatusText()}
-      </span>
-    </div>
+                return (
+                  <option
+                    key={model.id}
+                    value={model.id}
+                    disabled={!isAvailable}
+                  >
+                    {fullLabel}
+                  </option>
+                );
+              })}
+            </optgroup>
+          ))}
+        </select>
+        <span style={{ ...styles.status, ...getStatusStyle() }}>
+          {getStatusText()}
+        </span>
+      </div>
+
+      {/* Ollama Status Indicator */}
+      {config.apiKeysAvailable && (
+        <div style={styles.ollamaStatus}>
+          <span style={styles.ollamaLabel}>Ollama:</span>
+          {config.apiKeysAvailable.ollama ? (
+            <span style={styles.ollamaAvailable}>
+              ✓ Running
+              {config.ollamaInstalledModels && config.ollamaInstalledModels.length > 0 && (
+                <span style={styles.ollamaModels}>
+                  ({config.ollamaInstalledModels.length} model{config.ollamaInstalledModels.length !== 1 ? 's' : ''})
+                </span>
+              )}
+            </span>
+          ) : (
+            <span style={styles.ollamaUnavailable}>
+              ✗ Not available
+            </span>
+          )}
+        </div>
+      )}
+    </>
   );
 }

@@ -1,26 +1,54 @@
 const express = require('express');
 const router = express.Router();
-const { execSync } = require('child_process');
+const https = require('https');
 const { asyncHandler } = require('../middleware/error-handler');
 const dispatcher = require('../../../shared/message-dispatcher');
 
 // Environment variables
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || 'REDACTED_SECRET';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'REDACTED_TOKEN';
 
 /**
- * Send reply message to Telegram via clawdbot
+ * Send reply message to Telegram via direct API call
  */
 function sendTelegramReply(chatId, text) {
-  try {
-    const escapedText = text.replace(/"/g, '\\"');
-    execSync(`clawdbot message send --channel telegram --target ${chatId} --message "${escapedText}"`, {
-      encoding: 'utf8',
-      stdio: 'pipe'
+  const data = JSON.stringify({
+    chat_id: chatId,
+    text: text,
+    parse_mode: 'HTML'
+  });
+
+  const options = {
+    hostname: 'api.telegram.org',
+    port: 443,
+    path: `/bot${BOT_TOKEN}/sendMessage`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': data.length
+    }
+  };
+
+  const req = https.request(options, (res) => {
+    let responseData = '';
+    res.on('data', (chunk) => {
+      responseData += chunk;
     });
-    console.log(`[Telegram] Sent reply to ${chatId}: ${text.substring(0, 50)}...`);
-  } catch (err) {
-    console.error(`[Telegram] Failed to send reply:`, err.message);
-  }
+    res.on('end', () => {
+      if (res.statusCode === 200) {
+        console.log(`[Telegram] Sent reply to ${chatId}: ${text.substring(0, 50)}...`);
+      } else {
+        console.error(`[Telegram] Failed to send reply (${res.statusCode}):`, responseData);
+      }
+    });
+  });
+
+  req.on('error', (err) => {
+    console.error(`[Telegram] Request error:`, err.message);
+  });
+
+  req.write(data);
+  req.end();
 }
 
 /**

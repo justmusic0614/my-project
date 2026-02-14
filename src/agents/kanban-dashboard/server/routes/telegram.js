@@ -90,10 +90,15 @@ router.post('/webhook', asyncHandler(async (req, res) => {
     sendTelegramReply(chatId, result.message);
   } else if (result.action === 'route') {
     try {
+      console.log(`[Telegram] Routing to ${result.agent.name}, text: "${result.text}"`);
       const reply = await result.handler.handle(result.text, { chatId, username });
+      console.log(`[Telegram] Handler reply:`, typeof reply, reply ? `"${reply.substring(0, 50)}..."` : 'empty');
       if (reply) {
         const confidence = result.confidence !== 'exact' ? ` [${result.agent.name}]` : '';
         sendTelegramReply(chatId, reply + confidence);
+      } else {
+        console.warn(`[Telegram] Handler returned empty reply`);
+        sendTelegramReply(chatId, '⚠️ 處理完成，但沒有回覆內容');
       }
     } catch (err) {
       console.error(`[Telegram] Handler error (${result.agent.name}):`, err);

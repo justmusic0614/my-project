@@ -88,6 +88,7 @@ router.post('/webhook', asyncHandler(async (req, res) => {
 
   if (result.action === 'ask') {
     // Fallback: 回覆選單讓使用者選擇
+    console.log('[Telegram] Fallback message:', typeof result.message, `"${result.message}"`);
     sendTelegramReply(chatId, result.message);
   } else if (result.action === 'route') {
     try {

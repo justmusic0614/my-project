@@ -26,6 +26,36 @@
   text-align: center;
 }
 
+/* Toggle empty hours button */
+.calendar-toggle-empty {
+  margin-left: auto;
+  background: var(--accent-blue);
+  color: white;
+  font-weight: 500;
+}
+
+.calendar-toggle-empty:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-blue);
+}
+
+/* Empty state message */
+.calendar-empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-secondary);
+}
+
+.calendar-empty-state p:first-child {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.calendar-empty-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: 60px repeat(7, 1fr);

@@ -15,6 +15,7 @@ export default function WeeklyCalendar({ onAgentClick }) {
   });
   const [schedule, setSchedule] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [showEmptyHours, setShowEmptyHours] = useState(false);
 
   useEffect(() => {
     const weekStr = format(weekStart, 'yyyy-MM-dd');
@@ -63,6 +64,22 @@ export default function WeeklyCalendar({ onAgentClick }) {
     });
   };
 
+  // Check if an hour has no tasks for the entire week
+  const isHourEmpty = (hour) => {
+    for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+      if (getBlocksForCell(dayIdx, hour).length > 0) {
+        return false; // Has tasks on at least one day
+      }
+    }
+    return true; // No tasks for the entire week
+  };
+
+  // Filter hours and check for empty hours
+  const visibleHours = showEmptyHours
+    ? HOURS
+    : HOURS.filter(hour => !isHourEmpty(hour));
+  const hasEmptyHours = HOURS.some(hour => isHourEmpty(hour));
+
   return (
     <div>
       <div className="calendar-nav">
@@ -70,6 +87,17 @@ export default function WeeklyCalendar({ onAgentClick }) {
         <button className="calendar-nav-btn" onClick={today}>Today</button>
         <button className="calendar-nav-btn" onClick={nextWeek}>{'\u2192'}</button>
         <span className="calendar-week-label">{weekLabel}</span>
+
+        {/* Toggle empty hours button */}
+        {hasEmptyHours && (
+          <button
+            className="calendar-nav-btn calendar-toggle-empty"
+            onClick={() => setShowEmptyHours(!showEmptyHours)}
+            title={showEmptyHours ? 'Hide empty hours' : 'Show all hours'}
+          >
+            {showEmptyHours ? '🗜️ Compact' : '📅 Expand'}
+          </button>
+        )}
       </div>
 
       <div className="calendar-grid" style={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
@@ -86,7 +114,7 @@ export default function WeeklyCalendar({ onAgentClick }) {
         })}
 
         {/* Time rows */}
-        {HOURS.map(hour => (
+        {visibleHours.map(hour => (
           <React.Fragment key={hour}>
             {(() => {
               // Calculate max blocks in this hour across all days
@@ -133,6 +161,16 @@ export default function WeeklyCalendar({ onAgentClick }) {
           </React.Fragment>
         ))}
       </div>
+
+      {/* Empty state: shown when no tasks this week */}
+      {visibleHours.length === 0 && !showEmptyHours && (
+        <div className="calendar-empty-state">
+          <p>📭 No scheduled tasks this week</p>
+          <p className="calendar-empty-hint">
+            Click "📅 Expand" to view full calendar
+          </p>
+        </div>
+      )}
 
       {/* High-Frequency Tasks Panel */}
       <HighFrequencyPanel

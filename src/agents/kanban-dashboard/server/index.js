@@ -23,6 +23,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/llm-config', require('./routes/llm-config'));
 app.use('/api/api-usage', require('./routes/api-usage'));
 app.use('/api/ab-test', require('./routes/ab-test'));
+app.use('/api/telegram', require('./routes/telegram'));
 
 // Serve uploaded files
 const uploadsDir = path.join(__dirname, '../data/uploads');

@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-const { acquireLock, releaseLock } = require('../middleware/file-mutex');
+const { createMutex } = require('../middleware/file-mutex');
 
 const CONFIG_FILE = path.join(__dirname, '../../data/llm-config.json');
+const mutex = createMutex(CONFIG_FILE);
 
 /**
  * 讀取 LLM 配置（含 API Key 可用性檢查）
@@ -65,17 +66,14 @@ function updateCurrentModel(modelId) {
   }
 
   // 使用檔案鎖防止並發衝突
-  acquireLock(CONFIG_FILE);
-  try {
+  return mutex.withLock(() => {
     const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
     config.currentModel = modelId;
     config.lastUpdated = new Date().toISOString();
 
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
     return config;
-  } finally {
-    releaseLock(CONFIG_FILE);
-  }
+  });
 }
 
 module.exports = {

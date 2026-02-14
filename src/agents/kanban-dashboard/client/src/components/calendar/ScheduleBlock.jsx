@@ -1,5 +1,5 @@
 import React from 'react';
-import { format } from 'date-fns';
+import { formatTaipeiTime } from '../../utils/timezone';
 
 // HSL color wheel for better distinction (9 agents = 40° apart)
 function hashColor(name) {
@@ -19,7 +19,7 @@ function hashColor(name) {
 
 export default function ScheduleBlock({ entry, onClick }) {
   const color = hashColor(entry.agent);
-  const time = format(new Date(entry.start), 'HH:mm');
+  const time = formatTaipeiTime(entry.start, 'HH:mm');
 
   // Shorten agent name for display
   const shortName = entry.agent.replace('kanban-', '').replace('knowledge-', 'know-');

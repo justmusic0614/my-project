@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { format, addDays, startOfWeek } from 'date-fns';
 import ScheduleBlock from './ScheduleBlock';
+import HighFrequencyPanel from './HighFrequencyPanel';
 import { api } from '../../api/client';
+import { classifyAgentByFrequency } from '../../utils/agent-classifier';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -12,12 +14,24 @@ export default function WeeklyCalendar({ onAgentClick }) {
     return startOfWeek(now, { weekStartsOn: 1 });
   });
   const [schedule, setSchedule] = useState([]);
+  const [agents, setAgents] = useState([]);
 
   useEffect(() => {
     const weekStr = format(weekStart, 'yyyy-MM-dd');
-    api.getAgentSchedule(weekStr)
-      .then(data => setSchedule(data.schedule || []))
-      .catch(() => setSchedule([]));
+
+    Promise.all([
+      api.getAgentSchedule(weekStr),
+      api.getAgentsStatus()
+    ])
+      .then(([scheduleData, agentsData]) => {
+        setSchedule(scheduleData.schedule || []);
+        setAgents(agentsData.agents || []);
+      })
+      .catch(err => {
+        console.error('Failed to load calendar data:', err);
+        setSchedule([]);
+        setAgents([]);
+      });
   }, [weekStart]);
 
   const prevWeek = () => setWeekStart(prev => addDays(prev, -7));
@@ -27,11 +41,22 @@ export default function WeeklyCalendar({ onAgentClick }) {
   const weekEnd = addDays(weekStart, 6);
   const weekLabel = `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`;
 
-  // Group schedule by day and hour
+  // Get low-frequency agent names for filtering
+  const lowFreqAgentNames = agents
+    .filter(a => classifyAgentByFrequency(a.cron) === 'low-frequency')
+    .map(a => a.name);
+
+  // Group schedule by day and hour (only low-frequency tasks)
   const getBlocksForCell = (dayIdx, hour) => {
     const dayDate = addDays(weekStart, dayIdx);
     return schedule.filter(entry => {
       const d = new Date(entry.start);
+
+      // Only show low-frequency tasks in main calendar
+      if (!lowFreqAgentNames.includes(entry.agent)) {
+        return false;
+      }
+
       return d.getDate() === dayDate.getDate() &&
              d.getMonth() === dayDate.getMonth() &&
              d.getHours() === hour;
@@ -75,7 +100,7 @@ export default function WeeklyCalendar({ onAgentClick }) {
                   className="calendar-time-label"
                   style={{ height: `${rowHeight}px` }}
                 >
-                  {String(hour).padStart(2, '0')}:00
+                  {String((hour + 8) % 24).padStart(2, '0')}:00
                 </div>
               );
             })()}
@@ -108,6 +133,12 @@ export default function WeeklyCalendar({ onAgentClick }) {
           </React.Fragment>
         ))}
       </div>
+
+      {/* High-Frequency Tasks Panel */}
+      <HighFrequencyPanel
+        agents={agents}
+        onAgentClick={onAgentClick}
+      />
     </div>
   );
 }

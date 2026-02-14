@@ -116,3 +116,65 @@
   white-space: nowrap;
   width: 100%;
 }
+
+/* High-Frequency Panel */
+.high-frequency-panel {
+  margin-top: 32px;
+  padding: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.high-frequency-panel h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.high-frequency-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+/* High-Frequency Card */
+.high-frequency-card {
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.high-frequency-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--accent-blue);
+}
+
+.high-frequency-card .card-header {
+  margin-bottom: 12px;
+}
+
+.high-frequency-card .agent-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.high-frequency-card .card-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.high-frequency-card .frequency {
+  margin-bottom: 4px;
+}
+
+.high-frequency-card .next-run {
+  color: var(--accent-blue);
+  font-weight: 500;
+}

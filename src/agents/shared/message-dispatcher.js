@@ -11,12 +11,6 @@ const registry = require('./agent-registry');
 
 const FALLBACK_TIMEOUT_MS = 60 * 1000; // 60 秒
 
-// Telegram 預設指令（直接忽略，不顯示選單）
-const IGNORED_COMMANDS = [
-  '/help', '/commands', '/skill', '/approve', '/context',
-  '/tts', '/whoami', '/start', '/settings'
-];
-
 // chatId → { originalText, timestamp }
 const pendingSessions = new Map();
 
@@ -154,19 +148,6 @@ function route(text, context) {
     };
   }
 
-  // 忽略 Telegram 預設指令
-  for (const cmd of IGNORED_COMMANDS) {
-    if (textLower === cmd || textLower.startsWith(cmd + ' ')) {
-      return {
-        action: 'route',
-        agent: { name: 'system' },
-        handler: { handle: async () => null }, // 靜默忽略
-        text: '',
-        confidence: 'ignored'
-      };
-    }
-  }
-
   // 檢查是否是 fallback 選擇回覆
   if (pendingSessions.has(context.chatId)) {
     const session = pendingSessions.get(context.chatId);
@@ -224,7 +205,19 @@ function route(text, context) {
     };
   }
 
-  // Layer 4: Fallback — 回覆選單
+  // 未定義的斜線指令 → 靜默忽略（不顯示 fallback 選單）
+  // 這會捕捉所有 Telegram 系統指令和 OpenClaw 其他 agent 指令
+  if (text.trim().startsWith('/')) {
+    return {
+      action: 'route',
+      agent: { name: 'system' },
+      handler: { handle: async () => null },
+      text: '',
+      confidence: 'ignored'
+    };
+  }
+
+  // Layer 4: Fallback — 回覆選單（只對非斜線訊息）
   pendingSessions.set(context.chatId, {
     originalText: text,
     timestamp: Date.now()

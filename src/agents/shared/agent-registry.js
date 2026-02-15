@@ -7,7 +7,7 @@ const AGENTS = [
   {
     name: 'kanban',
     prefixes: ['/task', '/status', '/ping'],
-    keywords: ['買', '做', '完成', '提醒', 'deadline', '任務', '待辦', '交付', '處理', '修'],
+    keywords: ['買', '做', '完成', '提醒', 'deadline', '任務', '待辦', '交付', '處理', '修', 'ping', 'pong'],
     timeRules: [],
     enabled: true,
     label: '✅ 建為任務',

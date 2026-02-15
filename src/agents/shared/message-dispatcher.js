@@ -11,6 +11,12 @@ const registry = require('./agent-registry');
 
 const FALLBACK_TIMEOUT_MS = 60 * 1000; // 60 秒
 
+// Telegram 預設指令（直接忽略，不顯示選單）
+const IGNORED_COMMANDS = [
+  '/help', '/commands', '/skill', '/approve', '/context',
+  '/tts', '/whoami', '/start', '/settings'
+];
+
 // chatId → { originalText, timestamp }
 const pendingSessions = new Map();
 
@@ -133,6 +139,20 @@ function cleanExpiredSessions() {
  */
 function route(text, context) {
   cleanExpiredSessions();
+
+  // 忽略 Telegram 預設指令
+  const textLower = text.toLowerCase().trim();
+  for (const cmd of IGNORED_COMMANDS) {
+    if (textLower === cmd || textLower.startsWith(cmd + ' ')) {
+      return {
+        action: 'route',
+        agent: { name: 'system' },
+        handler: { handle: async () => null }, // 靜默忽略
+        text: '',
+        confidence: 'ignored'
+      };
+    }
+  }
 
   // 檢查是否是 fallback 選擇回覆
   if (pendingSessions.has(context.chatId)) {

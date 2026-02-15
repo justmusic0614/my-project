@@ -65,6 +65,12 @@ function parseSubcommand(text) {
 
 async function handle(text, context) {
   const { chatId, username } = context;
+
+  // 直接回應 ping（無斜線版本）
+  if (text.toLowerCase().trim() === 'ping') {
+    return '🏓 Pong!';
+  }
+
   const parsed = parseSubcommand(text);
 
   if (parsed.action === 'help') {

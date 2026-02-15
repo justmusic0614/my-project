@@ -20,6 +20,8 @@ function sendTelegramReply(chatId, text) {
     // Removed parse_mode to avoid HTML parsing issues
   });
 
+  console.log('[sendTelegramReply] data:', data);
+
   const options = {
     hostname: 'api.telegram.org',
     port: 443,
@@ -27,7 +29,7 @@ function sendTelegramReply(chatId, text) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': data.length
+      'Content-Length': Buffer.byteLength(data, 'utf8')  // FIX: Use Buffer.byteLength for UTF-8
     }
   };
 

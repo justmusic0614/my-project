@@ -89,21 +89,16 @@ function syncModelToOpenClaw(dashboardModelId) {
   }
 
   try {
-    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
-    const openclawPath = `${nvmBinDir}/openclaw`;
-    const env = {
-      ...process.env,
-      PATH: `${nvmBinDir}:${process.env.PATH || ''}`
-    };
+    const configPath = '/home/clawbot/.clawdbot/clawdbot.json';
 
-    // 使用 openclaw models set 指令更新全局預設模型
-    const command = `${openclawPath} models set ${openclawModelId}`;
+    // 使用 jq 直接更新 OpenClaw gateway 配置檔案
+    // 注意：OpenClaw gateway 讀取 ~/.clawdbot/clawdbot.json 而非 ~/.openclaw/openclaw.json
+    const command = `jq '.agents.defaults.model.primary = "${openclawModelId}"' ${configPath} > ${configPath}.tmp && mv ${configPath}.tmp ${configPath}`;
 
     execSync(command, {
       encoding: 'utf8',
       timeout: 10000,
-      shell: '/bin/bash',
-      env
+      shell: '/bin/bash'
     });
 
     console.log(`[Model Sync] ✅ OpenClaw model updated to: ${openclawModelId}`);

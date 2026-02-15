@@ -12,15 +12,10 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'REDACTED_TOKEN';
  * Send reply message to Telegram via direct API call
  */
 function sendTelegramReply(chatId, text) {
-  console.log('[sendTelegramReply] chatId:', chatId, 'text type:', typeof text, 'text length:', text?.length, 'text value:', JSON.stringify(text?.substring(0, 100)));
-
   const data = JSON.stringify({
     chat_id: chatId,
     text: text
-    // Removed parse_mode to avoid HTML parsing issues
   });
-
-  console.log('[sendTelegramReply] data:', data);
 
   const options = {
     hostname: 'api.telegram.org',
@@ -29,7 +24,7 @@ function sendTelegramReply(chatId, text) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(data, 'utf8')  // FIX: Use Buffer.byteLength for UTF-8
+      'Content-Length': Buffer.byteLength(data, 'utf8')  // Use Buffer.byteLength for UTF-8
     }
   };
 
@@ -88,17 +83,13 @@ router.post('/webhook', asyncHandler(async (req, res) => {
 
   // Route through dispatcher (4-layer: prefix → time → keyword → fallback)
   const result = dispatcher.route(text, { chatId, username, timestamp: msg.date });
-  console.log('[Telegram] Dispatcher result:', JSON.stringify({action: result.action, agent: result.agent?.name, confidence: result.confidence}));
 
   if (result.action === 'ask') {
     // Fallback: 回覆選單讓使用者選擇
-    console.log('[Telegram] Fallback message:', typeof result.message, `"${result.message}"`);
     sendTelegramReply(chatId, result.message);
   } else if (result.action === 'route') {
     try {
-      console.log(`[Telegram] Routing to ${result.agent.name}, text: "${result.text}"`);
       const reply = await result.handler.handle(result.text, { chatId, username });
-      console.log(`[Telegram] Handler reply:`, typeof reply, reply ? `"${reply.substring(0, 50)}..."` : 'empty');
       if (reply) {
         const confidence = result.confidence !== 'exact' ? ` [${result.agent.name}]` : '';
         sendTelegramReply(chatId, reply + confidence);

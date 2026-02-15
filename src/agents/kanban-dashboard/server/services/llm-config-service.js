@@ -108,6 +108,46 @@ function syncModelToOpenClaw(dashboardModelId) {
 }
 
 /**
+ * 同步個別 Agent 模型到 OpenClaw
+ * @param {string} agentName - Agent 名稱（例如：knowledge-digest）
+ * @param {string} dashboardModelId - Dashboard 模型 ID
+ */
+function syncAgentModelToOpenClaw(agentName, dashboardModelId) {
+  // 模型 ID 轉換對應表
+  const modelMapping = {
+    'claude-haiku-4-5-20251001': 'anthropic/claude-haiku-4-5-20251001',
+    'claude-sonnet-4-5-20250929': 'anthropic/claude-sonnet-4-5',
+    'claude-opus-4-6': 'anthropic/claude-opus-4-6',
+    'gpt-4o': 'openai/gpt-4o',
+    'gpt-4o-mini': 'openai/gpt-4o-mini'
+  };
+
+  const openclawModelId = modelMapping[dashboardModelId];
+  if (!openclawModelId) {
+    console.warn(`[Agent Model Sync] Unknown model: ${dashboardModelId}`);
+    return;
+  }
+
+  try {
+    const configPath = '/home/clawbot/.openclaw/openclaw.json';
+
+    // 使用 jq 更新全局配置中的 agent 模型
+    // OpenClaw agents 配置存在於 .agents.list 陣列中
+    const command = `jq '(.agents.list[] | select(.id == "${agentName}")).model = "${openclawModelId}"' ${configPath} > ${configPath}.tmp && mv ${configPath}.tmp ${configPath}`;
+
+    execSync(command, {
+      encoding: 'utf8',
+      timeout: 10000,
+      shell: '/bin/bash'
+    });
+
+    console.log(`[Agent Model Sync] ✅ ${agentName} model updated to: ${openclawModelId}`);
+  } catch (error) {
+    console.error(`[Agent Model Sync] ❌ Failed to sync ${agentName}:`, error.message);
+  }
+}
+
+/**
  * 更新當前模型
  */
 async function updateCurrentModel(modelId) {
@@ -175,6 +215,16 @@ async function updateAgentModel(agentName, modelId) {
 
     config.lastUpdated = new Date().toISOString();
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+
+    // 🆕 同步到 OpenClaw agent（不阻塞主流程）
+    if (modelId !== null) {
+      try {
+        syncAgentModelToOpenClaw(agentName, modelId);
+      } catch (error) {
+        console.error('[Agent Model Sync] Failed but continuing:', error.message);
+      }
+    }
+
     return config;
   });
 }

@@ -83,6 +83,7 @@ router.post('/webhook', asyncHandler(async (req, res) => {
 
   // Route through dispatcher (4-layer: prefix → time → keyword → fallback)
   const result = dispatcher.route(text, { chatId, username, timestamp: msg.date });
+  console.log('[Dispatcher Result]', { action: result.action, agent: result.agent?.name, confidence: result.confidence, text: result.text });
 
   if (result.action === 'ask') {
     // Fallback: 回覆選單讓使用者選擇
@@ -90,6 +91,7 @@ router.post('/webhook', asyncHandler(async (req, res) => {
   } else if (result.action === 'route') {
     try {
       const reply = await result.handler.handle(result.text, { chatId, username });
+      console.log('[Handler Reply]', { agent: result.agent.name, reply: reply ? reply.substring(0, 50) : null });
       if (reply) {
         const confidence = result.confidence !== 'exact' ? ` [${result.agent.name}]` : '';
         sendTelegramReply(chatId, reply + confidence);

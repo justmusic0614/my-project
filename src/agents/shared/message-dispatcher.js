@@ -140,8 +140,21 @@ function cleanExpiredSessions() {
 function route(text, context) {
   cleanExpiredSessions();
 
-  // 忽略 Telegram 預設指令
   const textLower = text.toLowerCase().trim();
+
+  // 特殊快速回應指令（不需要斜線）
+  if (textLower === 'ping') {
+    const kanbanAgent = registry.getAgentByName('kanban');
+    return {
+      action: 'route',
+      agent: kanbanAgent,
+      handler: registry.getHandler(kanbanAgent),
+      text: 'ping',
+      confidence: 'exact'
+    };
+  }
+
+  // 忽略 Telegram 預設指令
   for (const cmd of IGNORED_COMMANDS) {
     if (textLower === cmd || textLower.startsWith(cmd + ' ')) {
       return {

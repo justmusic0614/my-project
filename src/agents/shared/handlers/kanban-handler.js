@@ -12,6 +12,8 @@ const notificationService = require('../../kanban-dashboard/server/services/noti
  *   add <title> [@priority] [#tag]
  *   list
  *   done <id>
+ *   status
+ *   ping
  *   help (或無子指令)
  */
 function parseSubcommand(text) {
@@ -40,6 +42,14 @@ function parseSubcommand(text) {
 
   if (action === 'done' && parts[1]) {
     return { action: 'done', taskId: parts[1] };
+  }
+
+  if (action === 'status') {
+    return { action: 'status' };
+  }
+
+  if (action === 'ping') {
+    return { action: 'ping' };
   }
 
   // 沒有子指令 → 預設為 add（整段文字當標題）
@@ -110,6 +120,24 @@ async function handle(text, context) {
       { taskId: task.id, source: 'telegram' }
     );
     return `✅ 任務已完成\n\n${task.title}`;
+  }
+
+  if (parsed.action === 'status') {
+    const ongoing = taskService.getAllTasks({ column: 'ongoing' });
+    const done = taskService.getAllTasks({ column: 'done' });
+    const backlog = taskService.getAllTasks({ column: 'backlog' });
+    return (
+      `📊 系統狀態\n\n` +
+      `📋 待辦: ${backlog.length}\n` +
+      `🔄 進行中: ${ongoing.length}\n` +
+      `✅ 已完成: ${done.length}\n\n` +
+      `🤖 Message Dispatcher: ✅ 運作中\n` +
+      `📡 Telegram Bot: ✅ 已連線`
+    );
+  }
+
+  if (parsed.action === 'ping') {
+    return '🏓 Pong!';
   }
 
   return '❌ 無法辨識的 task 指令';

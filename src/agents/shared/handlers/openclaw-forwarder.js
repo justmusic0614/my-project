@@ -11,40 +11,43 @@ const { execSync } = require('child_process');
  * @param {{ chatId: number, username: string }} context - 上下文
  * @returns {Promise<string|null>} - 回覆訊息或 null
  */
-async function handle(text, context) {
-  const { chatId, username } = context;
-
+async function handle(text) {
   try {
-    // 使用 chatId 作為 session id，確保每個聊天有獨立的會話
-    const sessionId = `telegram-${chatId}`;
-
     // 轉義訊息內容（防止 shell injection）
     const escapedText = text.replace(/'/g, "'\\''");
 
-    // 調用 OpenClaw agent 命令
+    // 調用 OpenClaw agent 命令（透過 gateway）
+    // --agent main: 使用 main agent（與 dashboard 共用 session 和模型設定）
     // --channel telegram: 指定來源 channel
-    // --session-id: 使用 chatId 作為會話標識
     // --message: 訊息內容
-    // --local: 使用本地模式（不需要 gateway 認證）
     // --json: 返回 JSON 格式
-    const openclawPath = '/home/clawbot/.nvm/versions/node/v22.22.0/bin/openclaw';
-    const command = `${openclawPath} agent --channel telegram ` +
-      `--session-id "${sessionId}" ` +
-      `--message '${escapedText}' --local --json --timeout 30`;
+    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
+    const openclawPath = `${nvmBinDir}/openclaw`;
+    const command = `${openclawPath} agent --agent main --channel telegram ` +
+      `--message '${escapedText}' --json --timeout 30`;
+
+    // 將 nvm 的 node 路徑加入 PATH，因為 openclaw 的 shebang 是 #!/usr/bin/env node
+    const env = { ...process.env, PATH: `${nvmBinDir}:${process.env.PATH || ''}` };
 
     const output = execSync(command, {
       encoding: 'utf8',
       timeout: 35000, // 35 秒超時
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: '/bin/bash' // 明確使用 bash
+      shell: '/bin/bash',
+      env
     });
 
     // 解析 JSON 輸出
     const result = JSON.parse(output);
 
-    // 如果有回覆，返回回覆內容
-    if (result && result.reply) {
-      return result.reply;
+    // Gateway 回傳格式：result.payloads[].text
+    if (result && result.result && result.result.payloads) {
+      const texts = result.result.payloads
+        .map(p => p.text)
+        .filter(Boolean);
+      if (texts.length > 0) {
+        return texts.join('\n\n');
+      }
     }
 
     // 如果 OpenClaw 也無法處理，返回 null（靜默忽略）

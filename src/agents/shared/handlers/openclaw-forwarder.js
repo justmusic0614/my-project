@@ -27,15 +27,16 @@ async function handle(text, context) {
     // --message: 訊息內容
     // --local: 使用本地模式（不需要 gateway 認證）
     // --json: 返回 JSON 格式
-    const command = `export NVM_DIR="$HOME/.nvm" && ` +
-      `source "$NVM_DIR/nvm.sh" && ` +
-      `openclaw agent --channel telegram --session-id "${sessionId}" ` +
+    const openclawPath = '/home/clawbot/.nvm/versions/node/v22.22.0/bin/openclaw';
+    const command = `${openclawPath} agent --channel telegram ` +
+      `--session-id "${sessionId}" ` +
       `--message '${escapedText}' --local --json --timeout 30`;
 
     const output = execSync(command, {
       encoding: 'utf8',
       timeout: 35000, // 35 秒超時
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: '/bin/bash' // 明確使用 bash
     });
 
     // 解析 JSON 輸出

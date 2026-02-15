@@ -69,8 +69,9 @@ async function validateModel(modelId) {
 }
 
 /**
- * 同步模型設定到 OpenClaw
- * 將 Dashboard 的模型 ID 轉換為 OpenClaw 格式並更新全局配置
+ * 同步全局默認模型到 OpenClaw CLI 配置
+ * Dashboard "Global Default" → ~/.openclaw/openclaw.json .agents.defaults.model.primary
+ * 這個配置會被 openclaw CLI 使用（Dashboard Telegram webhook 使用 openclaw agent 命令）
  */
 function syncModelToOpenClaw(dashboardModelId) {
   // 模型 ID 轉換對應表：Dashboard 格式 → OpenClaw 格式
@@ -89,10 +90,11 @@ function syncModelToOpenClaw(dashboardModelId) {
   }
 
   try {
-    const configPath = '/home/clawbot/.clawdbot/clawdbot.json';
+    const configPath = '/home/clawbot/.openclaw/openclaw.json';
 
-    // 使用 jq 直接更新 OpenClaw gateway 配置檔案
-    // 注意：OpenClaw gateway 讀取 ~/.clawdbot/clawdbot.json 而非 ~/.openclaw/openclaw.json
+    // 更新 OpenClaw CLI 的默認模型配置
+    // Dashboard Telegram webhook 使用 openclaw agent --agent main 命令
+    // main agent 的 model 為 null，所以會使用 .agents.defaults.model.primary
     const command = `jq '.agents.defaults.model.primary = "${openclawModelId}"' ${configPath} > ${configPath}.tmp && mv ${configPath}.tmp ${configPath}`;
 
     execSync(command, {
@@ -101,9 +103,9 @@ function syncModelToOpenClaw(dashboardModelId) {
       shell: '/bin/bash'
     });
 
-    console.log(`[Model Sync] ✅ OpenClaw model updated to: ${openclawModelId}`);
+    console.log(`[Model Sync] ✅ OpenClaw global default model updated to: ${openclawModelId}`);
   } catch (error) {
-    console.error(`[Model Sync] ❌ Failed to sync model:`, error.message);
+    console.error(`[Model Sync] ❌ Failed to sync global model:`, error.message);
   }
 }
 

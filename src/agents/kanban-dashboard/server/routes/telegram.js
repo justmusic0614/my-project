@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
+const { execSync } = require('child_process');
 const { asyncHandler } = require('../middleware/error-handler');
-const dispatcher = require('../../../shared/message-dispatcher');
 
 // Environment variables
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || 'REDACTED_SECRET';
@@ -24,7 +24,7 @@ function sendTelegramReply(chatId, text) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(data, 'utf8')  // Use Buffer.byteLength for UTF-8
+      'Content-Length': Buffer.byteLength(data, 'utf8')
     }
   };
 
@@ -51,13 +51,58 @@ function sendTelegramReply(chatId, text) {
 }
 
 /**
+ * Forward message to OpenClaw gateway for processing
+ */
+async function forwardToOpenClaw(text) {
+  try {
+    // Escape text for shell (防止 shell injection)
+    const escapedText = text.replace(/'/g, "'\\''");
+
+    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
+    const openclawPath = `${nvmBinDir}/openclaw`;
+
+    const command = `${openclawPath} agent --agent main --channel telegram ` +
+      `--message '${escapedText}' --json --timeout 30`;
+
+    // 將 nvm 的 node 路徑加入 PATH
+    const env = { ...process.env, PATH: `${nvmBinDir}:${process.env.PATH || ''}` };
+
+    const output = execSync(command, {
+      encoding: 'utf8',
+      timeout: 35000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: '/bin/bash',
+      env
+    });
+
+    // 解析 JSON 輸出
+    const result = JSON.parse(output);
+
+    // Gateway 回傳格式：result.payloads[].text
+    if (result && result.result && result.result.payloads) {
+      const texts = result.result.payloads
+        .map(p => p.text)
+        .filter(Boolean);
+      if (texts.length > 0) {
+        return texts.join('\n\n');
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[OpenClaw] Error:', error.message);
+    return null;
+  }
+}
+
+/**
  * POST /api/telegram/webhook
  *
  * Telegram webhook handler
- * Routes messages to appropriate agents via MessageDispatcher
+ * Forwards all messages directly to OpenClaw gateway
  */
 router.post('/webhook', asyncHandler(async (req, res) => {
-  // Verify webhook secret (optional but recommended)
+  // Verify webhook secret
   const secret = req.headers['x-telegram-bot-api-secret-token'];
   if (secret && secret !== WEBHOOK_SECRET) {
     console.warn('[Telegram] Invalid webhook secret');
@@ -81,28 +126,13 @@ router.post('/webhook', asyncHandler(async (req, res) => {
     text: text.substring(0, 100)
   });
 
-  // Route through dispatcher (4-layer: prefix → time → keyword → fallback)
-  const result = dispatcher.route(text, { chatId, username, timestamp: msg.date });
-  console.log('[Dispatcher Result]', { action: result.action, agent: result.agent?.name, confidence: result.confidence, text: result.text });
+  // 直接轉發到 OpenClaw gateway
+  const reply = await forwardToOpenClaw(text);
 
-  if (result.action === 'ask') {
-    // Fallback: 回覆選單讓使用者選擇
-    sendTelegramReply(chatId, result.message);
-  } else if (result.action === 'route') {
-    try {
-      const reply = await result.handler.handle(result.text, { chatId, username });
-      console.log('[Handler Reply]', { agent: result.agent.name, reply: reply ? reply.substring(0, 50) : null });
-      if (reply) {
-        const confidence = result.confidence !== 'exact' ? ` [${result.agent.name}]` : '';
-        sendTelegramReply(chatId, reply + confidence);
-      } else {
-        console.warn(`[Telegram] Handler returned empty reply`);
-        sendTelegramReply(chatId, '⚠️ 處理完成，但沒有回覆內容');
-      }
-    } catch (err) {
-      console.error(`[Telegram] Handler error (${result.agent.name}):`, err);
-      sendTelegramReply(chatId, `❌ 處理失敗：${err.message}`);
-    }
+  if (reply) {
+    sendTelegramReply(chatId, reply);
+  } else {
+    console.warn('[Telegram] OpenClaw returned no reply');
   }
 
   res.json({ ok: true });

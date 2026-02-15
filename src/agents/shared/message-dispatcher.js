@@ -205,15 +205,16 @@ function route(text, context) {
     };
   }
 
-  // 未定義的斜線指令 → 靜默忽略（不顯示 fallback 選單）
+  // 未定義的斜線指令 → 轉發到 OpenClaw gateway 處理
   // 這會捕捉所有 Telegram 系統指令和 OpenClaw 其他 agent 指令
   if (text.trim().startsWith('/')) {
+    const openclawForwarder = require('./handlers/openclaw-forwarder');
     return {
       action: 'route',
-      agent: { name: 'system' },
-      handler: { handle: async () => null },
-      text: '',
-      confidence: 'ignored'
+      agent: { name: 'openclaw' },
+      handler: openclawForwarder,
+      text: text,
+      confidence: 'forwarded'
     };
   }
 

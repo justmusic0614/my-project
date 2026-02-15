@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { createMutex } = require('../middleware/file-mutex');
 const ollamaService = require('./ollama-service');
 
@@ -68,6 +69,50 @@ async function validateModel(modelId) {
 }
 
 /**
+ * 同步模型設定到 OpenClaw
+ * 將 Dashboard 的模型 ID 轉換為 OpenClaw 格式並更新全局配置
+ */
+function syncModelToOpenClaw(dashboardModelId) {
+  // 模型 ID 轉換對應表：Dashboard 格式 → OpenClaw 格式
+  const modelMapping = {
+    'claude-haiku-4-5-20251001': 'anthropic/claude-haiku-4-5-20251001',
+    'claude-sonnet-4-5-20250929': 'anthropic/claude-sonnet-4-5',
+    'claude-opus-4-6': 'anthropic/claude-opus-4-6',
+    'gpt-4o': 'openai/gpt-4o',
+    'gpt-4o-mini': 'openai/gpt-4o-mini'
+  };
+
+  const openclawModelId = modelMapping[dashboardModelId];
+  if (!openclawModelId) {
+    console.warn(`[Model Sync] Unknown model: ${dashboardModelId}`);
+    return;
+  }
+
+  try {
+    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
+    const openclawPath = `${nvmBinDir}/openclaw`;
+    const env = {
+      ...process.env,
+      PATH: `${nvmBinDir}:${process.env.PATH || ''}`
+    };
+
+    // 使用 openclaw models set 指令更新全局預設模型
+    const command = `${openclawPath} models set ${openclawModelId}`;
+
+    execSync(command, {
+      encoding: 'utf8',
+      timeout: 10000,
+      shell: '/bin/bash',
+      env
+    });
+
+    console.log(`[Model Sync] ✅ OpenClaw model updated to: ${openclawModelId}`);
+  } catch (error) {
+    console.error(`[Model Sync] ❌ Failed to sync model:`, error.message);
+  }
+}
+
+/**
  * 更新當前模型
  */
 async function updateCurrentModel(modelId) {
@@ -84,6 +129,15 @@ async function updateCurrentModel(modelId) {
     config.lastUpdated = new Date().toISOString();
 
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+
+    // 🆕 同步到 OpenClaw（不阻塞主流程）
+    try {
+      syncModelToOpenClaw(modelId);
+    } catch (error) {
+      // 同步失敗不影響主流程
+      console.error('[Model Sync] Failed but continuing:', error.message);
+    }
+
     return config;
   });
 }

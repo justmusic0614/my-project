@@ -2,6 +2,14 @@
 
 使用 JavaScript 建構的 CLI 工具。
 
+## 📚 文件導覽
+
+| 文件 | 用途 | 適合對象 |
+|------|------|----------|
+| **[CLAUDE.md](CLAUDE.md)** | Claude Code AI 工作規範、開發規範、技術債預防 | Claude Code AI、開發者 |
+| **[DEPLOYMENT_WORKFLOW.md](DEPLOYMENT_WORKFLOW.md)** | VPS 部署完整流程、環境架構說明、疑難排解 | 開發者、運維人員 |
+| **[scripts/README_VPS_SYNC.md](scripts/README_VPS_SYNC.md)** | VPS 同步機制詳細說明 | 進階開發者 |
+
 ## 快速開始
 
 1. **先閱讀 CLAUDE.md** - 包含 Claude Code 的重要規則

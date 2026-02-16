@@ -85,14 +85,22 @@ function syncModelToOpenClaw(dashboardModelId) {
 
   const openclawModelId = modelMapping[dashboardModelId];
   if (!openclawModelId) {
-    console.warn(`[Model Sync] Unknown model: ${dashboardModelId}`);
-    return;
+    console.warn(`[Model Sync] ⚠️ Unknown model: ${dashboardModelId}`);
+    return false;
   }
 
   try {
     const configPath = '/home/clawbot/.openclaw/openclaw.json';
 
-    // 更新 OpenClaw CLI 的默認模型配置
+    // 1️⃣ 驗證配置文件存在
+    try {
+      execSync(`test -f ${configPath}`, { timeout: 5000, shell: '/bin/bash' });
+    } catch {
+      console.error(`[Model Sync] ❌ Config file not found: ${configPath}`);
+      return false;
+    }
+
+    // 2️⃣ 更新 OpenClaw CLI 的默認模型配置
     // Dashboard Telegram webhook 使用 openclaw agent --agent main 命令
     // main agent 的 model 為 null，所以會使用 .agents.defaults.model.primary
     const command = `jq '.agents.defaults.model.primary = "${openclawModelId}"' ${configPath} > ${configPath}.tmp && mv ${configPath}.tmp ${configPath}`;
@@ -103,9 +111,26 @@ function syncModelToOpenClaw(dashboardModelId) {
       shell: '/bin/bash'
     });
 
-    console.log(`[Model Sync] ✅ OpenClaw global default model updated to: ${openclawModelId}`);
+    // 3️⃣ 驗證更新成功
+    const verified = execSync(
+      `jq -r '.agents.defaults.model.primary' ${configPath}`,
+      { encoding: 'utf8', timeout: 5000, shell: '/bin/bash' }
+    ).trim();
+
+    if (verified === openclawModelId) {
+      console.log(`[Model Sync] ✅ OpenClaw global default model updated to: ${openclawModelId}`);
+      return true;
+    } else {
+      console.error(`[Model Sync] ❌ Verification failed. Expected: ${openclawModelId}, Got: ${verified}`);
+      return false;
+    }
   } catch (error) {
-    console.error(`[Model Sync] ❌ Failed to sync global model:`, error.message);
+    console.error(`[Model Sync] ❌ Failed to sync global model:`, {
+      message: error.message,
+      stderr: error.stderr?.toString(),
+      stdout: error.stdout?.toString()
+    });
+    return false;
   }
 }
 
@@ -126,14 +151,22 @@ function syncAgentModelToOpenClaw(agentName, dashboardModelId) {
 
   const openclawModelId = modelMapping[dashboardModelId];
   if (!openclawModelId) {
-    console.warn(`[Agent Model Sync] Unknown model: ${dashboardModelId}`);
-    return;
+    console.warn(`[Agent Model Sync] ⚠️ Unknown model: ${dashboardModelId}`);
+    return false;
   }
 
   try {
     const configPath = '/home/clawbot/.openclaw/openclaw.json';
 
-    // 使用 jq 更新全局配置中的 agent 模型
+    // 1️⃣ 驗證配置文件存在
+    try {
+      execSync(`test -f ${configPath}`, { timeout: 5000, shell: '/bin/bash' });
+    } catch {
+      console.error(`[Agent Model Sync] ❌ Config file not found: ${configPath}`);
+      return false;
+    }
+
+    // 2️⃣ 使用 jq 更新全局配置中的 agent 模型
     // OpenClaw agents 配置存在於 .agents.list 陣列中
     const command = `jq '(.agents.list[] | select(.id == "${agentName}")).model = "${openclawModelId}"' ${configPath} > ${configPath}.tmp && mv ${configPath}.tmp ${configPath}`;
 
@@ -143,9 +176,26 @@ function syncAgentModelToOpenClaw(agentName, dashboardModelId) {
       shell: '/bin/bash'
     });
 
-    console.log(`[Agent Model Sync] ✅ ${agentName} model updated to: ${openclawModelId}`);
+    // 3️⃣ 驗證更新成功
+    const verified = execSync(
+      `jq -r '.agents.list[] | select(.id == "${agentName}") | .model' ${configPath}`,
+      { encoding: 'utf8', timeout: 5000, shell: '/bin/bash' }
+    ).trim();
+
+    if (verified === openclawModelId) {
+      console.log(`[Agent Model Sync] ✅ ${agentName} model updated to: ${openclawModelId}`);
+      return true;
+    } else {
+      console.error(`[Agent Model Sync] ❌ Verification failed for ${agentName}. Expected: ${openclawModelId}, Got: ${verified}`);
+      return false;
+    }
   } catch (error) {
-    console.error(`[Agent Model Sync] ❌ Failed to sync ${agentName}:`, error.message);
+    console.error(`[Agent Model Sync] ❌ Failed to sync ${agentName}:`, {
+      message: error.message,
+      stderr: error.stderr?.toString(),
+      stdout: error.stdout?.toString()
+    });
+    return false;
   }
 }
 

@@ -64,6 +64,8 @@ async function forwardToOpenClaw(text) {
     const command = `${openclawPath} agent --agent main --channel telegram ` +
       `--message '${escapedText}' --json --timeout 30`;
 
+    console.log('[OpenClaw] Executing command:', command.substring(0, 100) + '...');
+
     // 將 nvm 的 node 路徑加入 PATH
     const env = { ...process.env, PATH: `${nvmBinDir}:${process.env.PATH || ''}` };
 
@@ -76,7 +78,16 @@ async function forwardToOpenClaw(text) {
     });
 
     // 解析 JSON 輸出
-    const result = JSON.parse(output);
+    let result;
+    try {
+      result = JSON.parse(output);
+    } catch (parseError) {
+      console.error('[OpenClaw] ❌ Failed to parse JSON:', {
+        error: parseError.message,
+        output: output.substring(0, 500)
+      });
+      return null;
+    }
 
     // Gateway 回傳格式：result.payloads[].text
     if (result && result.result && result.result.payloads) {
@@ -84,13 +95,27 @@ async function forwardToOpenClaw(text) {
         .map(p => p.text)
         .filter(Boolean);
       if (texts.length > 0) {
+        console.log('[OpenClaw] ✅ Got reply, length:', texts.join('\n\n').length);
         return texts.join('\n\n');
       }
     }
 
+    console.warn('[OpenClaw] ⚠️ No payloads in result:', JSON.stringify(result).substring(0, 200));
     return null;
   } catch (error) {
-    console.error('[OpenClaw] Error:', error.message);
+    console.error('[OpenClaw] ❌ Error:', {
+      message: error.message,
+      code: error.code,
+      signal: error.signal,
+      stderr: error.stderr?.toString()?.substring(0, 500),
+      stdout: error.stdout?.toString()?.substring(0, 500)
+    });
+
+    // 特別處理超時錯誤
+    if (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM') {
+      console.error('[OpenClaw] ⏱️ Command timed out after 35 seconds');
+    }
+
     return null;
   }
 }
@@ -136,6 +161,43 @@ router.post('/webhook', asyncHandler(async (req, res) => {
   }
 
   res.json({ ok: true });
+}));
+
+/**
+ * GET /api/telegram/health
+ *
+ * Health check endpoint for monitoring
+ * Tests OpenClaw availability by sending a ping message
+ */
+router.get('/health', asyncHandler(async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+
+  // Check OpenClaw availability
+  try {
+    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
+    const openclawPath = `${nvmBinDir}/openclaw`;
+    const env = { ...process.env, PATH: `${nvmBinDir}:${process.env.PATH || ''}` };
+
+    execSync(`${openclawPath} agent --agent main --channel telegram --message "ping" --json --timeout 10`, {
+      encoding: 'utf8',
+      timeout: 15000,
+      env,
+      shell: '/bin/bash'
+    });
+
+    health.checks.openclaw = 'ok';
+  } catch (error) {
+    health.checks.openclaw = 'error';
+    health.checks.openclawError = error.message;
+    health.status = 'degraded';
+  }
+
+  const statusCode = health.status === 'ok' ? 200 : 503;
+  res.status(statusCode).json(health);
 }));
 
 module.exports = router;

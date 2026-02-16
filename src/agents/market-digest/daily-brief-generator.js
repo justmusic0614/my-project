@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// 使用 shared 層
+const { createLogger } = require("./shared/logger");
+const logger = createLogger("daily-brief-generator");
 /**
  * Market Digest Daily Brief Generator
  * 生成 Daily Market Brief 格式報告
@@ -21,7 +24,7 @@ class DailyBriefGenerator {
    * 生成完整 Daily Brief
    */
   async generate() {
-    console.log(`📊 生成 Daily Market Brief (${this.date})...`);
+    logger.info(`📊 生成 Daily Market Brief (${this.date})...`);
 
     // 載入資料
     const analyzedNews = await this.loadAnalyzedNews();
@@ -29,7 +32,7 @@ class DailyBriefGenerator {
     const watchlist = await this.loadWatchlist();
 
     if (analyzedNews.length === 0) {
-      console.log('⚠️  沒有分析過的新聞，無法生成 Daily Brief');
+      logger.info('⚠️  沒有分析過的新聞，無法生成 Daily Brief');
       return null;
     }
 
@@ -50,7 +53,7 @@ class DailyBriefGenerator {
     // 組裝完整報告
     const brief = this.assembleBrief(sections);
     
-    console.log('✅ Daily Brief 生成完成！');
+    logger.info('✅ Daily Brief 生成完成！');
     return brief;
   }
 
@@ -64,7 +67,7 @@ class DailyBriefGenerator {
       const data = JSON.parse(content);
       return data.news || [];
     } catch (error) {
-      console.error(`[Brief Generator] 讀取分析新聞失敗:`, error.message);
+      logger.error(`[Brief Generator] 讀取分析新聞失敗:`, error.message);
       return [];
     }
   }
@@ -103,7 +106,7 @@ class DailyBriefGenerator {
         vix: { value: 17.2, change: 1.1 }       // TODO: 整合 VIX
       };
     } catch (error) {
-      console.error('[Market Data] 載入失敗，使用預設值:', error.message);
+      logger.error('[Market Data] 載入失敗，使用預設值:', error.message);
       // 回傳預設值
       return {
         twii: { value: 32195.359, change: -1.85 },
@@ -381,7 +384,7 @@ class DailyBriefGenerator {
           foreign = `外資${type} ${amount} 億`;
         }
       } catch (e) {
-        console.error('解析早報數據失敗:', e.message);
+        logger.error('解析早報數據失敗:', e.message);
       }
     }
     
@@ -624,7 +627,7 @@ class DailyBriefGenerator {
             
             resolve(aiResponse || '分析中...');
           } else {
-            console.error('[AI] 呼叫失敗:', errorOutput);
+            logger.error('[AI] 呼叫失敗:', errorOutput);
             
             // 回傳預設值
             if (prompt.includes('Daily Snapshot')) {
@@ -648,7 +651,7 @@ class DailyBriefGenerator {
         }, 35000);
       });
     } catch (error) {
-      console.error('[AI] 呼叫失敗:', error.message);
+      logger.error('[AI] 呼叫失敗:', error.message);
       return '分析中...';
     }
   }
@@ -672,7 +675,7 @@ class DailyBriefGenerator {
     const outputPath = path.join(__dirname, 'data/daily-brief', `${this.date}.txt`);
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.writeFile(outputPath, brief, 'utf8');
-    console.log(`💾 已儲存 Daily Brief 到：${outputPath}`);
+    logger.info(`💾 已儲存 Daily Brief 到：${outputPath}`);
     return outputPath;
   }
 }
@@ -685,10 +688,10 @@ if (require.main === module) {
     
     if (brief) {
       await generator.saveToFile(brief);
-      console.log('\n' + brief);
-      console.log('\n✅ Daily Brief 生成完成！');
+      logger.info('\n' + brief);
+      logger.info('\n✅ Daily Brief 生成完成！');
     } else {
-      console.log('❌ Daily Brief 生成失敗');
+      logger.info('❌ Daily Brief 生成失敗');
       process.exit(1);
     }
   })();

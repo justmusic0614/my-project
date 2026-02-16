@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// 使用 shared 層
+const { createLogger } = require("./shared/logger");
+const Deduplicator = require("./shared/deduplicator");
+
+const logger = createLogger("smart-integrator");
+const deduplicator = new Deduplicator({ algorithm: "keywords", keywordOverlapMin: 3 });
 // Smart Integrator - 智慧整合 LINE 群組早報 + Market Digest
 // 方案 B：提取關鍵資訊、去重、統一格式
 
@@ -35,7 +41,7 @@ let config;
 try {
   config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 } catch (err) {
-  console.error(`❌ 無法讀取設定檔 (${CONFIG_PATH}): ${err.message}`);
+  logger.error(`❌ 無法讀取設定檔 (${CONFIG_PATH}): ${err.message}`);
   process.exit(1);
 }
 
@@ -176,13 +182,24 @@ function extractNews(text) {
     });
   }
   
+/**
+ * 新聞去重（使用統一 Deduplicator）
+ */
+function deduplicateNews(lineNews, marketDigestNews) {
+  const result = deduplicator.deduplicate(lineNews, marketDigestNews);
+  return result.unique;
+}
+
+/**
+ * 舊版新聞去重（已廢棄，保留以供參考）
+ */
   return [...new Set(news)]; // 去重
 }
 
 /**
  * 新聞去重（與 Market Digest 比較）
  */
-function deduplicateNews(lineNews, marketDigestNews) {
+function deduplicateNews_OLD(lineNews, marketDigestNews) {
   const unique = [];
   
   for (const lineItem of lineNews) {
@@ -213,7 +230,7 @@ function deduplicateNews(lineNews, marketDigestNews) {
  * @param {string} level - 輸出級別：'minimal' | 'standard' | 'full'
  */
 async function smartIntegrate(level = 'minimal') {
-  console.log(`🔄 開始智慧整合（級別：${level}）...`);
+  logger.info(`🔄 開始智慧整合（級別：${level}）...`);
   
   // 1. 讀取 LINE 早報
   const collected = collector.getToday();
@@ -223,7 +240,7 @@ async function smartIntegrate(level = 'minimal') {
   const lineMarketData = extractMarketData(allText);
   const lineNews = extractNews(allText);
   
-  console.log(`📝 LINE 早報：${collected.messages.length} 則，提取 ${lineNews.length} 條新聞`);
+  logger.info(`📝 LINE 早報：${collected.messages.length} 則，提取 ${lineNews.length} 條新聞`);
   
   // 3. 生成 Market Digest
   let marketDigest = null;
@@ -242,12 +259,12 @@ async function smartIntegrate(level = 'minimal') {
       );
     }
   } catch (err) {
-    console.error(`⚠️  Market Digest 生成失敗：${err.message}`);
+    logger.error(`⚠️  Market Digest 生成失敗：${err.message}`);
   }
   
   // 4. 新聞去重
   const uniqueLineNews = deduplicateNews(lineNews, marketNews);
-  console.log(`🔍 去重後 LINE 新聞：${uniqueLineNews.length} 條`);
+  logger.info(`🔍 去重後 LINE 新聞：${uniqueLineNews.length} 條`);
   
   // 4.5. 套用 RESEARCH_SIGNAL_UPGRADE_PATCH
   const patchResult = applyResearchSignalPatch(uniqueLineNews);
@@ -285,13 +302,13 @@ async function smartIntegrate(level = 'minimal') {
       level: level
     });
     
-    console.log('💾 報告已儲存到時間序列資料庫');
+    logger.info('💾 報告已儲存到時間序列資料庫');
   } catch (err) {
-    console.error('⚠️  時間序列報告儲存失敗:', err.message);
+    logger.error('⚠️  時間序列報告儲存失敗:', err.message);
   }
   
-  console.log(`✅ 智慧整合完成（${level}）：${outputPath}`);
-  console.log(`📏 長度：${report.length} 字元`);
+  logger.info(`✅ 智慧整合完成（${level}）：${outputPath}`);
+  logger.info(`📏 長度：${report.length} 字元`);
   
   return report;
 }
@@ -514,7 +531,7 @@ function generateStandardReport(data) {
     }
   } catch (err) {
     // Watchlist 錯誤不影響整體報告
-    console.error('⚠️  Watchlist 處理失敗:', err.message);
+    logger.error('⚠️  Watchlist 處理失敗:', err.message);
   }
   
   lines.push('━━━━━━━━━━━━━━━━━━');
@@ -568,7 +585,7 @@ async function integrateAndPush(level = 'minimal') {
     const report = await smartIntegrate(level);
     
     // 推播到 Telegram
-    console.log(`📤 推播中（級別：${level}）...`);
+    logger.info(`📤 推播中（級別：${level}）...`);
     
     // 因為報告可能包含特殊字元，先寫到檔案再推播
     const tempFile = '/tmp/morning-report.txt';
@@ -587,19 +604,19 @@ async function integrateAndPush(level = 'minimal') {
       }
     );
     
-    console.log('✅ 推播成功');
+    logger.info('✅ 推播成功');
     return report;
     
   } catch (err) {
-    console.error(`❌ 整合或推播失敗：${err.message}`);
+    logger.error(`❌ 整合或推播失敗：${err.message}`);
     
     // 如果是 timeout，提供建議
     if (err.code === 'ETIMEDOUT' || err.killed) {
-      console.error('⚠️  推播超時（30秒），可能是：');
-      console.error('   1. Telegram API 回應緩慢');
-      console.error('   2. 報告內容過長');
-      console.error('   3. 網路連線問題');
-      console.error('   建議：檢查報告長度或稍後重試');
+      logger.error('⚠️  推播超時（30秒），可能是：');
+      logger.error('   1. Telegram API 回應緩慢');
+      logger.error('   2. 報告內容過長');
+      logger.error('   3. 網路連線問題');
+      logger.error('   建議：檢查報告長度或稍後重試');
     }
     
     throw err;
@@ -618,16 +635,16 @@ if (require.main === module) {
   
   if (command === 'integrate') {
     smartIntegrate(level).catch(err => {
-      console.error(err);
+      logger.error(err);
       process.exit(1);
     });
   } else if (command === 'push') {
     integrateAndPush(level).catch(err => {
-      console.error(err);
+      logger.error(err);
       process.exit(1);
     });
   } else {
-    console.log(`
+    logger.info(`
 Smart Integrator - 智慧整合器（方案 B）
 
 指令：

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+const { createLogger } = require("./shared/logger");
+const logger = createLogger("alert-monitor");
 // Alert Monitor - 智慧提醒監控（A 項目）
 // 檢測異常事件並推播到 Telegram
 
@@ -284,23 +286,23 @@ function detectAlerts(stockCode, stockName, chipData, analysis) {
  */
 async function monitorWatchlist() {
   if (!fs.existsSync(WATCHLIST_PATH)) {
-    console.log('📭 Watchlist 是空的');
+    logger.info('📭 Watchlist 是空的');
     return { alerts: [] };
   }
   
   const watchlist = JSON.parse(fs.readFileSync(WATCHLIST_PATH, 'utf8'));
   
   if (watchlist.stocks.length === 0) {
-    console.log('📭 Watchlist 是空的');
+    logger.info('📭 Watchlist 是空的');
     return { alerts: [] };
   }
   
-  console.log(`🔍 正在監控 ${watchlist.stocks.length} 檔股票...\n`);
+  logger.info(`🔍 正在監控 ${watchlist.stocks.length} 檔股票...\n`);
   
   const results = [];
   
   for (const stock of watchlist.stocks) {
-    console.log(`⏳ 檢查 ${stock.code} ${stock.name}...`);
+    logger.info(`⏳ 檢查 ${stock.code} ${stock.name}...`);
     
     try {
       const chipData = await getChipData(stock.code);
@@ -322,9 +324,9 @@ async function monitorWatchlist() {
             alerts: alerts
           });
           
-          console.log(`⚠️  發現 ${alerts.length} 個異常`);
+          logger.info(`⚠️  發現 ${alerts.length} 個異常`);
         } else {
-          console.log(`✅ 正常`);
+          logger.info(`✅ 正常`);
         }
       }
       
@@ -332,7 +334,7 @@ async function monitorWatchlist() {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (err) {
-      console.error(`❌ ${stock.code} 檢查失敗：${err.message}`);
+      logger.error(`❌ ${stock.code} 檢查失敗：${err.message}`);
     }
   }
   
@@ -397,7 +399,7 @@ if (require.main === module) {
     (async () => {
       const report = await monitorWatchlist();
       const formatted = formatAlertReport(report);
-      console.log('\n' + formatted);
+      logger.info('\n' + formatted);
     })();
     
   } else if (command === 'history') {
@@ -409,8 +411,8 @@ if (require.main === module) {
       new Date(a.timestamp).getTime() > cutoff
     );
     
-    console.log(`\n📊 最近 ${days} 天的提醒歷史（${recent.length} 筆）`);
-    console.log('━━━━━━━━━━━━━━━━━━\n');
+    logger.info(`\n📊 最近 ${days} 天的提醒歷史（${recent.length} 筆）`);
+    logger.info('━━━━━━━━━━━━━━━━━━\n');
     
     // 依股票分組
     const byStock = {};
@@ -423,16 +425,16 @@ if (require.main === module) {
     
     Object.keys(byStock).forEach(code => {
       const alerts = byStock[code];
-      console.log(`${code} ${alerts[0].stockName}（${alerts.length} 次）`);
+      logger.info(`${code} ${alerts[0].stockName}（${alerts.length} 次）`);
       alerts.forEach(alert => {
         const date = new Date(alert.timestamp).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
-        console.log(`  ${date} - ${alert.message}`);
+        logger.info(`  ${date} - ${alert.message}`);
       });
-      console.log('');
+      logger.info('');
     });
     
   } else {
-    console.log(`
+    logger.info(`
 Alert Monitor - 智慧提醒監控
 
 指令：

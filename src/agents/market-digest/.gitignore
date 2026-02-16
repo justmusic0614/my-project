@@ -1,21 +1,95 @@
-# Node
-node_modules/
-npm-debug.log
+# Market Digest Agent - Git Ignore Rules
 
-# Data and logs
-data/
+# ====================
+# 備份和臨時檔案
+# ====================
+*.backup
+*.backup-*
+*.BAK
+*.bak
+*.BROKEN
+*.broken
+*.BAD
+*.bad
+*.original
+*.old
+*.tmp
+*.temp
+*~
+.DS_Store
+
+# Phase 檔案（重構過程產生）
+*.phase1
+*.phase2
+*.phase3
+
+# ====================
+# 測試和示範檔案
+# ====================
+test-*.js
+example-*.js
+demo-*.js
+
+# ====================
+# 快取和資料檔案
+# ====================
+data/cache/
+data/*-cache/
+*.cache
+
+# ====================
+# 日誌檔案
+# ====================
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Environment
+# ====================
+# 環境變數
+# ====================
 .env
 .env.local
+.env.*.local
 
-# Temporary files
-*.tmp
-*.bak
+# ====================
+# Node.js
+# ====================
+node_modules/
+package-lock.json
+yarn.lock
+
+# ====================
+# 編輯器和 IDE
+# ====================
+.vscode/
+.idea/
 *.swp
+*.swo
+*.swn
 
-# OS
-.DS_Store
+# ====================
+# 系統檔案
+# ====================
 Thumbs.db
+.DS_Store
+desktop.ini
+
+# ====================
+# 輸出和生成檔案
+# ====================
+dist/
+build/
+coverage/
+
+# ====================
+# Archive 目錄（保留但不追蹤）
+# ====================
+archive/
+
+# ====================
+# 但保留這些
+# ====================
+!.gitignore
+!.env.example

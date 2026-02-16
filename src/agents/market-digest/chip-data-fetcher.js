@@ -102,10 +102,15 @@ async function getMarginTrading(stockCode) {
   return {
     marginPurchase: parseInt(margin.融資買進?.replace(/,/g, '') || 0),
     marginSale: parseInt(margin.融資賣出?.replace(/,/g, '') || 0),
-    marginBalance: parseInt(margin.融資餘額?.replace(/,/g, '') || 0),
+    marginBalance: parseInt((margin.融資今日餘額 || margin.融資餘額)?.replace(/,/g, '') || 0),
+    marginBalanceToday: parseInt((margin.融資今日餘額 || margin.融資餘額)?.replace(/,/g, '') || 0),
+    marginBalancePrev: parseInt(margin.融資前日餘額?.replace(/,/g, '') || 0),
+    marginLimit: parseInt(margin.融資限額?.replace(/,/g, '') || 0),
     shortSale: parseInt(margin.融券賣出?.replace(/,/g, '') || 0),
     shortCover: parseInt(margin.融券買進?.replace(/,/g, '') || 0),
-    shortBalance: parseInt(margin.融券餘額?.replace(/,/g, '') || 0)
+    shortBalance: parseInt((margin.融券今日餘額 || margin.融券餘額)?.replace(/,/g, '') || 0),
+    shortBalanceToday: parseInt((margin.融券今日餘額 || margin.融券餘額)?.replace(/,/g, '') || 0),
+    shortBalancePrev: parseInt(margin.融券前日餘額?.replace(/,/g, '') || 0)
   };
 }
 
@@ -133,9 +138,10 @@ async function getInstitutionalInvestors(stockCode, date = null) {
   
   return {
     foreign: parseInt(record[4]?.replace(/,/g, '') || 0),
+    trust: parseInt(record[10]?.replace(/,/g, '') || 0),
     investment: parseInt(record[10]?.replace(/,/g, '') || 0),
     dealer: parseInt(record[11]?.replace(/,/g, '') || 0),
-    total: parseInt(record[12]?.replace(/,/g, '') || 0)
+    total: parseInt(record[18]?.replace(/,/g, '') || 0)
   };
 }
 
@@ -156,10 +162,15 @@ async function getChipData(stockCode, date = null) {
     return null;
   }
   
+  const marginData = margin || { marginPurchase: 0, marginSale: 0, marginBalance: 0, marginBalanceToday: 0, marginBalancePrev: 0, marginLimit: 0, shortSale: 0, shortCover: 0, shortBalance: 0, shortBalanceToday: 0, shortBalancePrev: 0 };
+  const instData = institutional || { foreign: 0, trust: 0, investment: 0, dealer: 0, total: 0 };
+
   const result = {
     stock: dailyTrade,
-    margin: margin || { marginPurchase: 0, marginSale: 0, marginBalance: 0, shortSale: 0, shortCover: 0, shortBalance: 0 },
-    institutional: institutional || { foreign: 0, investment: 0, dealer: 0, total: 0 }
+    margin: marginData,
+    institutional: instData,
+    marginTrading: marginData,
+    institutionalInvestors: instData
   };
   
   logger.success(`籌碼資料抓取完成：${stockCode}`);

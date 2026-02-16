@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const http = require('http');
 const https = require('https');
 
 class HealthCheckSystem {
@@ -216,12 +217,12 @@ function registerKanbanDashboardChecks(healthCheck) {
   // 1. 檢查 Telegram Health Endpoint
   healthCheck.register('telegram-health', async () => {
     return new Promise((resolve, reject) => {
-      const req = https.request({
+      const req = http.request({
         hostname: 'localhost',
         port: 3001,
         path: '/api/telegram/health',
         method: 'GET',
-        timeout: 5000
+        timeout: 20000
       }, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
@@ -249,7 +250,7 @@ function registerKanbanDashboardChecks(healthCheck) {
       });
       req.end();
     });
-  }, { critical: true, timeout: 8000 });
+  }, { critical: true, timeout: 25000 });
 
   // 2. 檢查 PM2 進程狀態
   healthCheck.register('pm2-status', async () => {

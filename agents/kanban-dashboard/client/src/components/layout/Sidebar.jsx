@@ -2,10 +2,10 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 
 const navItems = [
-  { to: '/', icon: '🤖', label: 'Agents & Dashboard' },
+  { to: '/', icon: '🤖', label: 'Agents' },
   { to: '/board', icon: '📋', label: 'Kanban' },
   { to: '/calendar', icon: '📅', label: 'Calendar' },
-  { to: '/analytics', icon: '📊', label: 'Analytics' }
+  { to: '/analytics', icon: '📊', label: 'Cost Analytics' }
 ];
 
 const styles = {

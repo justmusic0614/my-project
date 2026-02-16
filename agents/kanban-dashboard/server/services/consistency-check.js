@@ -17,9 +17,23 @@ function checkConsistency() {
       .map(d => d.name)
       .filter(name => {
         if (name === 'kanban-dashboard' || name === 'shared') return false;
+        if (name.includes('.backup') || name.includes('.legacy') || name.includes('.old')) return false;
+
         const agentPath = path.join(agentsDir, name);
-        return fs.existsSync(path.join(agentPath, 'scripts')) ||
-               fs.existsSync(path.join(agentPath, 'agent.js'));
+        try {
+          const files = fs.readdirSync(agentPath);
+          const hasScripts = fs.existsSync(path.join(agentPath, 'scripts'));
+          const hasAgentJs = fs.existsSync(path.join(agentPath, 'agent.js'));
+          const hasOtherAgentFiles = files.some(f => {
+            if (!f.endsWith('.js')) return false;
+            if (f.startsWith('test-')) return false;
+            if (f.includes('setup')) return false;
+            return true;
+          });
+          return hasScripts || hasAgentJs || hasOtherAgentFiles;
+        } catch (err) {
+          return false;
+        }
       })
       .sort();
   } catch (_) {}

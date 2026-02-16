@@ -4,13 +4,10 @@ import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import NotificationCenter from './components/dashboard/NotificationCenter';
 import useNotifications from './hooks/useNotifications';
-import DashboardPage from './pages/DashboardPage';
 import BoardPage from './pages/BoardPage';
 import CalendarPage from './pages/CalendarPage';
 import AgentsPage from './pages/AgentsPage';
-import CostDashboard from './components/analytics/CostDashboard';
-import ABTest from './components/analytics/ABTest';
-import AgentModelConfig from './components/analytics/AgentModelConfig';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 export default function App() {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
@@ -44,13 +41,14 @@ export default function App() {
           padding: '20px'
         }}>
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<AgentsPage />} />
             <Route path="/board" element={<BoardPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/agents" element={<AgentsPage />} />
-            <Route path="/analytics" element={<CostDashboard />} />
-            <Route path="/ab-test" element={<ABTest />} />
-            <Route path="/agent-config" element={<AgentModelConfig />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            {/* Backward compatibility redirects */}
+            <Route path="/agents" element={<Navigate to="/" replace />} />
+            <Route path="/ab-test" element={<Navigate to="/analytics" replace />} />
+            <Route path="/agent-config" element={<Navigate to="/analytics" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

@@ -77,12 +77,30 @@ function getAgentList() {
     // Exclude backup/legacy directories
     if (name.includes('.backup') || name.includes('.legacy') || name.includes('.old')) return false;
     
-    // Check if directory has agent structure (scripts/ or agent.js)
+    // Check if directory has agent structure
     const agentPath = path.join(agentsDir, name);
-    const hasScripts = fs.existsSync(path.join(agentPath, 'scripts'));
-    const hasAgentJs = fs.existsSync(path.join(agentPath, 'agent.js'));
-    
-    return hasScripts || hasAgentJs;
+
+    try {
+      const files = fs.readdirSync(agentPath);
+
+      // Check for scripts/ directory
+      const hasScripts = fs.existsSync(path.join(agentPath, 'scripts'));
+
+      // Check for standard agent.js
+      const hasAgentJs = fs.existsSync(path.join(agentPath, 'agent.js'));
+
+      // Check for other agent-related JS files (e.g., patrol.js, digest.js)
+      const hasOtherAgentFiles = files.some(f => {
+        if (!f.endsWith('.js')) return false;
+        if (f.startsWith('test-')) return false;
+        if (f.includes('setup')) return false;
+        return true;
+      });
+
+      return hasScripts || hasAgentJs || hasOtherAgentFiles;
+    } catch (err) {
+      return false;
+    }
   });
 
   return validAgents.map(name => getAgentStatus(name));

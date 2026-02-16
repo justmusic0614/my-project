@@ -1,99 +1,99 @@
 # CLAUDE.md - my-project
 
-> **Documentation Version**: 1.0
-> **Last Updated**: 2026-02-06
-> **Project**: my-project
-> **Description**: CLI tool
-> **Features**: GitHub auto-backup, Task agents, technical debt prevention
+> **文件版本**: 1.0
+> **最後更新**: 2026-02-06
+> **專案**: my-project
+> **描述**: CLI 工具
+> **功能**: GitHub 自動備份、Task agents、技術債防範
 
-This file provides essential guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本檔案提供 Claude Code (claude.ai/code) 在此專案中工作時的重要指引。
 
-## CRITICAL RULES - READ FIRST
+## 關鍵規則 - 請先閱讀
 
-### ABSOLUTE PROHIBITIONS
-- **NEVER** create new files in root directory - use proper module structure
-- **NEVER** write output files directly to root directory - use designated output folders
-- **NEVER** create documentation files (.md) unless explicitly requested by user
-- **NEVER** use git commands with -i flag (interactive mode not supported)
-- **NEVER** use `find`, `grep`, `cat`, `head`, `tail`, `ls` commands - use Read, Grep, Glob tools instead
-- **NEVER** create duplicate files (manager_v2.js, enhanced_xyz.js, utils_new.js) - ALWAYS extend existing files
-- **NEVER** create multiple implementations of same concept - single source of truth
-- **NEVER** copy-paste code blocks - extract into shared utilities/functions
-- **NEVER** hardcode values that should be configurable - use config files/environment variables
-- **NEVER** use naming like enhanced_, improved_, new_, v2_ - extend original files instead
+### 絕對禁止事項
+- **絕不** 在根目錄建立新檔案 - 使用適當的模組結構
+- **絕不** 直接在根目錄寫入輸出檔案 - 使用指定的輸出資料夾
+- **絕不** 建立文件檔案 (.md) 除非使用者明確要求
+- **絕不** 使用帶有 -i 旗標的 git 命令（不支援互動模式）
+- **絕不** 使用 `find`, `grep`, `cat`, `head`, `tail`, `ls` 命令 - 改用 Read, Grep, Glob 工具
+- **絕不** 建立重複檔案（manager_v2.js, enhanced_xyz.js, utils_new.js）- 永遠擴展現有檔案
+- **絕不** 對同一概念建立多個實作 - 單一真實來源
+- **絕不** 複製貼上程式碼區塊 - 提取到共用工具/函式
+- **絕不** 硬編碼應該可配置的數值 - 使用配置檔案/環境變數
+- **絕不** 使用 enhanced_、improved_、new_、v2_ 等命名 - 改為擴展原始檔案
 
-### MANDATORY REQUIREMENTS
-- **COMMIT** after every completed task/phase - no exceptions
-- **GITHUB BACKUP** - Push to GitHub after every commit: `git push origin main`
-- **USE TASK AGENTS** for all long-running operations (>30 seconds)
-- **READ FILES FIRST** before editing - Edit/Write tools will fail if you didn't read the file first
-- **DEBT PREVENTION** - Before creating new files, check for existing similar functionality to extend
-- **SINGLE SOURCE OF TRUTH** - One authoritative implementation per feature/concept
+### 強制要求
+- **提交 (COMMIT)** 每個完成的任務/階段後 - 沒有例外
+- **GITHUB 備份** - 每次提交後推送到 GitHub: `git push origin main`
+- **使用 TASK AGENTS** 處理所有長時間運行的操作（>30 秒）
+- **先讀取檔案** 再編輯 - 如果沒有先讀取檔案，Edit/Write 工具會失敗
+- **債務預防** - 在建立新檔案前，檢查是否有現有的類似功能可以擴展
+- **單一真實來源** - 每個功能/概念只有一個權威實作
 
-### EXECUTION PATTERNS
-- **PARALLEL TASK AGENTS** - Launch multiple Task agents simultaneously for maximum efficiency
-- **GITHUB BACKUP WORKFLOW** - After every commit: `git push origin main`
-- **BACKGROUND PROCESSING** - ONLY Task agents can run true background operations
+### 執行模式
+- **平行 TASK AGENTS** - 同時啟動多個 Task agents 以達到最高效率
+- **GITHUB 備份工作流程** - 每次提交後: `git push origin main`
+- **背景處理** - 只有 Task agents 可以執行真正的背景操作
 
-### MANDATORY PRE-TASK COMPLIANCE CHECK
+### 強制性任務前合規檢查
 
-Before starting any task, verify:
-- [ ] Will this create files in root? If YES, use proper module structure instead
-- [ ] Will this take >30 seconds? If YES, use Task agents not Bash
-- [ ] Does similar functionality already exist? If YES, extend existing code
-- [ ] Am I creating a duplicate class/manager? If YES, consolidate instead
-- [ ] Have I searched for existing implementations? Use Grep/Glob tools first
-- [ ] Can I extend existing code instead of creating new? Prefer extension over creation
+開始任何任務前，請驗證：
+- [ ] 這會在根目錄建立檔案嗎？如果是，改用適當的模組結構
+- [ ] 這會花費超過 30 秒嗎？如果是，使用 Task agents 而非 Bash
+- [ ] 類似功能已經存在嗎？如果是，擴展現有程式碼
+- [ ] 我正在建立重複的類別/管理器嗎？如果是，改為整合
+- [ ] 我已經搜尋過現有實作了嗎？先使用 Grep/Glob 工具
+- [ ] 我可以擴展現有程式碼而非建立新的嗎？優先選擇擴展而非建立
 
-## PROJECT OVERVIEW
+## 專案概覽
 
-**my-project** is a CLI tool built with JavaScript.
+**my-project** 是一個使用 JavaScript 建構的 CLI 工具。
 
-### Project Structure
+### 專案結構
 ```
-src/main/js/          # Main JavaScript source code
-  core/               # Core business logic
-  utils/              # Utility functions
-  models/             # Data models
-  services/           # Service layer
-  api/                # API interfaces
-src/main/resources/   # Configuration and assets
-src/test/             # Unit and integration tests
-docs/                 # Documentation
-tools/                # Development tools
-output/               # Generated output files
+src/main/js/          # 主要 JavaScript 原始碼
+  core/               # 核心業務邏輯
+  utils/              # 工具函式
+  models/             # 資料模型
+  services/           # 服務層
+  api/                # API 介面
+src/main/resources/   # 配置和資源
+src/test/             # 單元測試和整合測試
+docs/                 # 文件
+tools/                # 開發工具
+output/               # 生成的輸出檔案
 ```
 
-### Development Status
-- **Setup**: Complete
-- **Core Features**: Not started
-- **Testing**: Not started
-- **Documentation**: Not started
+### 開發狀態
+- **設置**: 完成
+- **核心功能**: 未開始
+- **測試**: 未開始
+- **文件**: 未開始
 
-## TECHNICAL DEBT PREVENTION
+## 技術債預防
 
-### CORRECT APPROACH:
+### 正確做法:
 ```bash
-# 1. SEARCH FIRST
+# 1. 先搜尋
 Grep(pattern="feature.*implementation", include="*.js")
-# 2. READ EXISTING FILES
+# 2. 讀取現有檔案
 Read(file_path="existing_feature.js")
-# 3. EXTEND EXISTING FUNCTIONALITY
+# 3. 擴展現有功能
 Edit(file_path="existing_feature.js", old_string="...", new_string="...")
 ```
 
-## COMMON COMMANDS
+## 常用命令
 
 ```bash
-# Run the CLI tool
+# 執行 CLI 工具
 node src/main/js/index.js
 
-# Run tests
+# 執行測試
 npm test
 
-# Check git status
+# 檢查 git 狀態
 git status
 
-# Push to GitHub
+# 推送到 GitHub
 git push origin main
 ```

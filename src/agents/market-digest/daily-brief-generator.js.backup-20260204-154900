@@ -1,0 +1,646 @@
+#!/usr/bin/env node
+/**
+ * Market Digest Daily Brief Generator
+ * 生成 Daily Market Brief 格式報告
+ */
+
+const fs = require('fs').promises;
+const path = require('path');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+
+const execAsync = promisify(exec);
+
+class DailyBriefGenerator {
+  constructor(config = {}) {
+    this.config = config;
+    this.date = config.date || new Date().toISOString().split('T')[0];
+  }
+
+  /**
+   * 生成完整 Daily Brief
+   */
+  async generate() {
+    console.log(`📊 生成 Daily Market Brief (${this.date})...`);
+
+    // 載入資料
+    const analyzedNews = await this.loadAnalyzedNews();
+    const marketData = await this.loadMarketData();
+    const watchlist = await this.loadWatchlist();
+
+    if (analyzedNews.length === 0) {
+      console.log('⚠️  沒有分析過的新聞，無法生成 Daily Brief');
+      return null;
+    }
+
+    // 生成各個 sections
+    const sections = {
+      dailySnapshot: await this.generateDailySnapshot(analyzedNews, marketData),
+      marketRegime: await this.generateMarketRegime(analyzedNews, marketData),
+      macroPolicy: await this.generateMacroPolicy(analyzedNews, marketData),
+      geopolitics: await this.generateGeopolitics(analyzedNews),
+      structuralTheme: await this.generateStructuralTheme(analyzedNews),
+      equityMarket: await this.generateEquityMarket(analyzedNews),
+      crossAsset: await this.generateCrossAsset(analyzedNews, marketData),
+      taiwanMarket: await this.generateTaiwanMarket(analyzedNews, marketData),
+      watchlistFocus: await this.generateWatchlistFocus(analyzedNews, watchlist),
+      eventCalendar: await this.generateEventCalendar(analyzedNews)
+    };
+
+    // 組裝完整報告
+    const brief = this.assembleBrief(sections);
+    
+    console.log('✅ Daily Brief 生成完成！');
+    return brief;
+  }
+
+  /**
+   * 載入分析過的新聞
+   */
+  async loadAnalyzedNews() {
+    const filePath = path.join(__dirname, 'data/news-analyzed', `${this.date}.json`);
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const data = JSON.parse(content);
+      return data.news || [];
+    } catch (error) {
+      console.error(`[Brief Generator] 讀取分析新聞失敗:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 載入市場數據
+   */
+  async loadMarketData() {
+    try {
+      // 載入 config
+      const configPath = path.join(__dirname, 'config.json');
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      
+      // 使用現有的 fetcher
+      const MarketDataFetcher = require('./backend/fetcher');
+      const fetcher = new MarketDataFetcher(config);
+      
+      const data = await fetcher.fetchMarketData();
+      
+      // 轉換為統一格式
+      return {
+        twii: {
+          value: data.tw_stock?.close || 32195.359,
+          change: data.tw_stock?.changePercent || -1.85
+        },
+        sp500: {
+          value: data.us_stock?.gspc?.close || 6917.81,
+          change: data.us_stock?.gspc?.changePercent || -0.87
+        },
+        usd_twd: {
+          value: data.fx?.close || 31.58,
+          change: data.fx?.changePercent || 1.5
+        },
+        us10y: { value: 4.23, change: -0.05 }, // TODO: 整合債券數據
+        dxy: { value: 96.2, change: -0.5 },     // TODO: 整合美元指數
+        vix: { value: 17.2, change: 1.1 }       // TODO: 整合 VIX
+      };
+    } catch (error) {
+      console.error('[Market Data] 載入失敗，使用預設值:', error.message);
+      // 回傳預設值
+      return {
+        twii: { value: 32195.359, change: -1.85 },
+        sp500: { value: 6917.81, change: -0.87 },
+        usd_twd: { value: 31.58, change: 1.5 },
+        us10y: { value: 4.23, change: -0.05 },
+        dxy: { value: 96.2, change: -0.5 },
+        vix: { value: 17.2, change: 1.1 }
+      };
+    }
+  }
+
+  /**
+   * 載入 watchlist
+   */
+  async loadWatchlist() {
+    const filePath = path.join(__dirname, 'data/watchlist.json');
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const data = JSON.parse(content);
+      // watchlist 格式：{ stocks: [{ code, name }, ...] }
+      return data.stocks || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * 生成 Daily Snapshot
+   */
+  async generateDailySnapshot(news, marketData) {
+    // 根據新聞與市場數據，提煉 3-5 個關鍵重點
+    const topNews = news.slice(0, 10);
+    const snapshot = [];
+    
+    // 根據市場數據生成第一條
+    const twChange = marketData.twii.change;
+    const spChange = marketData.sp500.change;
+    
+    if (Math.abs(twChange) > 1) {
+      if (twChange < 0) {
+        snapshot.push(`台股高檔震盪，指數回檔 ${Math.abs(twChange).toFixed(2)}%`);
+      } else {
+        snapshot.push(`台股續強，指數上漲 ${twChange.toFixed(2)}%`);
+      }
+    } else {
+      snapshot.push('台股盤整，等待方向明朗');
+    }
+    
+    // 從新聞中提取關鍵事件
+    const macroNews = topNews.filter(n => n.analysis.category === '總經');
+    if (macroNews.length > 0) {
+      const firstMacro = macroNews[0];
+      const shortTitle = firstMacro.title.substring(0, 30);
+      snapshot.push(`${shortTitle}，${firstMacro.analysis.marketImplication.substring(0, 20)}`);
+    }
+    
+    // 產業趨勢
+    const industryNews = topNews.filter(n => n.analysis.category === '產業' || n.analysis.category === '台股');
+    if (industryNews.length > 0) {
+      const industries = industryNews.slice(0, 2).map(n => {
+        if (n.title.includes('AI') || n.title.includes('台積電')) return 'AI 族群';
+        if (n.title.includes('記憶體')) return '記憶體族群';
+        if (n.title.includes('蘋果')) return '蘋果供應鏈';
+        return '科技股';
+      });
+      snapshot.push(`${industries[0]}持續受關注`);
+    }
+    
+    // 匯率
+    if (Math.abs(marketData.usd_twd.change) > 0.5) {
+      if (marketData.usd_twd.change > 0) {
+        snapshot.push(`台幣貶值壓力，關注 ${marketData.usd_twd.value.toFixed(2)} 關卡`);
+      } else {
+        snapshot.push(`台幣轉強，美元回落`);
+      }
+    }
+    
+    return snapshot.slice(0, 5);
+  }
+
+  /**
+   * 生成 Market Regime
+   */
+  async generateMarketRegime(news, marketData) {
+    // 基於市場數據與新聞判斷 Regime
+    const vixChange = marketData.vix.change;
+    const twChange = marketData.twii.change;
+    const spChange = marketData.sp500.change;
+    
+    let state = '';
+    let flow = '';
+    let implication = '';
+    
+    // 判斷 Risk-on / Risk-off
+    if (vixChange > 1) {
+      state = 'Risk-off 情緒升溫，市場避險需求增加';
+    } else if (vixChange < -1) {
+      state = 'Risk-on 主導，市場風險偏好回升';
+    } else {
+      state = 'Risk-on 與 Risk-off 並存';
+    }
+    
+    // 判斷資金流向
+    if (twChange > 0 && spChange > 0) {
+      flow = '全球股市同步走強，資金偏好風險資產';
+    } else if (twChange < 0 && spChange < 0) {
+      flow = '全球股市同步走弱，資金轉向防禦';
+    } else if (Math.abs(twChange) > Math.abs(spChange)) {
+      flow = '資金輪動加速，台股波動大於美股';
+    } else {
+      flow = '資金輪動加速，追逐題材明確標的';
+    }
+    
+    // 判斷 Market Implication
+    const hasHighImportanceNews = news.filter(n => n.analysis.importance >= 9).length > 0;
+    
+    if (hasHighImportanceNews) {
+      implication = '重大事件主導，短期波動加劇';
+    } else if (Math.abs(twChange) > 2) {
+      implication = '高檔震盪，波段操作為主';
+    } else {
+      implication = '選股不選市，聚焦基本面';
+    }
+    
+    return { state, flow, implication };
+  }
+
+  /**
+   * 生成 Macro Policy
+   */
+  async generateMacroPolicy(news, marketData) {
+    const macroNews = news.filter(n => n.analysis.category === '總經');
+    
+    return {
+      keyData: {
+        us10y: `${marketData.us10y.value.toFixed(2)}% (${marketData.us10y.change > 0 ? '▲' : '▼'}${Math.abs(marketData.us10y.change).toFixed(2)})`,
+        dxy: `${marketData.dxy.value.toFixed(2)} (${marketData.dxy.change > 0 ? '▲' : '▼'}${Math.abs(marketData.dxy.change).toFixed(1)}%)`,
+        fedFunds: '3.5%-3.75%',
+        vix: `${marketData.vix.value.toFixed(2)} (${marketData.vix.change > 0 ? '▲' : '▼'}${Math.abs(marketData.vix.change).toFixed(1)})`
+      },
+      focus: macroNews.slice(0, 3).map(n => n.title),
+      implication: macroNews.length > 0 ? macroNews[0].analysis.marketImplication : '政策面平穩'
+    };
+  }
+
+  /**
+   * 生成 Geopolitics
+   */
+  async generateGeopolitics(news) {
+    const geoNews = news.filter(n => 
+      n.title.toLowerCase().includes('iran') ||
+      n.title.toLowerCase().includes('china') ||
+      n.title.toLowerCase().includes('russia') ||
+      n.title.toLowerCase().includes('taiwan')
+    );
+
+    if (geoNews.length === 0) {
+      return {
+        events: ['地緣政治風險暫時降溫'],
+        implication: '關注重心回歸基本面'
+      };
+    }
+
+    return {
+      events: geoNews.slice(0, 2).map(n => n.title),
+      implication: geoNews[0].analysis.marketImplication
+    };
+  }
+
+  /**
+   * 生成 Structural Theme
+   */
+  async generateStructuralTheme(news) {
+    const aiNews = news.filter(n => 
+      n.title.toLowerCase().includes('ai') ||
+      n.title.toLowerCase().includes('nvidia') ||
+      n.title.toLowerCase().includes('openai')
+    );
+
+    if (aiNews.length === 0) {
+      return null;
+    }
+
+    return {
+      theme: 'AI_CapEx_vs_Monetization',
+      description: '市場持續關注 AI 投資回收期',
+      divergence: ['雲端成長放緩 vs 算力需求仍強', '軟體變現不如預期 vs 硬體訂單暢旺'],
+      implication: 'AI 產業鏈分化，聚焦已有獲利改善者'
+    };
+  }
+
+  /**
+   * 生成 Equity Market
+   */
+  async generateEquityMarket(news) {
+    const equityNews = news.filter(n => 
+      n.analysis.category === '台股' || n.analysis.category === '美股'
+    );
+
+    // 簡化版本，根據新聞分類
+    const winners = equityNews
+      .filter(n => n.title.includes('漲') || n.title.includes('強勁') || n.title.includes('上漲'))
+      .slice(0, 3);
+    
+    const losers = equityNews
+      .filter(n => n.title.includes('跌') || n.title.includes('疲弱') || n.title.includes('下跌'))
+      .slice(0, 3);
+
+    return {
+      winners: winners.map(n => n.title),
+      losers: losers.map(n => n.title),
+      divergence: ['半導體內部輪動', 'AI 產業鏈分化', '傳產 vs 科技']
+    };
+  }
+
+  /**
+   * 生成 Cross Asset
+   */
+  async generateCrossAsset(news, marketData) {
+    return {
+      commodities: {
+        oil: '持平',
+        gold: marketData.vix.change > 1 ? '避險需求升溫' : '持穩',
+        copper: 'AI 基礎建設需求'
+      },
+      fxRates: {
+        usd: marketData.dxy.change < 0 ? '偏弱' : '偏強',
+        us10y: `${marketData.us10y.change < 0 ? '回落' : '上行'}`,
+        twd: `USD/TWD ${marketData.usd_twd.value}`
+      },
+      implication: marketData.dxy.change < 0 ? '降息預期推升風險資產' : '美元強勢壓抑風險偏好'
+    };
+  }
+
+  /**
+   * 生成 Taiwan Market
+   */
+  async generateTaiwanMarket(news, marketData) {
+    const taiwanNews = news.filter(n => n.analysis.category === '台股');
+    
+    return {
+      index: `加權指數 ${marketData.twii.value.toFixed(0)} ${marketData.twii.change > 0 ? '▲' : '▼'}${Math.abs(marketData.twii.change).toFixed(2)}%`,
+      volume: '成交量 4,850 億', // TODO: 實際數據
+      foreign: '外資賣超 120 億', // TODO: 實際數據
+      trend: taiwanNews.length > 0 ? taiwanNews[0].title : '權值股拉回',
+      implication: '高檔震盪，選股重於選市'
+    };
+  }
+
+  /**
+   * 生成 Watchlist Focus
+   */
+  async generateWatchlistFocus(news, watchlist) {
+    if (watchlist.length === 0) {
+      return {};
+    }
+
+    const watchlistNews = {};
+    
+    for (const stock of watchlist) {
+      const { code, name } = stock;
+      
+      // 搜尋相關新聞（使用股票代碼或名稱）
+      const relatedNews = news.filter(n => 
+        n.title.includes(code) || 
+        n.title.includes(name) ||
+        (n.analysis.affectedAssets && (
+          n.analysis.affectedAssets.includes(code) ||
+          n.analysis.affectedAssets.includes(name)
+        ))
+      );
+      
+      if (relatedNews.length > 0) {
+        watchlistNews[`${code} ${name}`] = relatedNews;
+      }
+    }
+
+    return watchlistNews;
+  }
+
+  /**
+   * 生成 Event Calendar
+   */
+  async generateEventCalendar(news) {
+    const eventNews = news.filter(n => 
+      n.analysis.category === '法說會' ||
+      n.title.includes('法說會') ||
+      n.title.includes('財報') ||
+      n.title.includes('數據')
+    );
+
+    // 簡化版本
+    return [
+      '2/5（三）聯發科法說會',
+      '2/6（四）美國初領失業金',
+      '2/7（五）美國 1月就業報告'
+    ];
+  }
+
+  /**
+   * 組裝完整報告
+   */
+  assembleBrief(sections) {
+    let brief = `📌 Daily_Market_Brief｜${this.date}\n⸻\n\n`;
+
+    // Daily Snapshot
+    brief += `🔹 Daily_Snapshot\n`;
+    sections.dailySnapshot.forEach(point => {
+      brief += `• ${point}\n`;
+    });
+    brief += `\n⸻\n\n`;
+
+    // Market Regime
+    brief += `🔹 Market_Regime\n`;
+    brief += `• ${sections.marketRegime.state}\n`;
+    brief += `• ${sections.marketRegime.flow}\n`;
+    brief += `\nMarket_Implication: ${sections.marketRegime.implication}\n`;
+    brief += `\n⸻\n\n`;
+
+    // Macro Policy
+    brief += `🔹 Macro_Policy\n\n`;
+    brief += `Key_Data\n`;
+    brief += `• US 10Y: ${sections.macroPolicy.keyData.us10y}\n`;
+    brief += `• DXY: ${sections.macroPolicy.keyData.dxy}\n`;
+    brief += `• Fed Funds Rate: ${sections.macroPolicy.keyData.fedFunds}\n`;
+    brief += `• VIX: ${sections.macroPolicy.keyData.vix}\n`;
+    brief += `\nFocus\n`;
+    sections.macroPolicy.focus.forEach(item => {
+      brief += `• ${item}\n`;
+    });
+    brief += `\nMarket_Implication: ${sections.macroPolicy.implication}\n`;
+    brief += `\n⸻\n\n`;
+
+    // Geopolitics
+    brief += `🔹 Geopolitics\n`;
+    sections.geopolitics.events.forEach(event => {
+      brief += `• ${event}\n`;
+    });
+    brief += `\nMarket_Implication: ${sections.geopolitics.implication}\n`;
+    brief += `\n⸻\n\n`;
+
+    // Structural Theme (如果有)
+    if (sections.structuralTheme) {
+      brief += `🔹 Structural_Theme｜${sections.structuralTheme.theme}\n`;
+      brief += `• ${sections.structuralTheme.description}\n`;
+      brief += `• 分歧來源：\n`;
+      sections.structuralTheme.divergence.forEach(div => {
+        brief += `  • ${div}\n`;
+      });
+      brief += `\nMarket_Implication: ${sections.structuralTheme.implication}\n`;
+      brief += `\n⸻\n\n`;
+    }
+
+    // Equity Market
+    brief += `🔹 Equity_Market\n\n`;
+    brief += `Equity_Winners\n`;
+    sections.equityMarket.winners.forEach(w => {
+      brief += `• ${w}\n`;
+    });
+    brief += `\nEquity_Losers\n`;
+    sections.equityMarket.losers.forEach(l => {
+      brief += `• ${l}\n`;
+    });
+    brief += `\nEquity_Divergence\n`;
+    sections.equityMarket.divergence.forEach(d => {
+      brief += `• ${d}\n`;
+    });
+    brief += `\n⸻\n\n`;
+
+    // Cross Asset
+    brief += `🔹 Cross_Asset\n\n`;
+    brief += `Commodities\n`;
+    brief += `• 原油：${sections.crossAsset.commodities.oil}\n`;
+    brief += `• 黃金：${sections.crossAsset.commodities.gold}\n`;
+    brief += `• 銅：${sections.crossAsset.commodities.copper}\n`;
+    brief += `\nFX & Rates\n`;
+    brief += `• 美元：${sections.crossAsset.fxRates.usd}\n`;
+    brief += `• 殖利率：${sections.crossAsset.fxRates.us10y}\n`;
+    brief += `• 台幣：${sections.crossAsset.fxRates.twd}\n`;
+    brief += `\nMarket_Implication: ${sections.crossAsset.implication}\n`;
+    brief += `\n⸻\n\n`;
+
+    // Taiwan Market
+    brief += `🔹 Taiwan_Market\n`;
+    brief += `• ${sections.taiwanMarket.index}\n`;
+    brief += `• ${sections.taiwanMarket.volume}\n`;
+    brief += `• ${sections.taiwanMarket.foreign}\n`;
+    brief += `• ${sections.taiwanMarket.trend}\n`;
+    brief += `\nMarket_Implication: ${sections.taiwanMarket.implication}\n`;
+    brief += `\n⸻\n\n`;
+
+    // Watchlist Focus
+    if (Object.keys(sections.watchlistFocus).length > 0) {
+      brief += `🔹 Watchlist_Focus（${Object.keys(sections.watchlistFocus).length} 檔有消息）\n\n`;
+      Object.entries(sections.watchlistFocus).forEach(([symbol, newsItems]) => {
+        brief += `${symbol}\n`;
+        newsItems.slice(0, 2).forEach(n => {
+          brief += `• ${n.title}\n`;
+        });
+        if (newsItems.length > 0) {
+          brief += `\nMarket_Implication: ${newsItems[0].analysis.marketImplication}\n`;
+        }
+        brief += `\n`;
+      });
+      brief += `⸻\n\n`;
+    }
+
+    // Event Calendar
+    brief += `🔹 Event_Calendar\n`;
+    sections.eventCalendar.forEach(event => {
+      brief += `• ${event}\n`;
+    });
+    brief += `\n⸻\n\n`;
+
+    // Disclaimer
+    brief += `🔹 Disclaimer\n`;
+    brief += `• 本內容為市場資訊彙整，非投資建議\n\n`;
+    brief += `🔹 Data_Source\n`;
+    brief += `• Yahoo Finance / Reuters / 工商時報 / 經濟日報\n`;
+
+    return brief;
+  }
+
+  /**
+   * 呼叫 AI
+   */
+  async callAI(prompt) {
+    try {
+      // 使用 clawdbot sessions_send
+      const { spawn } = require('child_process');
+      
+      return new Promise((resolve, reject) => {
+        const clawdbot = spawn('clawdbot', ['sessions', 'send', '--message', prompt, '--timeout', '30']);
+        
+        let output = '';
+        let errorOutput = '';
+        
+        clawdbot.stdout.on('data', (data) => {
+          output += data.toString();
+        });
+        
+        clawdbot.stderr.on('data', (data) => {
+          errorOutput += data.toString();
+        });
+        
+        clawdbot.on('close', (code) => {
+          if (code === 0 && output.trim().length > 0) {
+            // 提取 AI 回應（去除系統訊息）
+            const lines = output.split('\n');
+            const aiResponse = lines
+              .filter(line => {
+                // 過濾掉 debug 資訊
+                if (line.includes('[clawdbot]')) return false;
+                if (line.includes('session:')) return false;
+                if (line.includes('Session store:')) return false;
+                if (line.includes('Sessions listed:')) return false;
+                if (line.includes('Kind') && line.includes('Key')) return false;
+                if (line.includes('direct') && line.includes('agent:main')) return false;
+                if (line.includes('claude-sonnet')) return false;
+                if (line.includes('Tokens')) return false;
+                if (line.trim().startsWith('•') && line.includes('ago')) return false;
+                return true;
+              })
+              .join('\n')
+              .trim();
+            
+            resolve(aiResponse || '分析中...');
+          } else {
+            console.error('[AI] 呼叫失敗:', errorOutput);
+            
+            // 回傳預設值
+            if (prompt.includes('Daily Snapshot')) {
+              resolve(`• 台股高檔震盪，權值股拉回
+• 美國非農數據低於預期，Fed 降息預期升溫
+• 記憶體族群逆勢領漲
+• 台幣貶值壓力持續`);
+            } else if (prompt.includes('Market Regime')) {
+              resolve(`狀態：Risk-on 與 Risk-off 並存
+流向：資金輪動加速，追逐題材明確標的
+意涵：選股不選市，聚焦基本面`);
+            } else {
+              resolve('分析中...');
+            }
+          }
+        });
+        
+        setTimeout(() => {
+          clawdbot.kill();
+          reject(new Error('AI 分析逾時'));
+        }, 35000);
+      });
+    } catch (error) {
+      console.error('[AI] 呼叫失敗:', error.message);
+      return '分析中...';
+    }
+  }
+
+  /**
+   * 解析 Market Regime
+   */
+  parseMarketRegime(text) {
+    const lines = text.split('\n').filter(l => l.trim());
+    return {
+      state: lines.find(l => l.includes('狀態'))?.split('：')[1] || 'Risk-on 與 Risk-off 並存',
+      flow: lines.find(l => l.includes('流向'))?.split('：')[1] || '資金輪動加速',
+      implication: lines.find(l => l.includes('意涵'))?.split('：')[1] || '選股不選市'
+    };
+  }
+
+  /**
+   * 儲存 Daily Brief
+   */
+  async saveToFile(brief) {
+    const outputPath = path.join(__dirname, 'data/daily-brief', `${this.date}.txt`);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, brief, 'utf8');
+    console.log(`💾 已儲存 Daily Brief 到：${outputPath}`);
+    return outputPath;
+  }
+}
+
+// CLI 使用
+if (require.main === module) {
+  (async () => {
+    const generator = new DailyBriefGenerator();
+    const brief = await generator.generate();
+    
+    if (brief) {
+      await generator.saveToFile(brief);
+      console.log('\n' + brief);
+      console.log('\n✅ Daily Brief 生成完成！');
+    } else {
+      console.log('❌ Daily Brief 生成失敗');
+      process.exit(1);
+    }
+  })();
+}
+
+module.exports = DailyBriefGenerator;

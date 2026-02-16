@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "plugins": {
+    "yahoo-finance": {
+      "name": "yahoo-finance",
+      "version": "1.0.0",
+      "type": "market-data",
+      "enabled": true,
+      "schema": "market-data-v1",
+      "config": {
+        "baseUrl": "https://query1.finance.yahoo.com/v8/finance/chart/",
+        "rateLimit": 100,
+        "timeout": 5000
+      },
+      "outputs": ["TWII", "^GSPC", "USDTWD=X"],
+      "dependencies": ["node-fetch"]
+    },
+    "bloomberg": {
+      "name": "bloomberg",
+      "version": "1.0.0",
+      "type": "news",
+      "enabled": true,
+      "schema": "news-v1",
+      "config": {
+        "rssUrl": "https://feeds.bloomberg.com/markets/news.rss",
+        "timeout": 5000
+      },
+      "outputs": ["news"],
+      "dependencies": []
+    }
+  },
+  "schemas": {
+    "market-data-v1": {
+      "required": ["symbol", "close", "timestamp"],
+      "optional": ["open", "high", "low", "volume", "change", "changePct"]
+    },
+    "news-v1": {
+      "required": ["title", "pubDate", "guid"],
+      "optional": ["description", "link", "source"]
+    }
+  }
+}

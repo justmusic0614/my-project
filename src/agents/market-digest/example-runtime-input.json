@@ -1,0 +1,51 @@
+{
+  "report_metadata": {
+    "generated_at": "2026-02-01T07:00:00+08:00",
+    "timezone": "Asia/Taipei",
+    "importance_level": "HIGH"
+  },
+  "normalized_market_summary": [
+    "台積電法說會公布 Q4 財報優於預期，全年 EPS 達 39.8 元",
+    "Fed 維持利率不變，但暗示可能在 Q2 開始降息",
+    "美股三大指數收紅，那斯達克上漲 1.2%",
+    "台幣兌美元收 31.05，貶值 0.15%",
+    "國際油價回升至 78 美元，地緣政治緊張"
+  ],
+  "verified_key_data": {
+    "tw_stock": {
+      "taiex_close": 22458.5,
+      "taiex_change_pct": 0.85,
+      "volume_billion_twd": 3250,
+      "source": "TWSE",
+      "timestamp": "2026-01-31T13:30:00+08:00",
+      "confidence": "HIGH"
+    },
+    "us_stock": {
+      "sp500_close": 5127.8,
+      "sp500_change_pct": 0.65,
+      "nasdaq_change_pct": 1.2,
+      "source": "Yahoo Finance",
+      "timestamp": "2026-01-31T16:00:00-05:00",
+      "confidence": "HIGH"
+    },
+    "fx": {
+      "usdtwd": 31.05,
+      "usdtwd_change_pct": 0.15,
+      "source": "Bloomberg",
+      "timestamp": "2026-01-31T16:00:00+08:00",
+      "confidence": "MEDIUM"
+    }
+  },
+  "narrative_states": {
+    "macro_theme": "Fed 降息預期升溫，科技股受惠",
+    "taiwan_focus": "台積電財報帶動半導體族群",
+    "risk_factors": ["地緣政治不確定性", "通膨數據待觀察"]
+  },
+  "health_components": {
+    "total_materials": 24,
+    "verified_count": 22,
+    "low_confidence_count": 2,
+    "missing_data_fields": ["crude_oil_detailed"],
+    "alerts": []
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "data_sources": {
+    "manual_input": {
+      "type": "line_group",
+      "description": "LINE 群組早報（主要資料源）",
+      "enabled": true
+    },
+    "market_data": {
+      "tw_stock": {
+        "provider": "yahoo",
+        "symbol": "^TWII",
+        "enabled": true
+      },
+      "us_stock": {
+        "provider": "yahoo",
+        "symbols": ["^GSPC", "^IXIC", "^DJI"],
+        "enabled": true
+      },
+      "fx": {
+        "provider": "yahoo",
+        "pair": "TWD=X",
+        "enabled": true
+      },
+      "institutional_investors": {
+        "provider": "twse",
+        "enabled": true,
+        "historical_days": 5
+      }
+    }
+  },
+  "processing": {
+    "dedup_threshold": 0.85,
+    "min_news_count": 5,
+    "max_age_hours": 24
+  },
+  "technical_indicators": {
+    "ma_periods": [5, 20],
+    "rsi_period": 14,
+    "enabled": true
+  },
+  "importance_rules": {
+    "critical_keywords": ["Fed", "央行", "升息", "降息", "台積電", "TSMC"],
+    "high_keywords": ["財報", "法說會", "GDP", "CPI", "聯電", "鴻海", "台股", "加權指數"],
+    "taiwan_keywords": ["台股", "台積電", "聯電", "鴻海", "大立光", "台灣", "TSMC"],
+    "volume_spike_threshold": 1.5,
+    "price_change_threshold": 2.0
+  },
+  "telegram": {
+    "preview_max_items": 3,
+    "full_report_items": 10
+  }
+}

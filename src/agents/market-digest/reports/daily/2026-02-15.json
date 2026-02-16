@@ -1,0 +1,343 @@
+{
+  "date": "2026-02-15",
+  "timestamp": "2026-02-15T00:30:09.774Z",
+  "generatedAt": "2026/2/15 上午8:30:09",
+  "riskOff": {
+    "score": 10,
+    "level": "NONE",
+    "signal": "✅",
+    "description": "市場風險偏好正常",
+    "recommendation": "可維持既有配置"
+  },
+  "market": {
+    "vix": null,
+    "vixStatus": "Unknown",
+    "foreignFlow": null,
+    "foreignStatus": "Unknown",
+    "indexChange": null,
+    "goldChange": null,
+    "jpyChange": null
+  },
+  "breakdown": {
+    "vix": {
+      "value": 15,
+      "contribution": 10
+    },
+    "safeHaven": {
+      "gold": 0,
+      "jpy": 0,
+      "contribution": 0
+    },
+    "foreignFlow": {
+      "value": 0,
+      "contribution": 0
+    },
+    "marketVolatility": {
+      "indexChange": 0,
+      "contribution": 0
+    },
+    "newsSentiment": {
+      "negativeCount": 0,
+      "contribution": 0
+    }
+  },
+  "alerts": [],
+  "stats": {
+    "period": "2026-02-14 to 2026-02-15",
+    "totalDays": 10,
+    "avgScore": "21.2",
+    "maxScore": 66,
+    "minScore": 10,
+    "levelDistribution": {
+      "HIGH": 2,
+      "MEDIUM": 0,
+      "LOW": 0,
+      "NONE": 8
+    },
+    "highRiskDays": [
+      "2026-02-14",
+      "2026-02-14"
+    ]
+  },
+  "trend": {
+    "direction": "Low Risk",
+    "description": "Market shows low risk-off sentiment with average score of 21.2.",
+    "emoji": "📉"
+  },
+  "sectorAnalysis": null,
+  "recentLogs": [
+    {
+      "date": "2026-02-14",
+      "timestamp": "2026-02-14T17:25:48.205Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    },
+    {
+      "date": "2026-02-14",
+      "timestamp": "2026-02-14T17:29:11.230Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    },
+    {
+      "date": "2026-02-14",
+      "timestamp": "2026-02-14T17:30:07.283Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    },
+    {
+      "date": "2026-02-14",
+      "timestamp": "2026-02-14T17:30:36.358Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    },
+    {
+      "date": "2026-02-14",
+      "timestamp": "2026-02-14T17:31:20.061Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    },
+    {
+      "date": "2026-02-14",
+      "timestamp": "2026-02-14T17:32:22.701Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    },
+    {
+      "date": "2026-02-15",
+      "timestamp": "2026-02-15T00:30:09.772Z",
+      "score": 10,
+      "level": "NONE",
+      "signal": "✅",
+      "description": "市場風險偏好正常",
+      "recommendation": "可維持既有配置",
+      "breakdown": {
+        "vix": {
+          "value": 15,
+          "contribution": 10
+        },
+        "safeHaven": {
+          "gold": 0,
+          "jpy": 0,
+          "contribution": 0
+        },
+        "foreignFlow": {
+          "value": 0,
+          "contribution": 0
+        },
+        "marketVolatility": {
+          "indexChange": 0,
+          "contribution": 0
+        },
+        "newsSentiment": {
+          "negativeCount": 0,
+          "contribution": 0
+        }
+      },
+      "marketData": {
+        "vix": null,
+        "foreignFlow": null,
+        "indexChange": null,
+        "goldChange": null,
+        "jpyChange": null
+      }
+    }
+  ]
+}

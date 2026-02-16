@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+/**
+ * Daily Brief Pipeline
+ * 完整流程：搜集新聞 → AI 分析 → 生成 Daily Brief
+ */
+const { execSync } = require("child_process");
+
+const NewsCollector = require('./news-collector');
+const NewsAnalyzer = require('./news-analyzer');
+const DailyBriefGenerator = require('./daily-brief-generator');
+
+const fs = require("fs").promises;
+const path = require("path");
+
+async function main() {
+  console.log('🚀 啟動 Daily Brief Pipeline...\n');
+
+  try {
+    // Step 1: 搜集新聞
+    console.log('📡 Step 1: 搜集新聞');
+    const collector = new NewsCollector({
+      symbols: ['TSMC', '^TWII', '^GSPC', 'NVDA', 'AAPL', 'MSFT'],
+      keywords: ['台積電', '聯發科', 'AI', 'Fed', '降息', '非農', '台股', '美股']
+    });
+    
+    const news = await collector.collectAll();
+    
+    if (news.length === 0) {
+      console.log('⚠️  沒有搜集到新聞');
+      process.exit(1);
+    }
+    
+    await collector.saveToFile(news);
+    console.log(`✅ 搜集完成：${news.length} 則新聞\n`);
+    
+// Step 1.5: 產生 Digest（由 my-project 提供）
+    console.log('🧠 Step 1.5: 執行 Digest CLI（摘要新聞）');
+    try {
+      execSync(
+        `DIGEST_OUTPUT_DIR=/home/clawbot/clawd/agents/market-digest/data/digest/output ` +
+        `DIGEST_EXAMPLES_DIR=/home/clawbot/clawd/agents/market-digest/data/digest/examples ` +
+        `node /home/clawbot/projects/my-project/src/main/js/index.js digest run`,
+        { stdio: 'inherit', shell: '/bin/bash' }
+      );
+      console.log('✅ Digest 完成\n');
+    } catch (e) {
+      console.log('⚠️ Digest 失敗（略過，不影響 pipeline）\n');
+    }
+    // Step 2: AI 分析
+    console.log('🔬 Step 2: AI 分析新聞');
+    const analyzer = new NewsAnalyzer();
+    const analyzed = await analyzer.analyzeAll(news);
+    const important = analyzer.filterByImportance(analyzed, 7);
+    
+    console.log(`✅ 分析完成：${important.length} 則重要新聞（importance >= 7）\n`);
+    
+    await analyzer.saveToFile(important);
+
+    // Step 3: 生成 Daily Brief
+    console.log('📊 Step 3: 生成 Daily Brief');
+    const generator = new DailyBriefGenerator();
+    const brief = await generator.generate();
+    
+    if (brief) {
+      await generator.saveToFile(finalBrief);
+      console.log('✅ Daily Brief 生成完成！\n');
+      
+      // 顯示預覽
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📄 Daily Brief 預覽：');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      console.log(brief.substring(0, 1000) + '...\n');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      const date = new Date().toISOString().split('T')[0];
+      console.log(`📂 完整報告位置：`);
+      console.log(`   ~/clawd/agents/market-digest/data/daily-brief/${date}.txt\n`);
+    } else {
+      console.log('❌ Daily Brief 生成失敗');
+      process.exit(1);
+    }
+
+    console.log('🎉 Pipeline 執行完成！');
+    
+  } catch (error) {
+    console.error('❌ Pipeline 執行失敗:', error);
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = main;

@@ -1,0 +1,21 @@
+# Node
+node_modules/
+npm-debug.log
+
+# Data and logs
+data/
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

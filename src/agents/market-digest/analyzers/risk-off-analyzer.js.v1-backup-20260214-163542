@@ -1,0 +1,233 @@
+// Risk-off Analyzer
+// 量化 Risk-off 情緒評分系統（0-100 分）
+
+/**
+ * 計算 Risk-off Score
+ *
+ * 權重分配：
+ * - VIX 指標：30%
+ * - 避險資產（黃金、美債、日圓）：25%
+ * - 外資動向：20%
+ * - 股市波動：15%
+ * - 新聞情緒：10%
+ *
+ * @param {Object} marketData - 市場數據
+ * @param {Array} newsItems - 新聞項目
+ * @returns {number} Risk-off Score (0-100)
+ */
+function calculateRiskOffScore(marketData, newsItems = []) {
+  let score = 0;
+
+  // 1. VIX 指標（30 分）
+  const vix = marketData.vix || 15;
+  if (vix < 15) {
+    score += 0;         // 平靜
+  } else if (vix < 20) {
+    score += 10;        // 略升
+  } else if (vix < 30) {
+    score += 20;        // 警戒
+  } else {
+    score += 30;        // 恐慌
+  }
+
+  // 2. 避險資產流向（25 分）
+  const goldChange = marketData.gold?.change || 0;
+  const jpyChange = marketData.usd_jpy?.change || 0; // 負值 = 日圓升值
+  const treasuryYield = marketData.treasury?.yield_10y_change || 0; // 負值 = 美債需求增加
+
+  // 黃金（15 分）
+  if (goldChange > 2.0) {
+    score += 15;  // 黃金大漲
+  } else if (goldChange > 1.0) {
+    score += 10;
+  } else if (goldChange > 0.5) {
+    score += 5;
+  }
+
+  // 日圓（10 分）
+  if (jpyChange < -1.0) {
+    score += 10;  // 日圓大幅升值
+  } else if (jpyChange < -0.5) {
+    score += 5;
+  }
+
+  // 美債（額外加權，如果有數據）
+  if (treasuryYield < -0.1) {
+    score += 5;  // 美債需求增加（殖利率下降）
+  }
+
+  // 3. 外資動向（20 分）
+  const foreignFlow = marketData.foreign?.netBuy || 0;
+  if (foreignFlow < -10000) {
+    score += 20;  // 大幅賣超（> 100 億）
+  } else if (foreignFlow < -5000) {
+    score += 15;  // 賣超（> 50 億）
+  } else if (foreignFlow < -1000) {
+    score += 10;  // 小幅賣超（> 10 億）
+  }
+
+  // 4. 股市波動（15 分）
+  const indexChange = marketData.stockIndex?.change || 0;
+  const volatility = marketData.volatility?.daily || 0;
+
+  if (indexChange < -3.0) {
+    score += 15;  // 大跌
+  } else if (indexChange < -2.0) {
+    score += 10;  // 中跌
+  } else if (indexChange < -1.0) {
+    score += 5;   // 小跌
+  }
+
+  // 額外：波動率加權
+  if (volatility > 2.0) {
+    score += 5;   // 高波動
+  }
+
+  // 5. 新聞情緒（10 分）
+  const riskOffKeywords = [
+    '暴跌', '重挫', '恐慌', '崩盤', '避險',
+    'panic', 'crash', 'plunge', 'selloff', 'risk-off'
+  ];
+
+  const negativeCount = newsItems.filter(n => {
+    const title = typeof n === 'string' ? n : (n.title || '');
+    return riskOffKeywords.some(kw => title.toLowerCase().includes(kw.toLowerCase()));
+  }).length;
+
+  score += Math.min(negativeCount * 2, 10);
+
+  // 限制在 0-100 範圍內
+  return Math.min(Math.max(score, 0), 100);
+}
+
+/**
+ * 取得 Risk-off 等級
+ *
+ * @param {number} score - Risk-off Score (0-100)
+ * @returns {Object} { level, desc, recommendation }
+ */
+function getRiskOffLevel(score) {
+  if (score >= 75) {
+    return {
+      level: 'HIGH',
+      desc: 'Risk-off 情緒明確升溫',
+      recommendation: '建議降低風險部位，增持防禦性資產（公用事業、必需消費品、黃金）',
+      signal: '🔴'
+    };
+  }
+
+  if (score >= 50) {
+    return {
+      level: 'MEDIUM',
+      desc: 'Risk-off 訊號增加',
+      recommendation: '建議適度降低槓桿，觀望為主',
+      signal: '🟡'
+    };
+  }
+
+  if (score >= 30) {
+    return {
+      level: 'LOW',
+      desc: '略有 Risk-off 跡象',
+      recommendation: '留意市場變化，保持正常配置',
+      signal: '🟢'
+    };
+  }
+
+  return {
+    level: 'NONE',
+    desc: '市場風險偏好正常',
+    recommendation: '可維持既有配置',
+    signal: '✅'
+  };
+}
+
+/**
+ * 生成 Risk-off 分析報告
+ *
+ * @param {Object} marketData - 市場數據
+ * @param {Array} newsItems - 新聞項目
+ * @returns {Object} 完整的 Risk-off 分析
+ */
+function analyzeRiskOff(marketData, newsItems = []) {
+  const score = calculateRiskOffScore(marketData, newsItems);
+  const level = getRiskOffLevel(score);
+
+  // 詳細分項評分
+  const breakdown = {
+    vix: {
+      value: marketData.vix || 15,
+      contribution: Math.min((marketData.vix || 15) >= 30 ? 30 :
+                             (marketData.vix || 15) >= 20 ? 20 :
+                             (marketData.vix || 15) >= 15 ? 10 : 0, 30)
+    },
+    safeHaven: {
+      gold: marketData.gold?.change || 0,
+      jpy: marketData.usd_jpy?.change || 0,
+      contribution: 0  // 會在下面計算
+    },
+    foreignFlow: {
+      value: marketData.foreign?.netBuy || 0,
+      contribution: 0  // 會在下面計算
+    },
+    marketVolatility: {
+      indexChange: marketData.stockIndex?.change || 0,
+      contribution: 0  // 會在下面計算
+    },
+    newsSentiment: {
+      negativeCount: 0,  // 會在下面計算
+      contribution: 0
+    }
+  };
+
+  // 計算避險資產貢獻
+  const goldChange = marketData.gold?.change || 0;
+  const jpyChange = marketData.usd_jpy?.change || 0;
+
+  if (goldChange > 2.0) breakdown.safeHaven.contribution += 15;
+  else if (goldChange > 1.0) breakdown.safeHaven.contribution += 10;
+  else if (goldChange > 0.5) breakdown.safeHaven.contribution += 5;
+
+  if (jpyChange < -1.0) breakdown.safeHaven.contribution += 10;
+  else if (jpyChange < -0.5) breakdown.safeHaven.contribution += 5;
+
+  // 計算外資貢獻
+  const foreignFlow = marketData.foreign?.netBuy || 0;
+  if (foreignFlow < -10000) breakdown.foreignFlow.contribution = 20;
+  else if (foreignFlow < -5000) breakdown.foreignFlow.contribution = 15;
+  else if (foreignFlow < -1000) breakdown.foreignFlow.contribution = 10;
+
+  // 計算市場波動貢獻
+  const indexChange = marketData.stockIndex?.change || 0;
+  if (indexChange < -3.0) breakdown.marketVolatility.contribution = 15;
+  else if (indexChange < -2.0) breakdown.marketVolatility.contribution = 10;
+  else if (indexChange < -1.0) breakdown.marketVolatility.contribution = 5;
+
+  // 計算新聞情緒貢獻
+  const riskOffKeywords = [
+    '暴跌', '重挫', '恐慌', '崩盤', '避險',
+    'panic', 'crash', 'plunge', 'selloff', 'risk-off'
+  ];
+  const negativeCount = newsItems.filter(n => {
+    const title = typeof n === 'string' ? n : (n.title || '');
+    return riskOffKeywords.some(kw => title.toLowerCase().includes(kw.toLowerCase()));
+  }).length;
+  breakdown.newsSentiment.negativeCount = negativeCount;
+  breakdown.newsSentiment.contribution = Math.min(negativeCount * 2, 10);
+
+  return {
+    score,
+    level: level.level,
+    description: level.desc,
+    recommendation: level.recommendation,
+    signal: level.signal,
+    breakdown,
+    timestamp: new Date().toISOString()
+  };
+}
+
+module.exports = {
+  calculateRiskOffScore,
+  getRiskOffLevel,
+  analyzeRiskOff
+};

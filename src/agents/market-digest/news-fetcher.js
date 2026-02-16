@@ -20,43 +20,21 @@ const path = require('path');
 const { fetchText } = require('./shared/http-client');
 const { createLogger } = require('./shared/logger');
 const Deduplicator = require('./shared/deduplicator');
+const { getConfig } = require("./shared/config-loader");
+
+const config = getConfig();
+const SchemaValidator = require("./shared/schema-validator");
+const validator = new SchemaValidator();
 
 const logger = createLogger('news-fetcher');
 
-// 新聞來源設定
+// 從配置讀取新聞來源
 const NEWS_SOURCES = {
-  core: [
-    {
-      id: 'yahoo-tw',
-      name: 'Yahoo Finance 台股',
-      url: 'https://tw.stock.yahoo.com/rss?category=tw-market',
-      type: 'rss',
-      category: 'Taiwan_Market'
-    },
-    {
-      id: 'cnbc-business',
-      name: 'CNBC Business News',
-      url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147',
-      type: 'rss',
-      category: 'Equity_Market'
-    },
-    {
-      id: 'cnbc-investing',
-      name: 'CNBC Markets',
-      url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069',
-      type: 'rss',
-      category: 'Equity_Market'
-    },
-    {
-      id: 'udn-business',
-      name: '經濟日報',
-      url: 'https://money.udn.com/rssfeed/news/1001/5591/latest',
-      type: 'rss',
-      category: 'Taiwan_Market'
-    }
-  ],
+  core: config.getRSSSources(),
   supplement: []
 };
+
+// 新聞來源設定
 
 // 解析 RSS
 async function parseRSS(xml) {

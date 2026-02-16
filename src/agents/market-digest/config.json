@@ -1,52 +1,198 @@
 {
-  "data_sources": {
+  "version": "1.0",
+  "lastUpdated": "2026-02-17",
+
+  "http": {
+    "timeout": 10000,
+    "retries": 3,
+    "userAgent": "MarketDigest/1.0 (Node.js)",
+    "headers": {
+      "User-Agent": "MarketDigest/1.0 (Node.js)"
+    }
+  },
+
+  "cache": {
+    "enabled": true,
+    "ttl": {
+      "stockInfo": 86400000,
+      "monthlyRevenue": 3600000,
+      "quarterlyReport": 86400000,
+      "dividend": 86400000,
+      "financialRatio": 86400000,
+      "dailyTrade": 3600000,
+      "chipData": 3600000,
+      "marginTrading": 3600000,
+      "institutional": 3600000,
+      "news": 1800000,
+      "marketData": 300000
+    },
+    "maxSize": "100MB",
+    "paths": {
+      "financial": "data/financial-cache",
+      "chip": "data/chip-cache",
+      "news": "data/news-cache"
+    }
+  },
+
+  "deduplication": {
+    "algorithm": "jaccard",
+    "threshold": 0.85,
+    "keywordOverlapMin": 3,
+    "titlePrefixLength": 10,
+    "enabled": true
+  },
+
+  "dataSources": {
+    "rss": [
+      {
+        "id": "yahoo-tw",
+        "name": "Yahoo Finance 台股",
+        "url": "https://tw.stock.yahoo.com/rss?category=tw-market",
+        "type": "rss",
+        "category": "Taiwan_Market",
+        "enabled": true
+      },
+      {
+        "id": "cnbc-business",
+        "name": "CNBC Business News",
+        "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147",
+        "type": "rss",
+        "category": "Equity_Market",
+        "enabled": true
+      },
+      {
+        "id": "cnbc-investing",
+        "name": "CNBC Markets",
+        "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069",
+        "type": "rss",
+        "category": "Equity_Market",
+        "enabled": true
+      },
+      {
+        "id": "udn-business",
+        "name": "經濟日報",
+        "url": "https://money.udn.com/rssfeed/news/1001/5591/latest",
+        "type": "rss",
+        "category": "Taiwan_Market",
+        "enabled": true
+      }
+    ],
+    "api": {
+      "yahoo": {
+        "base": "https://query1.finance.yahoo.com/v8/finance/chart/",
+        "enabled": true
+      },
+      "twse": {
+        "dailyTrade": "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+        "marginTrading": "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN",
+        "institutional": "https://www.twse.com.tw/rwd/zh/fund/T86",
+        "enabled": true
+      },
+      "mops": {
+        "stockInfo": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+        "monthlyRevenue": "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
+        "quarterlyReport": "https://openapi.twse.com.tw/v1/opendata/t187ap14_L",
+        "financialRatio": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L",
+        "enabled": true
+      }
+    },
     "manual_input": {
       "type": "line_group",
       "description": "LINE 群組早報（主要資料源）",
       "enabled": true
-    },
-    "market_data": {
-      "tw_stock": {
-        "provider": "yahoo",
-        "symbol": "^TWII",
-        "enabled": true
-      },
-      "us_stock": {
-        "provider": "yahoo",
-        "symbols": ["^GSPC", "^IXIC", "^DJI"],
-        "enabled": true
-      },
-      "fx": {
-        "provider": "yahoo",
-        "pair": "TWD=X",
-        "enabled": true
-      },
-      "institutional_investors": {
-        "provider": "twse",
-        "enabled": true,
-        "historical_days": 5
-      }
     }
   },
+
+  "logging": {
+    "level": "info",
+    "format": "pretty",
+    "output": "stdout",
+    "errorOutput": "stderr",
+    "file": {
+      "enabled": false,
+      "path": "logs/market-digest.log",
+      "maxSize": "10MB",
+      "maxFiles": 7
+    }
+  },
+
+  "telegram": {
+    "botToken": "${TELEGRAM_BOT_TOKEN}",
+    "chatId": "${TELEGRAM_CHAT_ID}",
+    "enabled": true,
+    "maxMessageLength": 4000,
+    "preview": {
+      "maxItems": 3
+    },
+    "fullReport": {
+      "maxItems": 10
+    }
+  },
+
   "processing": {
     "dedup_threshold": 0.85,
     "min_news_count": 5,
-    "max_age_hours": 24
+    "max_age_hours": 24,
+    "filterKeywords": true,
+    "keywords": [
+      "台積電", "TSMC", "外資", "台股", "美股",
+      "Fed", "AI", "聯發科", "鴻海"
+    ]
   },
-  "technical_indicators": {
+
+  "technicalIndicators": {
     "ma_periods": [5, 20],
     "rsi_period": 14,
     "enabled": true
   },
-  "importance_rules": {
-    "critical_keywords": ["Fed", "央行", "升息", "降息", "台積電", "TSMC"],
-    "high_keywords": ["財報", "法說會", "GDP", "CPI", "聯電", "鴻海", "台股", "加權指數"],
-    "taiwan_keywords": ["台股", "台積電", "聯電", "鴻海", "大立光", "台灣", "TSMC"],
+
+  "importanceRules": {
+    "critical_keywords": [
+      "Fed", "央行", "升息", "降息", "台積電", "TSMC"
+    ],
+    "high_keywords": [
+      "財報", "法說會", "GDP", "CPI", "聯電", "鴻海",
+      "台股", "加權指數"
+    ],
+    "taiwan_keywords": [
+      "台股", "台積電", "聯電", "鴻海", "大立光",
+      "台灣", "TSMC"
+    ],
     "volume_spike_threshold": 1.5,
     "price_change_threshold": 2.0
   },
-  "telegram": {
-    "preview_max_items": 3,
-    "full_report_items": 10
+
+  "paths": {
+    "data": "data",
+    "cache": "data/cache",
+    "output": "data/output",
+    "newsCollect": "data/news-collect",
+    "dailyBrief": "data/daily-brief",
+    "watchlist": "data/watchlist.json",
+    "logs": "logs"
+  },
+
+  "dataRetention": {
+    "news": 30,
+    "marketData": 90,
+    "cache": 7,
+    "logs": 30
+  },
+
+  "sre": {
+    "healthCheck": {
+      "enabled": true,
+      "interval": 300000
+    },
+    "circuitBreaker": {
+      "enabled": true,
+      "threshold": 5,
+      "timeout": 60000,
+      "resetTimeout": 300000
+    },
+    "metrics": {
+      "enabled": true,
+      "collectInterval": 60000
+    }
   }
 }

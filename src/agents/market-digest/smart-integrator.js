@@ -181,19 +181,16 @@ function extractNews(text) {
       }
     });
   }
-  
+
+  return [...new Set(news)]; // 去重
+}
+
 /**
  * 新聞去重（使用統一 Deduplicator）
  */
 function deduplicateNews(lineNews, marketDigestNews) {
   const result = deduplicator.deduplicate(lineNews, marketDigestNews);
   return result.unique;
-}
-
-/**
- * 舊版新聞去重（已廢棄，保留以供參考）
- */
-  return [...new Set(news)]; // 去重
 }
 
 /**
@@ -223,6 +220,37 @@ function deduplicateNews_OLD(lineNews, marketDigestNews) {
   }
   
   return unique;
+}
+
+/**
+ * 載入 AI 分析新聞 (方案 1: 暗數據解鎖)
+ * 從 data/news-analyzed/{date}.json 提取 Top N 高分新聞
+ * @param {string} date - YYYY-MM-DD 格式日期
+ * @param {number} topN - 取前 N 則新聞
+ */
+function loadAIAnalyzedNews(date, topN = 5) {
+  try {
+    const filePath = path.join(__dirname, 'data', 'news-analyzed', `${date}.json`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!data.news || !Array.isArray(data.news)) {
+      return null;
+    }
+    const withAnalysis = data.news.filter(item => item.analysis && item.analysis.importance);
+    const sorted = [...withAnalysis].sort((a, b) => b.analysis.importance - a.analysis.importance);
+    const highScore = withAnalysis.filter(n => n.analysis.importance >= 7).length;
+
+    return {
+      total: data.count || data.news.length,
+      highScore,
+      top: sorted.slice(0, topN)
+    };
+  } catch (err) {
+    logger.error(`⚠️  AI 分析新聞載入失敗: ${err.message}`);
+    return null;
+  }
 }
 
 /**
@@ -272,7 +300,14 @@ async function smartIntegrate(level = 'minimal') {
   const marketRegime = patchResult.regimeSentence; // Driver + Market Behavior
   const secondaryContext = patchResult.secondaryContext; // 補充訊號
   
-  // 5. 生成整合報告（支援分級輸出）
+  // 5. 載入 AI 分析新聞（暗數據解鎖）
+  const today = new Date().toISOString().split('T')[0];
+  const aiNews = loadAIAnalyzedNews(today);
+  if (aiNews) {
+    logger.info(`📰 AI 分析新聞：${aiNews.total} 則 → ${aiNews.highScore} 則(≥7分) → 精選 ${aiNews.top.length} 則`);
+  }
+
+  // 6. 生成整合報告（支援分級輸出）
   const reportData = {
     lineMarketData,
     finalNews,
@@ -280,19 +315,19 @@ async function smartIntegrate(level = 'minimal') {
     marketRegime,
     secondaryContext,
     allText,
-    uniqueLineNews
+    uniqueLineNews,
+    aiNews
   };
-  
+
   const report = generateIntegratedReport(reportData, level);
-  
-  // 6. 儲存報告
+
+  // 7. 儲存報告
   const outputPath = path.join(__dirname, 'data/runtime/morning-report.txt');
   fs.writeFileSync(outputPath, report);
-  
-  // 7. 儲存到時間序列資料庫
+
+  // 8. 儲存到時間序列資料庫
   try {
     const timeseriesStorage = new TimeSeriesStorage();
-    const today = new Date().toISOString().split('T')[0];
     
     await timeseriesStorage.saveReport(today, report, {
       lineMessages: collected.messages.length,
@@ -388,6 +423,14 @@ function generateMinimalReport(data) {
     });
   }
   
+  // AI 精選新聞（暗數據解鎖 - 極簡版）
+  if (data.aiNews && data.aiNews.top.length > 0) {
+    const topItem = data.aiNews.top[0];
+    const title = topItem.title.length > 25 ? topItem.title.substring(0, 25) + '...' : topItem.title;
+    lines.push('');
+    lines.push(`📰 AI精選: ${title}(${topItem.analysis.importance}分)等${data.aiNews.top.length}則`);
+  }
+
   // 提示
   lines.push('');
   lines.push('💬 輸入 /today 查看完整版');
@@ -494,6 +537,34 @@ function generateStandardReport(data) {
     lines.push('');
   }
   
+  // AI 精選新聞（暗數據解鎖）
+  if (data.aiNews && data.aiNews.top.length > 0) {
+    lines.push('━━━━━━━━━━━━━━━━━━');
+    lines.push('📰 AI 精選新聞 | Top 5');
+    lines.push('');
+    data.aiNews.top.forEach((item, i) => {
+      const score = item.analysis.importance;
+      const icon = score >= 10 ? '🔴' : score >= 8 ? '🟡' : '🟢';
+      const title = item.title.length > 50 ? item.title.substring(0, 50) + '...' : item.title;
+      lines.push(`${i + 1}. [${score}] ${icon} ${title}`);
+      if (item.analysis.marketImplication) {
+        const impl = item.analysis.marketImplication.length > 40
+          ? item.analysis.marketImplication.substring(0, 40) + '...'
+          : item.analysis.marketImplication;
+        lines.push(`   影響：${impl}`);
+      }
+      if (item.analysis.tags && item.analysis.tags.length > 0) {
+        lines.push(`   關聯：${item.analysis.tags.join(', ')}`);
+      }
+      if (item.analysis.inWatchlist) {
+        lines.push(`   ⭐ Watchlist 關注股`);
+      }
+    });
+    lines.push('');
+    lines.push(`📊 今日分析 ${data.aiNews.total} 則 → 篩選 ${data.aiNews.highScore} 則(≥7分) → 精選 ${data.aiNews.top.length} 則`);
+    lines.push('');
+  }
+
   // 台灣焦點
   if (marketDigest?.narrative_states?.taiwan_focus) {
     lines.push('🇹🇼 台灣焦點');

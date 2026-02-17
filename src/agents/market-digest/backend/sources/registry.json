@@ -27,6 +27,52 @@
       },
       "outputs": ["news"],
       "dependencies": []
+    },
+    "perplexity": {
+      "name": "perplexity",
+      "version": "1.0.0",
+      "type": "news",
+      "enabled": true,
+      "schema": "news-v1",
+      "config": {
+        "model": "sonar",
+        "baseUrl": "https://api.perplexity.ai",
+        "cacheTtl": 1800000,
+        "timeout": 30000
+      },
+      "outputs": ["news"],
+      "dependencies": [],
+      "envRequired": ["PERPLEXITY_API_KEY"]
+    },
+    "fmp": {
+      "name": "fmp",
+      "version": "1.0.0",
+      "type": "market-data",
+      "enabled": true,
+      "schema": "market-data-v1",
+      "config": {
+        "baseUrl": "https://financialmodelingprep.com/api",
+        "cacheTtl": 1800000,
+        "dailyQuotaLimit": 200
+      },
+      "outputs": ["quotes", "earnings", "gainers"],
+      "dependencies": [],
+      "envRequired": ["FMP_API_KEY"]
+    },
+    "finmind": {
+      "name": "finmind",
+      "version": "1.0.0",
+      "type": "market-data",
+      "enabled": true,
+      "schema": "market-data-v1",
+      "config": {
+        "baseUrl": "https://api.finmindtrade.com/api/v4",
+        "cacheTtl": 3600000,
+        "tw50Filter": true
+      },
+      "outputs": ["taiex", "institutional", "topMovers"],
+      "dependencies": [],
+      "envRequired": ["FINMIND_API_TOKEN"]
     }
   },
   "schemas": {

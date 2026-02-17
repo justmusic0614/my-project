@@ -1,24 +1,45 @@
 // Market Data Fetcher - 協調所有數據源
-// 已更新：使用 Yahoo Finance Plugin，移除舊的 RSS 架構
+// 已更新：整合 Yahoo/Perplexity/FMP/FinMind 四源 Pipeline
 
 const YahooFinancePlugin = require('./sources/plugins/yahoo-finance/plugin');
 const TWSEPlugin = require('./sources/plugins/twse/plugin');
+const PerplexityPlugin = require('./sources/plugins/perplexity/plugin');
+const FMPPlugin = require('./sources/plugins/fmp/plugin');
+const FinMindPlugin = require('./sources/plugins/finmind/plugin');
+const rateLimiter = require('../shared/rate-limiter');
+const costLedger = require('./cost-ledger');
 const fs = require('fs');
 const path = require('path');
 
 class MarketDataFetcher {
   constructor(config) {
     this.config = config;
-    
-    // 初始化 Yahoo Finance Plugin
+
+    // 初始化 rate limiter
+    if (config.rateLimits) {
+      rateLimiter.init(config.rateLimits);
+    }
+
+    // 初始化 cost ledger
+    if (config.costLedger) {
+      costLedger.init(config.costLedger);
+    }
+
+    // 初始化 Yahoo Finance Plugin（fallback）
     this.yahooPlugin = new YahooFinancePlugin({
       baseUrl: 'https://query1.finance.yahoo.com/v8/finance/chart/'
     });
-    
-    // 初始化 TWSE Plugin
+
+    // 初始化 TWSE Plugin（fallback）
     this.twsePlugin = new TWSEPlugin({
       baseUrl: 'https://www.twse.com.tw'
     });
+
+    // 初始化新 Plugins
+    const apiConfig = config.dataSources?.api || {};
+    this.perplexityPlugin = new PerplexityPlugin(apiConfig.perplexity || {});
+    this.fmpPlugin = new FMPPlugin(apiConfig.fmp || {});
+    this.finmindPlugin = new FinMindPlugin(apiConfig.finmind || {});
   }
 
   /**
@@ -128,6 +149,66 @@ class MarketDataFetcher {
       new: 0,
       cached: 0
     };
+  }
+
+  /**
+   * === 四步 Pipeline ===
+   * Step 1: News Fetch（Perplexity + RSS）
+   * Step 2: Market Enrich（FMP 美股 + FinMind 台股）
+   * Step 3: 回傳合併結果（Dedup 由 smart-integrator 處理）
+   */
+  async fetchPipeline() {
+    costLedger.startRun();
+    const results = {
+      news: { perplexity: [], rss: [] },
+      market: { fmp: {}, finmind: {}, yahoo: {} },
+      costSummary: null,
+      errors: []
+    };
+
+    // Step 1 + Step 2 並行：新聞 + 市場數據同時抓
+    const [perplexityResult, fmpResult, finmindResult, yahooResult] = await Promise.allSettled([
+      // Step 1: Perplexity 新聞
+      this.perplexityPlugin.fetch().catch(err => {
+        results.errors.push({ source: 'perplexity', error: err.message });
+        return { news: [], skipped: true };
+      }),
+      // Step 2a: FMP 美股
+      this.fmpPlugin.fetch().catch(err => {
+        results.errors.push({ source: 'fmp', error: err.message });
+        return { quotes: {}, earnings: [], skipped: true };
+      }),
+      // Step 2b: FinMind 台股
+      this.finmindPlugin.fetch().catch(err => {
+        results.errors.push({ source: 'finmind', error: err.message });
+        return { taiex: null, institutional: [], skipped: true };
+      }),
+      // Fallback: Yahoo Finance（現有數據）
+      this.fetchMarketData().catch(err => {
+        results.errors.push({ source: 'yahoo', error: err.message });
+        return {};
+      })
+    ]);
+
+    // 合併結果
+    results.news.perplexity = perplexityResult.status === 'fulfilled'
+      ? (perplexityResult.value.news || [])
+      : [];
+    results.market.fmp = fmpResult.status === 'fulfilled'
+      ? fmpResult.value
+      : {};
+    results.market.finmind = finmindResult.status === 'fulfilled'
+      ? finmindResult.value
+      : {};
+    results.market.yahoo = yahooResult.status === 'fulfilled'
+      ? yahooResult.value
+      : {};
+
+    // 寫入成本記帳
+    const daily = costLedger.flush();
+    results.costSummary = costLedger.getDailySummary();
+
+    return results;
   }
 }
 

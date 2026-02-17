@@ -33,6 +33,7 @@ const RuntimeInputGenerator = require('./backend/runtime-gen');
 const { applyResearchSignalPatch } = require('./research-signal-upgrade-patch');
 const TimeSeriesStorage = require('./backend/timeseries-storage');
 const { loadWatchlist, generateSummary, formatSummary, generateSummaryWithFinancial } = require('./watchlist');
+const costLedger = require('./backend/cost-ledger');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 
@@ -270,29 +271,57 @@ async function smartIntegrate(level = 'minimal') {
   
   logger.info(`📝 LINE 早報：${collected.messages.length} 則，提取 ${lineNews.length} 條新聞`);
   
+  // 2.5. === 四步 Pipeline: News Fetch + Market Enrich ===
+  let pipelineData = null;
+  try {
+    const fetcher = new MarketDataFetcher(config);
+    pipelineData = await fetcher.fetchPipeline();
+
+    const pxCount = pipelineData.news.perplexity.length;
+    const fmpKeys = Object.keys(pipelineData.market.fmp.quotes || {}).length;
+    const fmMovers = (pipelineData.market.finmind.topMovers || []).length;
+    logger.info(`🔗 Pipeline 完成：Perplexity ${pxCount} 則 | FMP ${fmpKeys} 支美股 | FinMind 前 ${fmMovers} 異動股`);
+    if (pipelineData.errors.length > 0) {
+      pipelineData.errors.forEach(e => logger.warn(`⚠️  ${e.source}: ${e.error}`));
+    }
+  } catch (err) {
+    logger.error(`⚠️  Pipeline 失敗（降級為既有資料源）: ${err.message}`);
+  }
+
   // 3. 生成 Market Digest
   let marketDigest = null;
   let marketNews = [];
-  
+
   try {
     const generator = new RuntimeInputGenerator(config);
     const runtimeInput = await generator.generate();
-    
+
     marketDigest = runtimeInput;
-    
+
     // 提取 Market Digest 的新聞（從 normalized_market_summary）
     if (runtimeInput.normalized_market_summary) {
-      marketNews = runtimeInput.normalized_market_summary.filter(item => 
+      marketNews = runtimeInput.normalized_market_summary.filter(item =>
         !item.includes('TAIEX') && !item.includes('S&P') && !item.includes('USD')
       );
     }
   } catch (err) {
     logger.error(`⚠️  Market Digest 生成失敗：${err.message}`);
   }
-  
-  // 4. 新聞去重
-  const uniqueLineNews = deduplicateNews(lineNews, marketNews);
-  logger.info(`🔍 去重後 LINE 新聞：${uniqueLineNews.length} 條`);
+
+  // 3.5. 合併 Perplexity 新聞到去重池
+  if (pipelineData && pipelineData.news.perplexity.length > 0) {
+    const perplexityTitles = pipelineData.news.perplexity.map(n => n.title);
+    marketNews = [...marketNews, ...perplexityTitles];
+    logger.info(`📰 合併 Perplexity ${perplexityTitles.length} 則新聞到去重池`);
+  }
+
+  // 4. 新聞去重（含 Perplexity 來源）
+  const allNewsTitles = [...lineNews];
+  if (pipelineData && pipelineData.news.perplexity.length > 0) {
+    pipelineData.news.perplexity.forEach(n => allNewsTitles.push(n.title));
+  }
+  const uniqueLineNews = deduplicateNews(allNewsTitles, marketNews);
+  logger.info(`🔍 去重後新聞：${uniqueLineNews.length} 條（來源：LINE + Perplexity）`);
   
   // 4.5. 套用 RESEARCH_SIGNAL_UPGRADE_PATCH
   const patchResult = applyResearchSignalPatch(uniqueLineNews);
@@ -328,6 +357,7 @@ async function smartIntegrate(level = 'minimal') {
     allText,
     uniqueLineNews,
     aiNews,
+    pipelineData,
     watchlistRadar
   };
 
@@ -538,7 +568,79 @@ function generateStandardReport(data) {
     });
     lines.push('');
   }
-  
+
+  // Perplexity 研究重點（投資人視角）
+  if (data.pipelineData && data.pipelineData.news.perplexity.length > 0) {
+    lines.push('🔬 Perplexity 研究摘要');
+    lines.push('');
+    data.pipelineData.news.perplexity.slice(0, 5).forEach((news, i) => {
+      const title = news.title.length > 60 ? news.title.substring(0, 60) + '...' : news.title;
+      lines.push(`${i + 1}. ${title}`);
+      if (news.description) {
+        const desc = news.description.length > 80 ? news.description.substring(0, 80) + '...' : news.description;
+        lines.push(`   ${desc}`);
+      }
+    });
+    lines.push('');
+  }
+
+  // FMP 美股報價
+  if (data.pipelineData && data.pipelineData.market.fmp.quotes) {
+    const quotes = data.pipelineData.market.fmp.quotes;
+    const symbols = Object.keys(quotes);
+    if (symbols.length > 0) {
+      lines.push('🇺🇸 美股即時報價（FMP）');
+      lines.push('');
+      symbols.forEach(sym => {
+        const q = quotes[sym];
+        const sign = q.changesPercentage >= 0 ? '▲' : '▼';
+        const pct = Math.abs(q.changesPercentage || 0).toFixed(2);
+        lines.push(`• ${sym}: $${q.price} ${sign}${pct}%`);
+      });
+      lines.push('');
+    }
+
+    // 本周財報日曆
+    const earnings = data.pipelineData.market.fmp.earnings || [];
+    if (earnings.length > 0) {
+      lines.push('📅 本周財報日曆');
+      lines.push('');
+      earnings.slice(0, 5).forEach(e => {
+        lines.push(`• ${e.date} ${e.symbol} (EPS 預估: ${e.epsEstimated || 'N/A'})`);
+      });
+      lines.push('');
+    }
+  }
+
+  // FinMind 台股資料
+  if (data.pipelineData && data.pipelineData.market.finmind) {
+    const fm = data.pipelineData.market.finmind;
+
+    // 加權指數
+    if (fm.taiex) {
+      lines.push('🇹🇼 台股加權指數（FinMind）');
+      lines.push('');
+      const sign = fm.taiex.change >= 0 ? '▲' : '▼';
+      lines.push(`• TAIEX: ${fm.taiex.close} ${sign}${Math.abs(fm.taiex.change || 0)}`);
+      lines.push('');
+    }
+
+    // 0050 成分股外資異動前 10
+    if (fm.topMovers && fm.topMovers.length > 0) {
+      lines.push('📊 0050 外資異動 Top 10');
+      lines.push('');
+      fm.topMovers.forEach((m, i) => {
+        const netSign = m.foreignNetBuy >= 0 ? '買超' : '賣超';
+        const net = Math.abs(m.foreignNetBuy / 1000).toFixed(0);
+        const priceInfo = fm.tw50Prices && fm.tw50Prices[m.stockId]
+          ? ` | ${fm.tw50Prices[m.stockId].close}元 (${fm.tw50Prices[m.stockId].changePct > 0 ? '+' : ''}${fm.tw50Prices[m.stockId].changePct}%)`
+          : '';
+        lines.push(`${i + 1}. ${m.stockId}${priceInfo} — 外資${netSign} ${net} 張`);
+      });
+      lines.push('');
+    }
+  }
+
   // 補充訊號
   if (secondaryContext && secondaryContext.length > 0) {
     lines.push('🔵 補充訊號');
@@ -692,6 +794,11 @@ function generateStandardReport(data) {
     }
   }
   
+  // 成本摘要
+  if (data.pipelineData && data.pipelineData.costSummary) {
+    lines.push(data.pipelineData.costSummary);
+  }
+
   lines.push('━━━━━━━━━━━━━━━━━━');
   lines.push('⚠️ 免責聲明：本報告僅供資訊參考，不構成投資建議');
   lines.push('💬 輸入 /today full 查看原始早報全文');

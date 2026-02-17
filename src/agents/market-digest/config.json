@@ -94,6 +94,26 @@
         "quarterlyReport": "https://openapi.twse.com.tw/v1/opendata/t187ap14_L",
         "financialRatio": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L",
         "enabled": true
+      },
+      "perplexity": {
+        "model": "sonar",
+        "baseUrl": "https://api.perplexity.ai",
+        "cacheTtl": 1800000,
+        "enabled": true
+      },
+      "fmp": {
+        "baseUrl": "https://financialmodelingprep.com/api",
+        "watchlist": ["NVDA","AAPL","MSFT","GOOGL","AMZN","META","AVGO","TSM","AMD","BRK-B","BAC","OXY","CVX","KO","QQQ","SPY"],
+        "cacheTtl": 1800000,
+        "dailyQuotaLimit": 200,
+        "enabled": true
+      },
+      "finmind": {
+        "baseUrl": "https://api.finmindtrade.com/api/v4",
+        "watchlist": ["2330","0050","0056"],
+        "tw50Filter": true,
+        "cacheTtl": 3600000,
+        "enabled": true
       }
     },
     "manual_input": {
@@ -177,6 +197,44 @@
     "marketData": 90,
     "cache": 7,
     "logs": 30
+  },
+
+  "rateLimits": {
+    "perplexity": { "reqPerMin": 5 },
+    "fmp": { "reqPerMin": 10 },
+    "finmind": { "reqPerMin": 25 }
+  },
+
+  "costLedger": {
+    "enabled": true,
+    "dailyBudgetUsd": 1.0,
+    "usdToTwd": 33,
+    "llmPrices": {
+      "haiku_input": 0.00000025,
+      "haiku_output": 0.00000125,
+      "sonnet_input": 0.000003,
+      "sonnet_output": 0.000015
+    }
+  },
+
+  "watchlist": {
+    "us": {
+      "mag7": ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN", "META"],
+      "semiconductor": ["AVGO", "TSM", "AMD"],
+      "berkshire": ["BRK-B", "BAC", "OXY", "CVX", "KO"],
+      "index_etf": ["QQQ", "SPY", "^VIX"]
+    },
+    "tw": {
+      "core": ["2330", "0050", "0056"],
+      "tw50Filter": true
+    }
+  },
+
+  "importancePriority": {
+    "P0_critical": ["Fed", "FOMC", "CPI", "GDP", "央行", "升息", "降息", "衰退", "recession"],
+    "P1_high": ["財報", "earnings", "法說會", "NVIDIA", "台積電", "TSMC", "AI", "半導體", "semiconductor"],
+    "P2_medium": ["外資", "投信", "買超", "賣超", "融資", "融券"],
+    "P3_low": []
   },
 
   "sre": {

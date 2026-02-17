@@ -102,7 +102,7 @@
         "enabled": true
       },
       "fmp": {
-        "baseUrl": "https://financialmodelingprep.com/api",
+        "baseUrl": "https://financialmodelingprep.com",
         "watchlist": ["NVDA","AAPL","MSFT","GOOGL","AMZN","META","AVGO","TSM","AMD","BRK-B","BAC","OXY","CVX","KO","QQQ","SPY"],
         "cacheTtl": 1800000,
         "dailyQuotaLimit": 200,

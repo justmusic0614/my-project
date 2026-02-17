@@ -45,6 +45,8 @@ DATA_DIR="$SCRIPT_DIR/data/runtime"
 HISTORY_DIR="$SCRIPT_DIR/data/history"
 LOG_DIR="$SCRIPT_DIR/logs"
 LATEST_JSON="$DATA_DIR/latest.json"
+COOLDOWN_FILE="$DATA_DIR/cooldown.json"
+COOLDOWN_HOURS="${COOLDOWN_HOURS:-24}"
 
 mkdir -p "$DATA_DIR" "$HISTORY_DIR" "$LOG_DIR"
 
@@ -87,6 +89,53 @@ send_telegram() {
   fi
 }
 
+# 判斷某類型告警是否應推播（考慮冷卻期）
+# CRITICAL 告警永遠推播；MEDIUM/HIGH 在冷卻期內不重複推播
+should_send_alert() {
+  local ALERT_TYPE="$1"
+  local SEVERITY="$2"
+
+  # CRITICAL 永遠推播，不受冷卻限制
+  [ "$SEVERITY" = "CRITICAL" ] && return 0
+
+  # 讀取上次推播時間
+  local LAST_SENT
+  LAST_SENT=$(node -e "
+    try {
+      const d = JSON.parse(require('fs').readFileSync('$COOLDOWN_FILE','utf8'));
+      console.log(d['$ALERT_TYPE'] || '');
+    } catch(e) { console.log(''); }
+  " 2>/dev/null || echo "")
+
+  # 從未推播 → 可推播
+  [ -z "$LAST_SENT" ] && return 0
+
+  # 計算距離上次推播的小時數
+  local HOURS_SINCE
+  HOURS_SINCE=$(node -e "
+    const last = new Date('$LAST_SENT');
+    if (isNaN(last)) { console.log(999); process.exit(0); }
+    console.log(Math.floor((Date.now() - last) / 3600000));
+  " 2>/dev/null || echo "999")
+
+  # 超過冷卻期 → 可推播
+  [ "${HOURS_SINCE:-999}" -ge "$COOLDOWN_HOURS" ] && return 0
+
+  return 1  # 冷卻中，不推播
+}
+
+# 更新冷卻記錄
+update_cooldown() {
+  local ALERT_TYPE="$1"
+  node -e "
+    const f = '$COOLDOWN_FILE';
+    let d = {};
+    try { d = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch(e) {}
+    d['$ALERT_TYPE'] = new Date().toISOString();
+    require('fs').writeFileSync(f, JSON.stringify(d, null, 2));
+  " 2>/dev/null || true
+}
+
 # ==================== 模式：patrol ====================
 
 mode_patrol() {
@@ -114,25 +163,62 @@ mode_patrol() {
   " 2>/dev/null || echo "0")
 
   if [ "$ALERT_COUNT" -gt 0 ]; then
-    # 有異常：生成警報訊息並推播
-    ALERT_MSG=$(node -e "
+    # 逐一判斷每個 alert 是否在冷卻期內
+    SENDABLE_ALERTS=$(node -e "
       const d = JSON.parse(require('fs').readFileSync('$LATEST_JSON', 'utf8'));
       const alerts = d.alerts || [];
-      const hasCritical = alerts.some(a => a.severity === 'CRITICAL');
-      const emoji = hasCritical ? '🔴' : '🟡';
-      const lines = [emoji + ' Security Patrol Alert - $DATE $TIME', ''];
-      alerts.forEach(a => {
-        const e = a.severity === 'CRITICAL' ? '🔴' : a.severity === 'HIGH' ? '🟠' : '🟡';
-        const msg = JSON.stringify(a.data || {}).replace(/[\"{}]/g,'').slice(0,80);
-        lines.push(e + ' ' + a.type + ': ' + msg);
-      });
-      lines.push('');
-      lines.push('共 ' + alerts.length + ' 個異常');
-      console.log(lines.join('\n'));
-    " 2>/dev/null || echo "Security Patrol: $ALERT_COUNT 個異常（$DATE $TIME）")
+      // 輸出格式: TYPE:SEVERITY，每行一個
+      alerts.forEach(a => console.log(a.type + ':' + (a.severity || 'MEDIUM')));
+    " 2>/dev/null || echo "")
 
-    send_telegram "$ALERT_MSG" || true
-    log "⚠️  告警已推播（$ALERT_COUNT 個異常）"
+    ALERTS_TO_SEND=""
+    SENT_TYPES=""
+    while IFS= read -r ALERT_LINE; do
+      [ -z "$ALERT_LINE" ] && continue
+      ALERT_TYPE="${ALERT_LINE%%:*}"
+      ALERT_SEV="${ALERT_LINE##*:}"
+      if should_send_alert "$ALERT_TYPE" "$ALERT_SEV"; then
+        ALERTS_TO_SEND="${ALERTS_TO_SEND}${ALERT_LINE}\n"
+        SENT_TYPES="${SENT_TYPES}${ALERT_TYPE} "
+      fi
+    done <<< "$SENDABLE_ALERTS"
+
+    if [ -n "$ALERTS_TO_SEND" ]; then
+      # 生成告警訊息（包含套件名稱等詳細資訊）
+      ALERT_MSG=$(node -e "
+        const d = JSON.parse(require('fs').readFileSync('$LATEST_JSON', 'utf8'));
+        const alerts = d.alerts || [];
+        const hasCritical = alerts.some(a => a.severity === 'CRITICAL');
+        const emoji = hasCritical ? '🔴' : '🟡';
+        const lines = [emoji + ' Security Patrol Alert - $DATE $TIME', ''];
+        alerts.forEach(a => {
+          const e = a.severity === 'CRITICAL' ? '🔴' : a.severity === 'HIGH' ? '🟠' : '🟡';
+          lines.push(e + ' ' + a.type.toUpperCase());
+          if (a.type === 'updates' && a.data && a.data.security_packages && a.data.security_packages.length > 0) {
+            lines.push('  套件: ' + a.data.security_packages.join(', '));
+            lines.push('  需 root: sudo apt upgrade ' + a.data.security_packages.join(' '));
+          } else if (a.type === 'firewall' && a.data && a.data.open_ports) {
+            lines.push('  監聽 port: ' + a.data.open_ports.slice(0,10).join(', '));
+          } else {
+            const msg = JSON.stringify(a.data || {}).replace(/[\"{}\[\]]/g,'').slice(0,80);
+            lines.push('  ' + msg);
+          }
+        });
+        lines.push('');
+        lines.push('共 ' + alerts.length + ' 個異常');
+        console.log(lines.join('\n'));
+      " 2>/dev/null || echo "Security Patrol: $ALERT_COUNT 個異常（$DATE $TIME）")
+
+      send_telegram "$ALERT_MSG" || true
+      log "⚠️  告警已推播（$ALERT_COUNT 個異常）"
+
+      # 更新已推播告警的冷卻記錄
+      for SENT_TYPE in $SENT_TYPES; do
+        update_cooldown "$SENT_TYPE"
+      done
+    else
+      log "✅ 巡邏完成，$ALERT_COUNT 個異常已在冷卻期內（${COOLDOWN_HOURS}h 內不重複推播）"
+    fi
   else
     log "✅ 巡邏完成，無異常"
   fi
@@ -202,9 +288,11 @@ mode_report() {
     DEBT_LINES="${DEBT_LINES}✅ 磁碟 ${DISK_PCT}%\n"
   fi
 
-  # 項目 2：.bak 備份檔 >5 個
+  # 項目 2：.bak 備份檔 >5 個（排除 backups/ 歸檔目錄，避免誤計）
   BAK_COUNT=$(find "$WORKSPACE" -maxdepth 4 \( -name "*.bak" -o -name "*.BAK" -o -name "*.backup" \) \
-    -not -path "*/node_modules/*" 2>/dev/null | wc -l | tr -d ' ')
+    -not -path "*/node_modules/*" \
+    -not -path "*/backups/*" \
+    2>/dev/null | wc -l | tr -d ' ')
   if [ "${BAK_COUNT:-0}" -gt 5 ]; then
     DEBT_LINES="${DEBT_LINES}⚠️ 備份檔累積 ${BAK_COUNT} 個（>5）\n"
     DEBT_ISSUES=$((DEBT_ISSUES + 1))
@@ -256,6 +344,16 @@ mode_report() {
     DEBT_LINES="${DEBT_LINES}✅ 大型代碼檔 ${BIG_FILE_COUNT} 個\n"
   fi
 
+  # 項目 7：過期 phase-cleanup 備份目錄 >7 天（佔磁碟空間）
+  PHASE_CLEANUP_COUNT=$(find "$WORKSPACE/backups" -maxdepth 1 -type d -name "phase*-cleanup-*" \
+    -mtime +7 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${PHASE_CLEANUP_COUNT:-0}" -gt 0 ]; then
+    DEBT_LINES="${DEBT_LINES}⚠️ 過期 cleanup 備份 ${PHASE_CLEANUP_COUNT} 個（>7天，建議清理）\n"
+    DEBT_ISSUES=$((DEBT_ISSUES + 1))
+  else
+    DEBT_LINES="${DEBT_LINES}✅ 無過期 cleanup 備份\n"
+  fi
+
   # 4. 組合完整日報並推播
   log "  [3/3] 推播日報..."
   DEBT_STATUS_ICON="✅"
@@ -266,8 +364,8 @@ mode_report() {
 【資安巡邏】
 $PATROL_SUMMARY
 
-【技術債掃描】 $DEBT_STATUS_ICON ($DEBT_ISSUES/6 項異常)
-$(echo -e "$DEBT_LINES" | head -12)
+【技術債掃描】 $DEBT_STATUS_ICON ($DEBT_ISSUES/7 項異常)
+$(echo -e "$DEBT_LINES" | head -14)
 ━━━━━━━━━━━━━━━━━━
 ⚠️ 免責聲明：本報告僅供運維參考
 📡 Security Patrol + Tech Debt Monitor"

@@ -1,7 +1,8 @@
 {
   "patrol": {
-    "interval_minutes": 60,
-    "daily_report_time": "08:00"
+    "interval_minutes": 120,
+    "daily_report_time": "08:00",
+    "alert_cooldown_hours": 24
   },
   "thresholds": {
     "ssh_failed_logins": 10,

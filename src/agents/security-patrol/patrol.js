@@ -53,49 +53,45 @@ const monitors = {
   
   updates: () => {
     const updates = exec('apt list --upgradable 2>/dev/null | grep -v "Listing" | wc -l');
-    const securityUpdates = exec('apt list --upgradable 2>/dev/null | grep -i security | wc -l');
-    
+    const securityList = exec('apt list --upgradable 2>/dev/null | grep -i security | head -5');
+    const securityPackages = securityList
+      .split('\n')
+      .filter(l => l.trim() && l !== 'Listing...')
+      .map(l => l.split('/')[0])
+      .filter(Boolean);
+
     return {
-      total_updates: parseInt(updates),
-      security_updates: parseInt(securityUpdates),
-      alert: parseInt(securityUpdates) > 0
+      total_updates: parseInt(updates) || 0,
+      security_updates: securityPackages.length,
+      security_packages: securityPackages,
+      alert: securityPackages.length > 0
     };
   },
   
   firewall: () => {
     const ufwInstalled = exec('which ufw 2>/dev/null').length > 0;
-    
-    if (!ufwInstalled) {
-      // ufw 未安裝
-      return {
-        active: false,
-        status: 'ufw not installed',
-        firewall_type: 'none',
-        alert: false,  // 降低為不警報（可能是雲端服務商層級防火牆）
-        note: 'ufw 未安裝，假設使用雲端服務商防火牆'
-      };
-    }
-    
-    const status = exec('ufw status 2>/dev/null || echo "permission denied"');
-    
-    if (status.includes('permission denied') || status.includes('ERROR')) {
-      // 權限不足，無法檢測
-      return {
-        active: null,
-        status: 'unable to check (permission denied)',
-        firewall_type: 'ufw',
-        alert: false,  // 不警報（無法確定）
-        note: '需要 sudo 權限才能檢測 ufw 狀態'
-      };
-    }
-    
-    const active = status.includes('Status: active');
-    
+    const ufwStatus = ufwInstalled
+      ? exec('ufw status 2>/dev/null || echo "permission denied"')
+      : 'not installed';
+
+    // 收集監聽 port（ss 不需要 sudo，提供資訊性資料）
+    const openPorts = exec(
+      "ss -tuln 2>/dev/null | grep LISTEN | awk '{print $5}' | grep -oE ':[0-9]+' | sort -t: -k2 -n | uniq"
+    ).split('\n').map(p => p.replace(':', '')).filter(Boolean);
+
+    const canCheck = ufwInstalled
+      && !ufwStatus.includes('permission denied')
+      && !ufwStatus.includes('not installed');
+    const isActive = canCheck && ufwStatus.includes('Status: active');
+
     return {
-      active,
-      status: status.split('\n').slice(0, 10).join('\n'),
-      firewall_type: 'ufw',
-      alert: !active
+      firewall_type: ufwInstalled ? 'ufw' : 'none',
+      status: canCheck ? (isActive ? 'active' : 'inactive') : 'unable to check (no sudo)',
+      active: canCheck ? isActive : null,
+      open_ports: openPorts,
+      listening_ports_count: openPorts.length,
+      alert: canCheck && !isActive,  // 只在確認 inactive 時告警
+      note: canCheck ? '' : `ss -tuln 顯示 ${openPorts.length} 個監聽 port（ufw 需 sudo 才能檢測）`
     };
   },
   
@@ -283,6 +279,10 @@ function generateReport(results, mode = 'alert') {
           break;
         case 'updates':
           lines.push(`${icon} 更新 | ${alert.data.security_updates} 個安全性更新`);
+          if (alert.data.security_packages && alert.data.security_packages.length > 0) {
+            lines.push(`  套件: ${alert.data.security_packages.join(', ')}`);
+            lines.push(`  ⚠️ 需 root: sudo apt upgrade ${alert.data.security_packages.join(' ')}`);
+          }
           break;
       }
     });
@@ -331,11 +331,9 @@ if (require.main === module) {
   if (mode === 'patrol') {
     const results = patrol();
     
-    // 如果有異常且啟用即時警報，推播
-    if (results.alerts.length > 0 && config.telegram.enable_instant_alerts) {
-      const report = generateReport(results, 'alert');
-      console.log('\n--- 警報報告 ---\n' + report);
-      // TODO: 推播到 Telegram（需要整合 Clawdbot message tool）
+    // 推播由 patrol-wrapper.sh 負責（讀取 latest.json 中的 alerts）
+    if (results.alerts.length > 0) {
+      console.log(`⚠️  ${results.alerts.length} 個異常（見 data/runtime/latest.json）`);
     }
   } else if (mode === 'report') {
     const results = JSON.parse(fs.readFileSync(RUNTIME_PATH, 'utf8'));

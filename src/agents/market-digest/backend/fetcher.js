@@ -114,6 +114,45 @@ class MarketDataFetcher {
   }
 
   /**
+   * Yahoo Finance Fallback：取得美股 watchlist 報價
+   * 在 FMP 不可用時自動啟用，並行抓取，轉換成 FMP quotes 格式
+   */
+  async _fetchYahooFallbackQuotes() {
+    // 優先取 FMP watchlist，否則用預設
+    const watchlist = this.fmpPlugin.watchlist || ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'QQQ', 'SPY'];
+    // 過濾 Yahoo Finance 不支援的符號（BRK-B 要用 BRK-B，^VIX 要保留 ^）
+    const ySymbols = watchlist.filter(s => !s.includes('.'));
+
+    const results = await Promise.allSettled(
+      ySymbols.map(async symbol => {
+        try {
+          const r = await this.yahooPlugin.fetchMarketData(symbol);
+          if (r && r.data) {
+            return {
+              symbol,
+              price: r.data.close,
+              change: r.data.change,
+              changesPercentage: r.data.changePct,
+              source: 'yahoo_fallback'
+            };
+          }
+        } catch (_) {
+          // 個別失敗不影響整體
+        }
+        return null;
+      })
+    );
+
+    const quotes = {};
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) {
+        quotes[r.value.symbol] = r.value;
+      }
+    }
+    return quotes;
+  }
+
+  /**
    * 載入快取（保留以相容舊代碼）
    */
   loadCache(file) {
@@ -203,6 +242,18 @@ class MarketDataFetcher {
     results.market.yahoo = yahooResult.status === 'fulfilled'
       ? yahooResult.value
       : {};
+
+    // FMP Quotes Fallback：若 FMP 報價為空（403 或未設定 API key），改用 Yahoo Finance
+    const fmpQuotes = results.market.fmp && results.market.fmp.quotes;
+    if (!fmpQuotes || Object.keys(fmpQuotes).length === 0) {
+      const yahooQuotes = await this._fetchYahooFallbackQuotes();
+      if (Object.keys(yahooQuotes).length > 0) {
+        if (!results.market.fmp) results.market.fmp = {};
+        results.market.fmp.quotes = yahooQuotes;
+        results.market.fmp.source = 'yahoo_fallback';
+        console.log(`[FMP Fallback] Yahoo Finance 補充 ${Object.keys(yahooQuotes).length} 支美股報價`);
+      }
+    }
 
     // 寫入成本記帳
     const daily = costLedger.flush();

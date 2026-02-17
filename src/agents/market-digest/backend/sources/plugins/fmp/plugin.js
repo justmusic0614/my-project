@@ -47,7 +47,7 @@ class FMPPlugin extends DataSourceAdapter {
 
     const results = { quotes: {}, earnings: [], gainers: [], source: 'fmp' };
 
-    // Call 1: 批次報價（1 call = 所有 watchlist）
+    // Call 1~N: 單支報價並行（免費版不支援批次，每支 1 call）
     const quotesCacheKey = `fmp-quotes-${this.watchlist.join('-')}`;
     const cachedQuotes = this.cache.get(quotesCacheKey, this.cacheTtl);
     if (cachedQuotes) {
@@ -59,9 +59,10 @@ class FMPPlugin extends DataSourceAdapter {
         const quotes = await this._fetchQuotes(this.watchlist);
         results.quotes = quotes;
         this.cache.set(quotesCacheKey, quotes, { pretty: true });
+        const fetchedCount = Object.keys(quotes).length;
         costLedger.recordApiCall('fmp');
-        costLedger.incrementFmpQuota();
-        logger.info(`FMP 取得 ${Object.keys(quotes).length} 支股票報價`);
+        costLedger.incrementFmpQuota(fetchedCount); // 每支 1 call
+        logger.info(`FMP 取得 ${fetchedCount} 支股票報價（${fetchedCount} calls）`);
       } catch (err) {
         logger.error('FMP 報價失敗', err);
       }
@@ -112,30 +113,45 @@ class FMPPlugin extends DataSourceAdapter {
   }
 
   /**
-   * 批次報價（1 call = N symbols）
+   * 單支報價並行查詢（免費版不支援批次 ?symbols=，改用 ?symbol= 逐一並行）
+   * 每支 1 call，watchlist 16 支 = 16 calls/run，遠低於 250/day 上限
    */
   async _fetchQuotes(symbols) {
-    const symbolStr = symbols.join(',');
-    const url = `${this.baseUrl}/stable/quote?symbols=${symbolStr}&apikey=${this.apiKey}`;
-    const data = await this._httpsGet(url);
+    const results = await Promise.allSettled(
+      symbols.map(async symbol => {
+        const url = `${this.baseUrl}/stable/quote?symbol=${encodeURIComponent(symbol)}&apikey=${this.apiKey}`;
+        try {
+          const data = await this._httpsGet(url);
+          if (data && data.length > 0) {
+            const q = data[0];
+            return {
+              symbol: q.symbol,
+              name: q.name,
+              price: q.price,
+              change: q.change,
+              changesPercentage: q.changesPercentage,
+              dayLow: q.dayLow,
+              dayHigh: q.dayHigh,
+              volume: q.volume,
+              avgVolume: q.avgVolume,
+              marketCap: q.marketCap,
+              pe: q.pe,
+              eps: q.eps,
+              timestamp: q.timestamp
+            };
+          }
+        } catch (err) {
+          logger.warn(`FMP 單支報價失敗 ${symbol}: ${err.message}`);
+        }
+        return null;
+      })
+    );
 
     const quotes = {};
-    for (const q of data) {
-      quotes[q.symbol] = {
-        symbol: q.symbol,
-        name: q.name,
-        price: q.price,
-        change: q.change,
-        changesPercentage: q.changesPercentage,
-        dayLow: q.dayLow,
-        dayHigh: q.dayHigh,
-        volume: q.volume,
-        avgVolume: q.avgVolume,
-        marketCap: q.marketCap,
-        pe: q.pe,
-        eps: q.eps,
-        timestamp: q.timestamp
-      };
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) {
+        quotes[r.value.symbol] = r.value;
+      }
     }
     return quotes;
   }

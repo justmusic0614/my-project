@@ -1,4 +1,9 @@
 #!/bin/bash
+# @deprecated 2026-02-17
+# 此腳本已廢棄。功能由 ~/clawd/agents/security-patrol/patrol-wrapper.sh 覆蓋（更完整）
+# 原因：security-patrol agent 監控 8 項系統指標，涵蓋並超越此腳本的代碼掃描功能
+# 可於 2026-08-17 後刪除
+#
 # Security Patrol - 每 2 小时巡逻检查
 # 执行时间：每天 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
 # （避免深夜打扰：00:00-06:00 不执行）

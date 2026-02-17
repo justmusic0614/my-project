@@ -1,4 +1,11 @@
 #!/bin/bash
+# @deprecated 2026-02-17
+# 此腳本已廢棄。Cron 設定由以下腳本分別管理：
+#   - Market Digest 晨報/週報：~/clawd/agents/market-digest/setup-sre-cron.sh
+#   - Security Patrol：~/clawd/agents/security-patrol/setup-cron.sh
+# 原因：舊排程（security-patrol.sh + morning-summary.sh）已廢棄，避免衝突
+# 可於 2026-08-17 後刪除
+#
 # Setup Security Patrol Cron Jobs
 
 echo "Setting up security patrol cron jobs..."

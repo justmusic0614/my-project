@@ -1,0 +1,53 @@
+{
+  "services": {
+    "market-digest": {
+      "type": "skill",
+      "path": "/home/clawbot/clawd/skills/market-digest",
+      "service": null,
+      "git": true,
+      "npm": false,
+      "healthCheck": {
+        "script": "node scripts/smart-integrator.js --check"
+      }
+    },
+    "knowledge-digest": {
+      "type": "agent",
+      "path": "/home/clawbot/clawd/agents/knowledge-digest",
+      "service": null,
+      "git": false,
+      "npm": false,
+      "healthCheck": {
+        "script": "node scripts/digest.js stats"
+      }
+    },
+    "security-patrol": {
+      "type": "agent",
+      "path": "/home/clawbot/security-patrol",
+      "service": null,
+      "git": false,
+      "npm": false,
+      "healthCheck": {
+        "script": "node patrol.js status"
+      }
+    },
+    "clawdbot-gateway": {
+      "type": "systemd",
+      "service": "clawdbot-gateway.service",
+      "path": null,
+      "git": false,
+      "npm": false,
+      "healthCheck": {
+        "systemd": true
+      }
+    }
+  },
+  "backup": {
+    "enabled": true,
+    "path": "/home/clawbot/clawd/agents/deploy-monitor/backups",
+    "keep": 5
+  },
+  "monitoring": {
+    "interval_minutes": 5,
+    "telegram_alerts": true
+  }
+}

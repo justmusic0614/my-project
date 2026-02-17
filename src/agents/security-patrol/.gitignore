@@ -1,0 +1,4 @@
+data/runtime/latest.json
+data/history/*.json
+data/history/*.jsonl
+logs/*.log

@@ -1,4 +1,9 @@
 #!/bin/bash
+# @deprecated 2026-02-17
+# 此腳本已廢棄。功能整合至 ~/clawd/agents/security-patrol/patrol-wrapper.sh report 模式
+# 原因：每日 SRE 日報（含技術債掃描）統一由 security-patrol agent 負責
+# 可於 2026-08-17 後刪除
+#
 # Morning Summary - 早上 8:00 汇总深夜巡逻结果
 # 只在发现问题时推送通知
 

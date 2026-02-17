@@ -116,7 +116,7 @@ class FMPPlugin extends DataSourceAdapter {
    */
   async _fetchQuotes(symbols) {
     const symbolStr = symbols.join(',');
-    const url = `${this.baseUrl}/v3/quote/${symbolStr}?apikey=${this.apiKey}`;
+    const url = `${this.baseUrl}/stable/quote?symbols=${symbolStr}&apikey=${this.apiKey}`;
     const data = await this._httpsGet(url);
 
     const quotes = {};
@@ -147,7 +147,7 @@ class FMPPlugin extends DataSourceAdapter {
     const today = new Date();
     const from = today.toISOString().slice(0, 10);
     const to = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
-    const url = `${this.baseUrl}/v3/earning_calendar?from=${from}&to=${to}&apikey=${this.apiKey}`;
+    const url = `${this.baseUrl}/stable/earning-calendar?from=${from}&to=${to}&apikey=${this.apiKey}`;
     const data = await this._httpsGet(url);
 
     // 只保留 watchlist 裡的或市值前 50 大
@@ -168,7 +168,7 @@ class FMPPlugin extends DataSourceAdapter {
    * 漲幅榜
    */
   async _fetchGainers() {
-    const url = `${this.baseUrl}/v3/stock_market/gainers?apikey=${this.apiKey}`;
+    const url = `${this.baseUrl}/stable/stock-market-gainers?apikey=${this.apiKey}`;
     const data = await this._httpsGet(url);
     return (data || []).slice(0, 10).map(g => ({
       symbol: g.symbol,

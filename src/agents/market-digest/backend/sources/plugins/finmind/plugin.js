@@ -188,7 +188,8 @@ class FinMindPlugin extends DataSourceAdapter {
   async _fetchInstitutionalInvestors(date) {
     const params = new URLSearchParams({
       dataset: 'TaiwanStockInstitutionalInvestorsBuySell',
-      date,
+      start_date: date,
+      end_date: date,
       token: this.apiToken
     });
     const url = `${this.baseUrl}/data?${params}`;

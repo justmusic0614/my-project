@@ -167,37 +167,77 @@ router.post('/webhook', asyncHandler(async (req, res) => {
  * GET /api/telegram/health
  *
  * Health check endpoint for monitoring
- * Tests OpenClaw availability by sending a ping message
+ * 直接呼叫 Telegram getMe API（輕量級，< 1 秒）
+ * 不依賴 OpenClaw，避免 LLM 啟動延遲導致誤報
  */
 router.get('/health', asyncHandler(async (req, res) => {
-  const health = {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    checks: {}
-  };
+  const timeoutMs = 8000;  // 每次嘗試 8 秒
+  const maxRetries = 2;    // 最多重試 2 次（指數退避：500ms, 1000ms）
 
-  // Check OpenClaw availability
-  try {
-    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
-    const openclawPath = `${nvmBinDir}/openclaw`;
-    const env = { ...process.env, PATH: `${nvmBinDir}:${process.env.PATH || ''}` };
-
-    execSync(`${openclawPath} agent --agent main --channel telegram --message "ping" --json --timeout 10`, {
-      encoding: 'utf8',
-      timeout: 15000,
-      env,
-      shell: '/bin/bash'
+  function attemptGetMe(retryCount) {
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.telegram.org',
+        path: `/bot${BOT_TOKEN}/getMe`,
+        method: 'GET',
+        timeout: timeoutMs
+      }, (response) => {
+        let data = '';
+        response.on('data', chunk => { data += chunk; });
+        response.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.ok) {
+              resolve({ botName: json.result.username });
+            } else {
+              reject(new Error(`Telegram API error: ${json.description}`));
+            }
+          } catch (e) {
+            reject(new Error('Invalid JSON response from Telegram'));
+          }
+        });
+      });
+      req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+      req.on('error', reject);
+      req.end();
     });
-
-    health.checks.openclaw = 'ok';
-  } catch (error) {
-    health.checks.openclaw = 'error';
-    health.checks.openclawError = error.message;
-    health.status = 'degraded';
   }
 
-  const statusCode = health.status === 'ok' ? 200 : 503;
-  res.status(statusCode).json(health);
+  async function checkTelegramApi() {
+    for (let i = 0; i <= maxRetries; i++) {
+      try {
+        return await attemptGetMe(i);
+      } catch (err) {
+        if (i === maxRetries) throw err;
+        // 指數退避：第 1 次等 500ms，第 2 次等 1000ms
+        await new Promise(r => setTimeout(r, 500 * Math.pow(2, i)));
+      }
+    }
+  }
+
+  try {
+    const result = await checkTelegramApi();
+    // 永遠回傳 HTTP 200，由 body 的 status 表達健康程度
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      checks: {
+        telegram_api: 'ok',
+        botName: result.botName
+      }
+    });
+  } catch (err) {
+    console.warn('[Telegram Health] API check failed:', err.message);
+    // 永遠回傳 HTTP 200（不是 503），讓 health-check.js 可以正確解析 body
+    res.status(200).json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      checks: {
+        telegram_api: 'error',
+        telegramError: err.message
+      }
+    });
+  }
 }));
 
 module.exports = router;

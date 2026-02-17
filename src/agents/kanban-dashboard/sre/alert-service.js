@@ -1,14 +1,68 @@
 // Alert Service for Kanban Dashboard
 // 透過 Telegram Bot API 發送告警通知
 
+const fs = require('fs');
+const path = require('path');
 const https = require('https');
+
+// 告警狀態持久化檔案（解決 cron 每次重建實例導致 cooldown 失效的問題）
+const ALERT_STATE_FILE = path.join(__dirname, '../logs/health/alert-state.json');
 
 class AlertService {
   constructor(options = {}) {
     this.botToken = options.botToken || process.env.TELEGRAM_BOT_TOKEN;
     this.chatId = options.chatId || process.env.TELEGRAM_ALERT_CHAT_ID;
-    this.recentAlerts = new Map(); // 用於防止告警風暴
-    this.cooldownMs = options.cooldownMs || 5 * 60 * 1000; // 預設 5 分鐘冷卻時間
+    this.cooldownMs = options.cooldownMs || 15 * 60 * 1000; // 15 分鐘（從 5 分鐘改為 15 分鐘）
+    this.recentAlerts = new Map();
+
+    // 讀取持久化的告警狀態（解決 cron 重建實例問題）
+    this._loadState();
+  }
+
+  /**
+   * 從檔案載入告警狀態（cooldown 持久化）
+   */
+  _loadState() {
+    try {
+      if (fs.existsSync(ALERT_STATE_FILE)) {
+        const saved = JSON.parse(fs.readFileSync(ALERT_STATE_FILE, 'utf8'));
+        const now = Date.now();
+
+        // 還原 recentAlerts（過濾掉已過期的）
+        for (const [key, ts] of Object.entries(saved.recentAlerts || {})) {
+          if (now - ts < this.cooldownMs) {
+            this.recentAlerts.set(key, ts);
+          }
+        }
+
+        if (this.recentAlerts.size > 0) {
+          console.log(`[Alert] Loaded ${this.recentAlerts.size} active cooldown(s) from state file`);
+        }
+      }
+    } catch (err) {
+      console.warn(`[Alert] Could not load state: ${err.message}`);
+    }
+  }
+
+  /**
+   * 儲存告警狀態到檔案（確保 cron 下次執行時 cooldown 仍有效）
+   */
+  _saveState() {
+    try {
+      const dir = path.dirname(ALERT_STATE_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const state = {
+        recentAlerts: Object.fromEntries(this.recentAlerts),
+        savedAt: new Date().toISOString()
+      };
+
+      fs.writeFileSync(ALERT_STATE_FILE, JSON.stringify(state, null, 2));
+    } catch (err) {
+      console.warn(`[Alert] Could not save state: ${err.message}`);
+    }
   }
 
   /**
@@ -16,12 +70,14 @@ class AlertService {
    * @param {string} message - 告警訊息
    * @param {string} level - 嚴重度 (INFO, WARNING, ERROR, CRITICAL)
    * @param {object} details - 額外詳細資訊
+   * @param {string} alertType - 固定的告警類型（用於 cooldown key，避免動態 message 導致 cooldown 失效）
    */
-  async sendAlert(message, level = 'INFO', details = {}) {
-    // 檢查是否應該跳過（防止告警風暴）
-    const alertKey = `${level}:${message}`;
+  async sendAlert(message, level = 'INFO', details = {}, alertType = 'default') {
+    // 使用固定的 alertType 作為 cooldown key（不包含動態 message）
+    const alertKey = `${level}:${alertType}`;
+
     if (this.shouldSkipAlert(alertKey)) {
-      console.log(`[Alert] Skipping duplicate alert: ${alertKey}`);
+      console.log(`[Alert] Skipping duplicate alert (cooldown): ${alertKey}`);
       return { skipped: true, reason: 'cooldown' };
     }
 
@@ -33,6 +89,9 @@ class AlertService {
 
       // 記錄此告警，防止短時間內重複發送
       this.recentAlerts.set(alertKey, Date.now());
+
+      // 持久化狀態（確保 cron 下次執行時 cooldown 仍有效）
+      this._saveState();
 
       console.log(`[Alert] Sent ${level} alert successfully`);
       return { success: true, level, message };
@@ -53,6 +112,8 @@ class AlertService {
 
     const elapsed = Date.now() - lastSent;
     if (elapsed < this.cooldownMs) {
+      const remainingMinutes = Math.ceil((this.cooldownMs - elapsed) / 60000);
+      console.log(`[Alert] Cooldown active, ${remainingMinutes} min remaining for: ${alertKey}`);
       return true; // 冷卻時間內，跳過
     }
 
@@ -159,6 +220,7 @@ class AlertService {
         this.recentAlerts.delete(key);
       }
     }
+    this._saveState();
   }
 }
 

@@ -222,7 +222,7 @@ function registerKanbanDashboardChecks(healthCheck) {
         port: 3001,
         path: '/api/telegram/health',
         method: 'GET',
-        timeout: 20000
+        timeout: 12000  // 小於 check timeout(15000)，確保 req timeout 先觸發
       }, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
@@ -232,10 +232,14 @@ function registerKanbanDashboardChecks(healthCheck) {
             if (res.statusCode === 200 && result.status === 'ok') {
               resolve({
                 statusCode: res.statusCode,
-                openclawCheck: result.checks?.openclaw || 'unknown'
+                telegram_api: result.checks?.telegram_api || 'ok',
+                botName: result.checks?.botName || 'unknown'
               });
+            } else if (res.statusCode === 200 && result.status === 'degraded') {
+              // Telegram API 有問題但 health endpoint 正常 → 標記為 UNHEALTHY
+              reject(new Error(`Telegram API degraded: ${result.checks?.telegramError || 'unknown'}`));
             } else {
-              reject(new Error(`HTTP ${res.statusCode}, status: ${result.status}`));
+              reject(new Error(`HTTP ${res.statusCode}, status: ${result.status || 'unknown'}`));
             }
           } catch (err) {
             reject(new Error(`Parse error: ${err.message}`));
@@ -243,14 +247,17 @@ function registerKanbanDashboardChecks(healthCheck) {
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        req.destroy();
+        reject(err);
+      });
       req.on('timeout', () => {
         req.destroy();
         reject(new Error('Request timeout'));
       });
       req.end();
     });
-  }, { critical: true, timeout: 25000 });
+  }, { critical: false, timeout: 15000 });  // critical: false — Telegram 連通性不是系統 CRITICAL
 
   // 2. 檢查 PM2 進程狀態
   healthCheck.register('pm2-status', async () => {

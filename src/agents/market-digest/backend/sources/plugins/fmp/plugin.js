@@ -219,6 +219,9 @@ class FMPPlugin extends DataSourceAdapter {
             } catch (e) {
               reject(new Error(`FMP JSON parse error: ${e.message}`));
             }
+          } else if (res.statusCode === 404) {
+            // 免費版不支援的 endpoint 回傳 404，靜默回傳空陣列
+            resolve([]);
           } else {
             reject(new Error(`FMP API ${res.statusCode}: ${data.slice(0, 200)}`));
           }

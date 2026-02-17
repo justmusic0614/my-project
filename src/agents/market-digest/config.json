@@ -217,6 +217,12 @@
     }
   },
 
+  "twoStageSummarize": {
+    "enabled": true,
+    "stage1Model": "claude-haiku-4-5-20251001",
+    "stage2Model": "claude-sonnet-4-5-20250929"
+  },
+
   "watchlist": {
     "us": {
       "mag7": ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN", "META"],

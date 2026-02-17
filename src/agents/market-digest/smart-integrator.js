@@ -34,6 +34,7 @@ const { applyResearchSignalPatch } = require('./research-signal-upgrade-patch');
 const TimeSeriesStorage = require('./backend/timeseries-storage');
 const { loadWatchlist, generateSummary, formatSummary, generateSummaryWithFinancial } = require('./watchlist');
 const costLedger = require('./backend/cost-ledger');
+const TwoStageSummarizer = require('./backend/two-stage-summarize');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 
@@ -347,6 +348,29 @@ async function smartIntegrate(level = 'minimal') {
     logger.error(`⚠️  持股雷達載入失敗: ${err.message}`);
   }
 
+  // 5.75. Two-Stage Summarize（Haiku → Sonnet 三版摘要）
+  let twoStageSummary = null;
+  try {
+    const summarizer = new TwoStageSummarizer(config.twoStageSummarize || {});
+    // 合併所有新聞供摘要使用
+    const allNewsForSummary = [...uniqueLineNews];
+    if (pipelineData && pipelineData.news.perplexity.length > 0) {
+      pipelineData.news.perplexity.forEach(n => {
+        if (!allNewsForSummary.includes(n.title)) allNewsForSummary.push(n.title);
+      });
+    }
+    if (allNewsForSummary.length > 0) {
+      twoStageSummary = await summarizer.summarize(allNewsForSummary, pipelineData || {});
+      if (!twoStageSummary.skipped) {
+        logger.info(`✅ Two-Stage Summarize 完成（30秒版 ${twoStageSummary.brief30s?.length || 0} 字）`);
+      } else {
+        logger.info(`⚠️  Two-Stage Summarize 跳過：${twoStageSummary.reason}`);
+      }
+    }
+  } catch (err) {
+    logger.error(`⚠️  Two-Stage Summarize 失敗: ${err.message}`);
+  }
+
   // 6. 生成整合報告（支援分級輸出）
   const reportData = {
     lineMarketData,
@@ -358,7 +382,8 @@ async function smartIntegrate(level = 'minimal') {
     uniqueLineNews,
     aiNews,
     pipelineData,
-    watchlistRadar
+    watchlistRadar,
+    twoStageSummary
   };
 
   const report = generateIntegratedReport(reportData, level);
@@ -473,11 +498,20 @@ function generateMinimalReport(data) {
     lines.push(`📰 AI精選: ${title}(${topItem.analysis.importance}分)等${data.aiNews.top.length}則`);
   }
 
+  // AI 30 秒版（若有）
+  if (data.twoStageSummary && !data.twoStageSummary.skipped && data.twoStageSummary.brief30s) {
+    lines.push('');
+    lines.push('⚡ AI 摘要：');
+    // 只顯示前 3 行
+    const brief30sLines = data.twoStageSummary.brief30s.split('\n').slice(0, 3);
+    brief30sLines.forEach(l => { if (l.trim()) lines.push(l.trim()); });
+  }
+
   // 提示
   lines.push('');
   lines.push('💬 輸入 /today 查看完整版');
   lines.push('━━━━━━━━━━━━━━━━━━');
-  
+
   return lines.join('\n');
 }
 
@@ -507,7 +541,39 @@ function generateStandardReport(data) {
   lines.push(`📅 ${dateStr} ${timeStr}`);
   lines.push('━━━━━━━━━━━━━━━━━━');
   lines.push('');
-  
+
+  // === AI 三版摘要（Two-Stage Summarize）===
+  if (data.twoStageSummary && !data.twoStageSummary.skipped) {
+    const ts = data.twoStageSummary;
+
+    // 30 秒版
+    if (ts.brief30s) {
+      lines.push('⚡ 30 秒版');
+      lines.push('');
+      lines.push(ts.brief30s);
+      lines.push('');
+    }
+
+    // 2 分鐘版
+    if (ts.brief2min) {
+      lines.push('📖 2 分鐘版');
+      lines.push('');
+      lines.push(ts.brief2min);
+      lines.push('');
+    }
+
+    // 話術版
+    if (ts.clientPitch) {
+      lines.push('💬 話術版（對客戶）');
+      lines.push('');
+      lines.push(ts.clientPitch);
+      lines.push('');
+    }
+
+    lines.push('━━━━━━━━━━━━━━━━━━');
+    lines.push('');
+  }
+
   // 📈 市場數據區塊
   lines.push('📈 市場概況');
   lines.push('');

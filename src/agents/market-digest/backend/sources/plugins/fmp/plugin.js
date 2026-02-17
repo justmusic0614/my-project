@@ -124,19 +124,21 @@ class FMPPlugin extends DataSourceAdapter {
           const data = await this._httpsGet(url);
           if (data && data.length > 0) {
             const q = data[0];
+            // /stable/quote 不含 changesPercentage，手動計算
+            const prevClose = q.price - q.change;
+            const changesPercentage = prevClose !== 0
+              ? parseFloat(((q.change / prevClose) * 100).toFixed(2))
+              : 0;
             return {
               symbol: q.symbol,
               name: q.name,
               price: q.price,
               change: q.change,
-              changesPercentage: q.changesPercentage,
+              changesPercentage,
               dayLow: q.dayLow,
               dayHigh: q.dayHigh,
               volume: q.volume,
-              avgVolume: q.avgVolume,
               marketCap: q.marketCap,
-              pe: q.pe,
-              eps: q.eps,
               timestamp: q.timestamp
             };
           }

@@ -1,3 +1,6 @@
+// @deprecated 2026-02-17 - 舊版渲染器，已被 institutional-renderer.js 的 renderUnifiedMorningReport() 取代
+// 將於穩定運行一週後刪除
+//
 // Clawbot Market Digest Renderer
 // 根據 runtime input 生成制度化財經報告
 

@@ -16,8 +16,11 @@ crontab -l 2>/dev/null | grep -v "market-digest" > /tmp/crontab.new || true
 # 加入新的 SRE cron（使用 wrapper）
 cat >> /tmp/crontab.new << CRON
 
-# Market Digest - SRE 版本（每天 08:30 台北時間 = 00:30 UTC）
-30 0 * * * $WRAPPER morning-report "cd $SCRIPT_DIR && node smart-integrator.js push"
+# Market Digest - 統一晨報（每天 07:00 台北時間 = 23:00 UTC 前一天）
+0 23 * * * $WRAPPER morning-report "cd $SCRIPT_DIR && node smart-integrator.js push"
+
+# Market Digest - 統一週報（每週五 14:30 台北時間 = 06:30 UTC）
+30 6 * * 5 $WRAPPER weekly-report "cd $SCRIPT_DIR && node weekly-summary.js push"
 
 CRON
 
@@ -27,6 +30,6 @@ crontab /tmp/crontab.new
 echo "✅ Cron Jobs 已更新"
 echo ""
 echo "目前的 Cron Jobs:"
-crontab -l | grep -A 2 "Market Digest"
+crontab -l | grep -A 1 "Market Digest"
 echo ""
 echo "📝 日誌位置: $SCRIPT_DIR/logs/cron-*.log"

@@ -243,6 +243,31 @@
     "P3_low": []
   },
 
+  "unifiedReport": {
+    "morning": {
+      "defaultLevel": "standard",
+      "maxChars": { "minimal": 800, "standard": 3800, "full": 10000 },
+      "sectionWeights": {
+        "aiQuickSummary": 100,
+        "marketData": 95,
+        "regime": 90,
+        "primarySignals": 85,
+        "keyEvents": 80,
+        "watchlistRadar": 75,
+        "macroPolicy": 60,
+        "crossAsset": 55,
+        "taiwanMarket": 50,
+        "secondaryContext": 40,
+        "perplexityResearch": 35,
+        "eventCalendar": 30
+      }
+    },
+    "weekly": {
+      "defaultLevel": "standard",
+      "maxChars": { "standard": 3800 }
+    }
+  },
+
   "sre": {
     "healthCheck": {
       "enabled": true,

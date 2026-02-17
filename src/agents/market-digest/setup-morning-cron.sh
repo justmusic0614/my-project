@@ -1,4 +1,5 @@
 #!/bin/bash
+# @deprecated 2026-02-17 - 已被 setup-sre-cron.sh 統一管理，使用 SRE cron-wrapper
 # Setup Morning Report Cron Job
 # 每天 07:00 (台北時間 = UTC 23:00 前一天) 整合並推播早報
 

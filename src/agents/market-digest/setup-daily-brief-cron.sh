@@ -1,4 +1,5 @@
 #!/bin/bash
+# @deprecated 2026-02-17 - 已被 setup-sre-cron.sh 統一管理，使用 SRE cron-wrapper
 # 設定 Daily Brief 自動執行 Cron Job
 
 set -e

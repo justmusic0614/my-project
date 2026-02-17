@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// @deprecated 2026-02-17 - 分析區塊邏輯已提取到 smart-integrator.js 的 generateAnalyticalSections()
+// 使用 `node smart-integrator.js push --level standard` 取代
+// 將於穩定運行一週後刪除
+
 // 使用 shared 層
 const { createLogger } = require("./shared/logger");
 const logger = createLogger("daily-brief-generator");

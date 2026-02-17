@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// @deprecated 2026-02-17 - Plan A 已棄用，改用 smart-integrator.js（Plan B 統一晨報）
+// 使用 `node smart-integrator.js push --level standard` 取代
+// 將於穩定運行一週後刪除
+//
 // Morning Integrator - 整合 LINE 群組早報 + Market Digest
 // 方案 A：原樣保留 LINE 群組內容，下方補充 Market Digest
 

@@ -35,6 +35,7 @@ const TimeSeriesStorage = require('./backend/timeseries-storage');
 const { loadWatchlist, generateSummary, formatSummary, generateSummaryWithFinancial } = require('./watchlist');
 const costLedger = require('./backend/cost-ledger');
 const TwoStageSummarizer = require('./backend/two-stage-summarize');
+const { renderUnifiedMorningReport } = require('./institutional-renderer');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 
@@ -225,6 +226,161 @@ function deduplicateNews_OLD(lineNews, marketDigestNews) {
 }
 
 /**
+ * 生成分析區塊（從 DailyBriefGenerator 邏輯整合）
+ * 直接接收 smartIntegrate 已獲取的資料，不重複呼叫 API
+ */
+async function generateAnalyticalSections(analyzedNews, lineMarketData, marketDigest, pipelineData) {
+  // 建構統一市場數據物件
+  const md = buildMarketDataFromPipeline(lineMarketData, marketDigest, pipelineData);
+
+  return {
+    marketRegime: generateRegimeSection(analyzedNews, md),
+    macroPolicy: generateMacroPolicySection(analyzedNews, md),
+    crossAsset: generateCrossAssetSection(analyzedNews, md),
+    taiwanMarket: generateTaiwanMarketSection(analyzedNews, md, lineMarketData),
+    eventCalendar: generateEventCalendarSection(analyzedNews, pipelineData)
+  };
+}
+
+/**
+ * 從已有資料建構統一市場數據（避免重複 API 呼叫）
+ */
+function buildMarketDataFromPipeline(lineMarketData, marketDigest, pipelineData) {
+  const vkd = marketDigest?.verified_key_data || {};
+  const fmpQuotes = pipelineData?.market?.fmp?.quotes || {};
+  const finmind = pipelineData?.market?.finmind || {};
+
+  return {
+    twii: {
+      value: vkd.tw_stock?.taiex_close || lineMarketData.tw_stock?.index || 0,
+      change: vkd.tw_stock?.taiex_change_pct || 0
+    },
+    sp500: {
+      value: vkd.us_stock?.sp500_close || lineMarketData.us_stock?.sp500 || 0,
+      change: vkd.us_stock?.sp500_change_pct || 0
+    },
+    usd_twd: {
+      value: vkd.fx?.usdtwd || lineMarketData.fx?.usdtwd || 0,
+      change: vkd.fx?.usdtwd_change_pct || 0
+    },
+    vix: { value: lineMarketData.vix || 0, change: 0 },
+    dxy: { value: lineMarketData.fx?.dxy || 0, change: 0 },
+    us10y: { value: 0, change: 0 },
+    volume: lineMarketData.tw_stock?.volume || null,
+    finmind,
+    fmpQuotes
+  };
+}
+
+function generateRegimeSection(news, md) {
+  let state = 'Risk-on 與 Risk-off 並存';
+  if (md.vix.value > 20) {
+    state = 'Risk-off 情緒升溫，市場避險需求增加';
+  } else if (md.vix.value > 0 && md.vix.value < 15) {
+    state = 'Risk-on 主導，市場風險偏好回升';
+  }
+
+  let flow = '資金輪動加速，追逐題材明確標的';
+  if (md.twii.change > 0 && md.sp500.change > 0) {
+    flow = '全球股市同步走強，資金偏好風險資產';
+  } else if (md.twii.change < 0 && md.sp500.change < 0) {
+    flow = '全球股市同步走弱，資金轉向防禦';
+  }
+
+  const hasHighImportance = news.some(n => n.analysis && n.analysis.importance >= 9);
+  let implication = '選股不選市，聚焦基本面';
+  if (hasHighImportance) {
+    implication = '重大事件主導，短期波動加劇';
+  } else if (Math.abs(md.twii.change) > 2) {
+    implication = '高檔震盪，波段操作為主';
+  }
+
+  return { state, flow, implication };
+}
+
+function generateMacroPolicySection(news, md) {
+  const macroNews = news.filter(n => n.analysis && n.analysis.category === '總經');
+  const us10yStr = md.us10y.value ? `${md.us10y.value.toFixed(2)}%` : 'N/A';
+  const dxyStr = md.dxy.value ? `${md.dxy.value.toFixed(1)}` : 'N/A';
+  const vixStr = md.vix.value ? `${md.vix.value.toFixed(1)}` : 'N/A';
+
+  return {
+    keyData: { us10y: us10yStr, dxy: dxyStr, vix: vixStr },
+    focus: macroNews.slice(0, 3).map(n => n.title),
+    implication: macroNews.length > 0 && macroNews[0].analysis
+      ? macroNews[0].analysis.marketImplication
+      : '政策面平穩'
+  };
+}
+
+function generateCrossAssetSection(news, md) {
+  return {
+    commodities: {
+      oil: '持平',
+      gold: md.vix.value > 20 ? '避險需求升溫' : '持穩',
+      copper: 'AI 基建需求'
+    },
+    fxRates: {
+      usd: md.dxy.change < 0 ? '偏弱' : (md.dxy.value ? '偏強' : 'N/A'),
+      us10y: md.us10y.change < 0 ? '回落' : (md.us10y.value ? '上行' : 'N/A'),
+      twd: md.usd_twd.value ? `USD/TWD ${md.usd_twd.value.toFixed ? md.usd_twd.value.toFixed(2) : md.usd_twd.value}` : 'N/A'
+    },
+    implication: md.dxy.change < 0 ? '降息預期推升風險資產' : '美元強勢壓抑風險偏好'
+  };
+}
+
+function generateTaiwanMarketSection(news, md, lineMarketData) {
+  const twNews = news.filter(n => n.analysis && n.analysis.category === '台股');
+  const changePct = md.twii.change;
+  const sign = changePct >= 0 ? '▲' : '▼';
+
+  const index = md.twii.value
+    ? `加權指數 ${Math.round(md.twii.value).toLocaleString()} ${sign}${Math.abs(changePct).toFixed(2)}%`
+    : '加權指數 N/A';
+
+  const volume = md.volume ? `成交量 ${md.volume} 億` : '成交量 N/A';
+
+  // 外資動向（從 FinMind 資料取得）
+  let foreign = '外資 N/A';
+  if (md.finmind && md.finmind.topMovers && md.finmind.topMovers.length > 0) {
+    const totalNet = md.finmind.topMovers.reduce((sum, m) => sum + (m.foreignNetBuy || 0), 0);
+    const netSign = totalNet >= 0 ? '買超' : '賣超';
+    foreign = `外資${netSign} ${Math.abs(totalNet / 1000).toFixed(0)} 張（0050 成分股）`;
+  }
+
+  return {
+    index,
+    volume,
+    foreign,
+    trend: twNews.length > 0 ? twNews[0].title : null,
+    implication: Math.abs(changePct) > 1 ? '高檔震盪，選股重於選市' : '盤整格局，等待方向'
+  };
+}
+
+function generateEventCalendarSection(news, pipelineData) {
+  const events = [];
+
+  // 從 FMP 財報日曆取得
+  if (pipelineData && pipelineData.market.fmp.earnings) {
+    pipelineData.market.fmp.earnings.slice(0, 3).forEach(e => {
+      events.push(`${e.date} ${e.symbol} 財報 (EPS 預估: ${e.epsEstimated || 'N/A'})`);
+    });
+  }
+
+  // 從新聞中提取事件
+  const eventNews = (news || []).filter(n =>
+    n.title && (n.title.includes('法說會') || n.title.includes('財報') || n.title.includes('數據'))
+  );
+  eventNews.slice(0, 2).forEach(n => {
+    if (!events.some(e => e.includes(n.title.substring(0, 10)))) {
+      events.push(n.title.length > 40 ? n.title.substring(0, 40) + '...' : n.title);
+    }
+  });
+
+  return events;
+}
+
+/**
  * 載入 AI 分析新聞 (方案 1: 暗數據解鎖)
  * 從 data/news-analyzed/{date}.json 提取 Top N 高分新聞
  * @param {string} date - YYYY-MM-DD 格式日期
@@ -371,7 +527,23 @@ async function smartIntegrate(level = 'minimal') {
     logger.error(`⚠️  Two-Stage Summarize 失敗: ${err.message}`);
   }
 
-  // 6. 生成整合報告（支援分級輸出）
+  // 5.8. 生成分析區塊（從 DailyBriefGenerator 邏輯整合）
+  let analyticalSections = null;
+  try {
+    analyticalSections = await generateAnalyticalSections(
+      aiNews ? aiNews.top : [],
+      lineMarketData,
+      marketDigest,
+      pipelineData
+    );
+    if (analyticalSections) {
+      logger.info('📊 分析區塊生成完成');
+    }
+  } catch (err) {
+    logger.error(`⚠️  分析區塊生成失敗（降級為純 smart-integrator 輸出）: ${err.message}`);
+  }
+
+  // 6. 生成整合報告（統一渲染引擎）
   const reportData = {
     lineMarketData,
     finalNews,
@@ -383,10 +555,11 @@ async function smartIntegrate(level = 'minimal') {
     aiNews,
     pipelineData,
     watchlistRadar,
-    twoStageSummary
+    twoStageSummary,
+    analyticalSections
   };
 
-  const report = generateIntegratedReport(reportData, level);
+  const report = renderUnifiedMorningReport(reportData, level);
 
   // 7. 儲存報告
   const outputPath = path.join(__dirname, 'data/runtime/morning-report.txt');
@@ -415,497 +588,7 @@ async function smartIntegrate(level = 'minimal') {
   return report;
 }
 
-/**
- * 生成整合報告（統一格式，支援分級輸出）
- * @param {Object} data - 報告數據
- * @param {string} level - 'minimal' | 'standard' | 'full'
- */
-function generateIntegratedReport(data, level = 'minimal') {
-  const { lineMarketData, finalNews, marketDigest, marketRegime, secondaryContext, allText, uniqueLineNews } = data;
-  
-  // 根據級別選擇生成方式
-  if (level === 'minimal') {
-    return generateMinimalReport(data);
-  } else if (level === 'standard') {
-    return generateStandardReport(data);
-  } else if (level === 'full') {
-    return generateFullReport(data);
-  } else {
-    throw new Error(`未知的輸出級別：${level}`);
-  }
-}
-
-/**
- * 極簡版報告（200 字，推播用）
- */
-function generateMinimalReport(data) {
-  const { lineMarketData, finalNews, marketDigest, marketRegime } = data;
-  const lines = [];
-  
-  // 標題
-  const now = new Date();
-  const dateStr = now.toLocaleString('zh-TW', { 
-    timeZone: 'Asia/Taipei',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short'
-  });
-  const timeStr = now.toLocaleTimeString('zh-TW', { 
-    timeZone: 'Asia/Taipei',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-  
-  lines.push(`🌅 ${dateStr} ${timeStr}`);
-  lines.push('━━━━━━━━━━━━━━━━━━');
-  
-  // 市場數據（單行）
-  const marketLine = [];
-  if (lineMarketData.tw_stock) {
-    const tw = lineMarketData.tw_stock;
-    const sign = tw.change >= 0 ? '▲' : '▼';
-    const pct = marketDigest?.verified_key_data?.tw_stock?.taiex_change_pct || 'N/A';
-    marketLine.push(`台股 ${sign}${pct}%`);
-  }
-  if (lineMarketData.us_stock.sp500 || marketDigest?.verified_key_data?.us_stock) {
-    const usPct = marketDigest?.verified_key_data?.us_stock?.sp500_change_pct || 'N/A';
-    const sign = usPct >= 0 ? '▲' : '▼';
-    marketLine.push(`美股 ${sign}${usPct}%`);
-  }
-  lines.push(`📈 ${marketLine.join(' | ')}`);
-  
-  // 市場狀態
-  if (marketRegime) {
-    lines.push(`🔍 ${marketRegime}`);
-  }
-  
-  // 焦點（前 3 條）
-  if (finalNews && finalNews.length > 0) {
-    lines.push('');
-    lines.push('🌐 焦點：');
-    finalNews.slice(0, 3).forEach(news => {
-      // 縮短新聞到 40 字
-      const short = news.length > 40 ? news.substring(0, 40) + '...' : news;
-      lines.push(`  • ${short}`);
-    });
-  }
-  
-  // AI 精選新聞（暗數據解鎖 - 極簡版）
-  if (data.aiNews && data.aiNews.top.length > 0) {
-    const topItem = data.aiNews.top[0];
-    const title = topItem.title.length > 25 ? topItem.title.substring(0, 25) + '...' : topItem.title;
-    lines.push('');
-    lines.push(`📰 AI精選: ${title}(${topItem.analysis.importance}分)等${data.aiNews.top.length}則`);
-  }
-
-  // AI 30 秒版（若有）
-  if (data.twoStageSummary && !data.twoStageSummary.skipped && data.twoStageSummary.brief30s) {
-    lines.push('');
-    lines.push('⚡ AI 摘要：');
-    // 只顯示前 3 行
-    const brief30sLines = data.twoStageSummary.brief30s.split('\n').slice(0, 3);
-    brief30sLines.forEach(l => { if (l.trim()) lines.push(l.trim()); });
-  }
-
-  // 提示
-  lines.push('');
-  lines.push('💬 輸入 /today 查看完整版');
-  lines.push('━━━━━━━━━━━━━━━━━━');
-
-  return lines.join('\n');
-}
-
-/**
- * 標準版報告（800 字，詳細但不冗長）
- */
-function generateStandardReport(data) {
-  const { lineMarketData, finalNews, marketDigest, marketRegime, secondaryContext } = data;
-  const lines = [];
-  
-  // 標題
-  const now = new Date();
-  const dateStr = now.toLocaleString('zh-TW', { 
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short'
-  });
-  const timeStr = now.toLocaleTimeString('zh-TW', { 
-    timeZone: 'Asia/Taipei',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-  
-  lines.push('🌅 每日財經匯總');
-  lines.push(`📅 ${dateStr} ${timeStr}`);
-  lines.push('━━━━━━━━━━━━━━━━━━');
-  lines.push('');
-
-  // === AI 三版摘要（Two-Stage Summarize）===
-  if (data.twoStageSummary && !data.twoStageSummary.skipped) {
-    const ts = data.twoStageSummary;
-
-    // 30 秒版
-    if (ts.brief30s) {
-      lines.push('⚡ 30 秒版');
-      lines.push('');
-      lines.push(ts.brief30s);
-      lines.push('');
-    }
-
-    // 2 分鐘版
-    if (ts.brief2min) {
-      lines.push('📖 2 分鐘版');
-      lines.push('');
-      lines.push(ts.brief2min);
-      lines.push('');
-    }
-
-    // 話術版
-    if (ts.clientPitch) {
-      lines.push('💬 話術版（對客戶）');
-      lines.push('');
-      lines.push(ts.clientPitch);
-      lines.push('');
-    }
-
-    lines.push('━━━━━━━━━━━━━━━━━━');
-    lines.push('');
-  }
-
-  // 📈 市場數據區塊
-  lines.push('📈 市場概況');
-  lines.push('');
-  
-  // 台股
-  if (lineMarketData.tw_stock) {
-    const tw = lineMarketData.tw_stock;
-    const sign = tw.change >= 0 ? '▲' : '▼';
-    lines.push(`• 台股加權指數：${tw.index?.toLocaleString() || 'N/A'} ${sign}${Math.abs(tw.change || 0)}`);
-    if (tw.volume) {
-      lines.push(`  成交量：${tw.volume.toLocaleString()} 億元`);
-    }
-  } else if (marketDigest?.verified_key_data?.tw_stock) {
-    const tw = marketDigest.verified_key_data.tw_stock;
-    const sign = tw.taiex_change_pct >= 0 ? '▲' : '▼';
-    lines.push(`• 台股加權指數：${tw.taiex_close?.toLocaleString() || 'N/A'} ${sign}${Math.abs(tw.taiex_change_pct || 0)}%`);
-  }
-  
-  // 技術指標
-  if (marketDigest?.verified_key_data?.tw_stock?.ma5) {
-    const tw = marketDigest.verified_key_data.tw_stock;
-    lines.push(`  技術指標：MA5 ${tw.ma5} | MA20 ${tw.ma20} | RSI ${tw.rsi}`);
-  }
-  
-  // 美股
-  if (lineMarketData.us_stock.sp500) {
-    lines.push(`• S&P 500：${lineMarketData.us_stock.sp500.toLocaleString()}`);
-  } else if (marketDigest?.verified_key_data?.us_stock) {
-    const us = marketDigest.verified_key_data.us_stock;
-    lines.push(`• S&P 500：${us.sp500_close?.toLocaleString() || 'N/A'} (${us.sp500_change_pct >= 0 ? '+' : ''}${us.sp500_change_pct}%)`);
-  }
-  
-  // 匯率
-  if (lineMarketData.fx.usdtwd) {
-    lines.push(`• 台幣：${lineMarketData.fx.usdtwd}`);
-  } else if (marketDigest?.verified_key_data?.fx) {
-    const fx = marketDigest.verified_key_data.fx;
-    const sign = fx.usdtwd_change_pct >= 0 ? '貶' : '升';
-    lines.push(`• 台幣：${fx.usdtwd} (${sign}${Math.abs(fx.usdtwd_change_pct)}%)`);
-  }
-  
-  lines.push('');
-  
-  // 市場狀態
-  if (marketRegime) {
-    lines.push('🔍 市場狀態');
-    lines.push('');
-    lines.push(`• ${marketRegime}`);
-    lines.push('');
-  }
-  
-  // 重點事件
-  if (finalNews && finalNews.length > 0) {
-    lines.push('🌐 重點事件');
-    lines.push('');
-    finalNews.slice(0, 8).forEach(news => {
-      lines.push(`• ${news}`);
-    });
-    lines.push('');
-  }
-
-  // Perplexity 研究重點（投資人視角）
-  if (data.pipelineData && data.pipelineData.news.perplexity.length > 0) {
-    lines.push('🔬 Perplexity 研究摘要');
-    lines.push('');
-    data.pipelineData.news.perplexity.slice(0, 5).forEach((news, i) => {
-      const title = news.title.length > 60 ? news.title.substring(0, 60) + '...' : news.title;
-      lines.push(`${i + 1}. ${title}`);
-      if (news.description) {
-        const desc = news.description.length > 80 ? news.description.substring(0, 80) + '...' : news.description;
-        lines.push(`   ${desc}`);
-      }
-    });
-    lines.push('');
-  }
-
-  // FMP 美股報價
-  if (data.pipelineData && data.pipelineData.market.fmp.quotes) {
-    const quotes = data.pipelineData.market.fmp.quotes;
-    const symbols = Object.keys(quotes);
-    if (symbols.length > 0) {
-      lines.push('🇺🇸 美股即時報價（FMP）');
-      lines.push('');
-      symbols.forEach(sym => {
-        const q = quotes[sym];
-        const sign = q.changesPercentage >= 0 ? '▲' : '▼';
-        const pct = Math.abs(q.changesPercentage || 0).toFixed(2);
-        lines.push(`• ${sym}: $${q.price} ${sign}${pct}%`);
-      });
-      lines.push('');
-    }
-
-    // 本周財報日曆
-    const earnings = data.pipelineData.market.fmp.earnings || [];
-    if (earnings.length > 0) {
-      lines.push('📅 本周財報日曆');
-      lines.push('');
-      earnings.slice(0, 5).forEach(e => {
-        lines.push(`• ${e.date} ${e.symbol} (EPS 預估: ${e.epsEstimated || 'N/A'})`);
-      });
-      lines.push('');
-    }
-  }
-
-  // FinMind 台股資料
-  if (data.pipelineData && data.pipelineData.market.finmind) {
-    const fm = data.pipelineData.market.finmind;
-
-    // 加權指數
-    if (fm.taiex) {
-      lines.push('🇹🇼 台股加權指數（FinMind）');
-      lines.push('');
-      const sign = fm.taiex.change >= 0 ? '▲' : '▼';
-      lines.push(`• TAIEX: ${fm.taiex.close} ${sign}${Math.abs(fm.taiex.change || 0)}`);
-      lines.push('');
-    }
-
-    // 0050 成分股外資異動前 10
-    if (fm.topMovers && fm.topMovers.length > 0) {
-      lines.push('📊 0050 外資異動 Top 10');
-      lines.push('');
-      fm.topMovers.forEach((m, i) => {
-        const netSign = m.foreignNetBuy >= 0 ? '買超' : '賣超';
-        const net = Math.abs(m.foreignNetBuy / 1000).toFixed(0);
-        const priceInfo = fm.tw50Prices && fm.tw50Prices[m.stockId]
-          ? ` | ${fm.tw50Prices[m.stockId].close}元 (${fm.tw50Prices[m.stockId].changePct > 0 ? '+' : ''}${fm.tw50Prices[m.stockId].changePct}%)`
-          : '';
-        lines.push(`${i + 1}. ${m.stockId}${priceInfo} — 外資${netSign} ${net} 張`);
-      });
-      lines.push('');
-    }
-  }
-
-  // 補充訊號
-  if (secondaryContext && secondaryContext.length > 0) {
-    lines.push('🔵 補充訊號');
-    lines.push('');
-    secondaryContext.slice(0, 3).forEach(ctx => {
-      lines.push(`• ${ctx}`);
-    });
-    lines.push('');
-  }
-  
-  // AI 精選新聞（暗數據解鎖）
-  if (data.aiNews && data.aiNews.top.length > 0) {
-    lines.push('━━━━━━━━━━━━━━━━━━');
-    lines.push('📰 AI 精選新聞 | Top 5');
-    lines.push('');
-    data.aiNews.top.forEach((item, i) => {
-      const score = item.analysis.importance;
-      const icon = score >= 10 ? '🔴' : score >= 8 ? '🟡' : '🟢';
-      const title = item.title.length > 50 ? item.title.substring(0, 50) + '...' : item.title;
-      lines.push(`${i + 1}. [${score}] ${icon} ${title}`);
-      if (item.analysis.marketImplication) {
-        const impl = item.analysis.marketImplication.length > 40
-          ? item.analysis.marketImplication.substring(0, 40) + '...'
-          : item.analysis.marketImplication;
-        lines.push(`   影響：${impl}`);
-      }
-      if (item.analysis.tags && item.analysis.tags.length > 0) {
-        lines.push(`   關聯：${item.analysis.tags.join(', ')}`);
-      }
-      if (item.analysis.inWatchlist) {
-        lines.push(`   ⭐ Watchlist 關注股`);
-      }
-    });
-    lines.push('');
-    lines.push(`📊 今日分析 ${data.aiNews.total} 則 → 篩選 ${data.aiNews.highScore} 則(≥7分) → 精選 ${data.aiNews.top.length} 則`);
-    lines.push('');
-  }
-
-  // 台灣焦點
-  if (marketDigest?.narrative_states?.taiwan_focus) {
-    lines.push('🇹🇼 台灣焦點');
-    lines.push('');
-    lines.push(`• ${marketDigest.narrative_states.taiwan_focus}`);
-    lines.push('');
-  }
-  
-  // 持股雷達（方案 2：暗數據 + 籌碼 + 財務整合）
-  if (data.watchlistRadar && data.watchlistRadar.stocks && data.watchlistRadar.stocks.length > 0) {
-    lines.push('━━━━━━━━━━━━━━━━━━');
-    const dateStr = data.watchlistRadar.date || new Date().toISOString().split('T')[0];
-    lines.push(`🎯 持股雷達 | ${dateStr}`);
-    lines.push('');
-
-    data.watchlistRadar.stocks.forEach((stock, i) => {
-      const score = stock.analysis ? stock.analysis.score : 50;
-      const recIcon = score >= 65 ? '🟢' : score <= 35 ? '🔴' : '➖';
-      lines.push(`${i + 1}. ${stock.code} ${stock.name} [${recIcon} ${score}分]`);
-
-      // 日交易資料
-      if (stock.chip && stock.chip.stock) {
-        const s = stock.chip.stock;
-        const sign = s.change >= 0 ? '▲' : '▼';
-        const vol = s.volume ? (s.volume / 1000).toFixed(0) : 'N/A';
-        lines.push(`   💹 ${s.closingPrice} 元 (${sign}${Math.abs(s.change)}) | 量 ${vol} 張`);
-      }
-
-      // 三大法人
-      if (stock.chip && stock.chip.institutional) {
-        const inst = stock.chip.institutional;
-        const fSign = inst.foreign >= 0 ? '買超' : '賣超';
-        const fVal = Math.abs(inst.foreign / 1000).toFixed(0);
-        const tSign = (inst.trust || inst.investment || 0) >= 0 ? '+' : '';
-        const tVal = ((inst.trust || inst.investment || 0) / 1000).toFixed(0);
-        lines.push(`   📌 外資${fSign} ${fVal} 張 | 投信${tSign}${tVal}`);
-      }
-
-      // 融資融券
-      if (stock.chip && stock.chip.margin) {
-        const m = stock.chip.margin;
-        const parts = [];
-        if (m.marginLimit && m.marginBalance) {
-          const rate = (m.marginBalance / m.marginLimit * 100).toFixed(1);
-          parts.push(`融資率 ${rate}%`);
-        }
-        if (m.shortBalancePrev && m.shortBalance) {
-          const shortChg = m.shortBalance - m.shortBalancePrev;
-          if (shortChg !== 0) {
-            const shortSign = shortChg > 0 ? '▲' : '▼';
-            parts.push(`融券${shortSign}${Math.abs(shortChg)}`);
-          }
-        }
-        if (parts.length > 0) {
-          lines.push(`   💰 ${parts.join(' | ')}`);
-        }
-      }
-
-      // AI 新聞關聯（從 aiNews 中篩選 watchlist 相關）
-      if (data.aiNews && data.aiNews.top.length > 0) {
-        const related = data.aiNews.top.filter(n =>
-          n.analysis && n.analysis.inWatchlist &&
-          n.analysis.affectedAssets && n.analysis.affectedAssets.some(a => a.includes(stock.name))
-        );
-        if (related.length > 0) {
-          const top = related[0];
-          const title = top.title.length > 30 ? top.title.substring(0, 30) + '...' : top.title;
-          lines.push(`   📰 ${title} (${top.analysis.importance}分)`);
-        }
-      }
-
-      // 月營收
-      if (stock.financial && stock.financial.monthlyRevenue) {
-        const rev = stock.financial.monthlyRevenue;
-        if (rev.revenue) {
-          const revBillion = (rev.revenue / 100000000).toFixed(0);
-          const yoy = rev.yoyGrowth ? `YoY${rev.yoyGrowth >= 0 ? '+' : ''}${rev.yoyGrowth.toFixed(0)}%` : '';
-          lines.push(`   📈 月營收 ${revBillion} 億 ${yoy}`);
-        }
-      }
-
-      // 籌碼面建議
-      if (stock.analysis && stock.analysis.recommendation !== 'neutral') {
-        lines.push(`   ▶ ${stock.analysis.recommendationMessage}`);
-      }
-    });
-
-    lines.push('');
-  } else {
-    // 回退：簡易版關注股（無籌碼資料時）
-    try {
-      const watchlist = loadWatchlist();
-      if (watchlist.stocks && watchlist.stocks.length > 0) {
-        const todayDate = new Date().toISOString().split('T')[0];
-        const summary = generateSummary(todayDate);
-        if (summary && summary.stocks.length > 0) {
-          lines.push(`📌 我的關注股（${summary.stocks.length} 檔有消息）`);
-          lines.push('');
-          summary.stocks.slice(0, 5).forEach(stock => {
-            const emoji = stock.mentions > 2 ? '🔥' : stock.mentions > 1 ? '⭐' : '📊';
-            lines.push(`${emoji} ${stock.code} ${stock.name} (${stock.mentions} 次提及)`);
-            if (stock.contexts && stock.contexts.length > 0) {
-              let text = stock.contexts[0].context;
-              if (text.length > 100) text = text.substring(0, 100) + '...';
-              lines.push(`  • ${text}`);
-            }
-          });
-          lines.push('');
-        }
-      }
-    } catch (err) {
-      logger.error('⚠️  Watchlist 處理失敗:', err.message);
-    }
-  }
-  
-  // 成本摘要
-  if (data.pipelineData && data.pipelineData.costSummary) {
-    lines.push(data.pipelineData.costSummary);
-  }
-
-  lines.push('━━━━━━━━━━━━━━━━━━');
-  lines.push('⚠️ 免責聲明：本報告僅供資訊參考，不構成投資建議');
-  lines.push('💬 輸入 /today full 查看原始早報全文');
-  
-  return lines.join('\n');
-}
-
-/**
- * 完整版報告（保留原始早報全文）
- */
-function generateFullReport(data) {
-  const { allText } = data;
-  const lines = [];
-  
-  // 標題
-  const now = new Date();
-  const dateStr = now.toLocaleString('zh-TW', { 
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short'
-  });
-  const timeStr = now.toLocaleTimeString('zh-TW', { 
-    timeZone: 'Asia/Taipei',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-  
-  lines.push('📰 原始早報全文');
-  lines.push(`📅 ${dateStr} ${timeStr}`);
-  lines.push('━━━━━━━━━━━━━━━━━━');
-  lines.push('');
-  lines.push(allText);
-  lines.push('');
-  lines.push('━━━━━━━━━━━━━━━━━━');
-  lines.push('⚠️ 免責聲明：本報告僅供資訊參考，不構成投資建議');
-  lines.push('📡 數據來源：LINE 群組早報（原文）');
-  
-  return lines.join('\n');
-}
+// === 舊渲染函式已移至 institutional-renderer.js 的 renderUnifiedMorningReport() ===
 
 /**
  * 智慧整合並推播

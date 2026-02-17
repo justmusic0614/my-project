@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 /**
- * 將 Daily Brief 整合到 /today 指令
+ * @deprecated 2026-02-17 - 功能已併入 smart-integrator.js 的統一晨報
+ * 使用 `node smart-integrator.js push --level standard` 取代
+ * 將於穩定運行一週後刪除
+ *
+ * 原功能：將 Daily Brief 整合到 /today 指令
  */
 
 const fs = require('fs');

@@ -34,7 +34,6 @@ class YahooFinancePlugin extends DataSourceAdapter {
   async fetchMarketData(symbol) {
     return this.withRetry(async () => {
       const url = `${this.baseUrl}${symbol}?interval=1d&range=5d`;
-      const fetch = require('node-fetch');
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -114,7 +113,6 @@ class YahooFinancePlugin extends DataSourceAdapter {
   async fetchTechnicalIndicators(symbol, config) {
     return this.withRetry(async () => {
       const url = `${this.baseUrl}${symbol}?interval=1d&range=30d`;
-      const fetch = require('node-fetch');
       const response = await fetch(url);
       
       if (!response.ok) {

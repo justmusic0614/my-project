@@ -115,12 +115,13 @@ class MarketDataFetcher {
 
   /**
    * Yahoo Finance Fallback：取得美股 watchlist 報價
-   * 在 FMP 不可用時自動啟用，並行抓取，轉換成 FMP quotes 格式
+   * @param {string[]} [symbols] 指定只補充這些 symbols（省略則補全 watchlist）
+   * 在 FMP 不可用或部分 402 時自動啟用，並行抓取，轉換成 FMP quotes 格式
    */
-  async _fetchYahooFallbackQuotes() {
+  async _fetchYahooFallbackQuotes(symbols) {
     // 優先取 FMP watchlist，否則用預設
-    const watchlist = this.fmpPlugin.watchlist || ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'QQQ', 'SPY'];
-    // 過濾 Yahoo Finance 不支援的符號（BRK-B 要用 BRK-B，^VIX 要保留 ^）
+    const watchlist = symbols || this.fmpPlugin.watchlist || ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'QQQ', 'SPY'];
+    // 過濾 Yahoo Finance 不支援的符號（含 . 的 ADR 代碼）
     const ySymbols = watchlist.filter(s => !s.includes('.'));
 
     const results = await Promise.allSettled(
@@ -243,15 +244,20 @@ class MarketDataFetcher {
       ? yahooResult.value
       : {};
 
-    // FMP Quotes Fallback：若 FMP 報價為空（403 或未設定 API key），改用 Yahoo Finance
-    const fmpQuotes = results.market.fmp && results.market.fmp.quotes;
-    if (!fmpQuotes || Object.keys(fmpQuotes).length === 0) {
-      const yahooQuotes = await this._fetchYahooFallbackQuotes();
-      if (Object.keys(yahooQuotes).length > 0) {
-        if (!results.market.fmp) results.market.fmp = {};
-        results.market.fmp.quotes = yahooQuotes;
-        results.market.fmp.source = 'yahoo_fallback';
-        console.log(`[FMP Fallback] Yahoo Finance 補充 ${Object.keys(yahooQuotes).length} 支美股報價`);
+    // FMP Quotes Fallback：補充 FMP 無法取得的股票（完全失敗或個別 402）
+    if (!results.market.fmp) results.market.fmp = {};
+    const fmpQuotes = results.market.fmp.quotes || {};
+    const fullWatchlist = this.fmpPlugin.watchlist || ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'QQQ', 'SPY'];
+    const missingSymbols = fullWatchlist.filter(s => !fmpQuotes[s]);
+    if (missingSymbols.length > 0) {
+      const yahooQuotes = await this._fetchYahooFallbackQuotes(missingSymbols);
+      let filled = 0;
+      for (const [sym, q] of Object.entries(yahooQuotes)) {
+        if (!fmpQuotes[sym]) { fmpQuotes[sym] = q; filled++; }
+      }
+      results.market.fmp.quotes = fmpQuotes;
+      if (filled > 0) {
+        console.log(`[FMP Fallback] Yahoo Finance 補充 ${filled} 支（${missingSymbols.filter(s => yahooQuotes[s]).join(', ')}）`);
       }
     }
 

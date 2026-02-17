@@ -153,7 +153,19 @@ main() {
     
     # 確保日誌目錄存在
     mkdir -p "$LOG_DIR"
-    
+
+    # 載入 .env（若存在），自動設定所有 API keys（ANTHROPIC_API_KEY 等）
+    ENV_FILE="$PROJECT_ROOT/.env"
+    if [ -f "$ENV_FILE" ]; then
+        set -a
+        # shellcheck source=../.env
+        source "$ENV_FILE"
+        set +a
+        log "✅ 已載入 .env"
+    else
+        log "⚠️  .env 檔案不存在: $ENV_FILE"
+    fi
+
     # 1. 依賴檢查
     if ! check_dependencies; then
         send_alert "CRITICAL" "依賴檢查失敗"

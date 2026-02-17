@@ -1,6 +1,6 @@
 // FinMind Plugin — 台股 Market Enrich
 // 完整覆蓋台灣前 50 大標的（0050/006208 成分股）
-// Rate limit: 1,600 req/hour → 每次 run 用 3 calls 即可覆蓋全部 50 支
+// Rate limit: Backer 1,600 req/hour → 每次 run 用 3-4 calls 即可覆蓋全部 50 支
 
 const https = require('https');
 const path = require('path');
@@ -163,8 +163,90 @@ class FinMindPlugin extends DataSourceAdapter {
       }
     }
 
+    // Call 4: 月營收（僅月初 1-10 日抓取，月營收在此區間陸續公佈）
+    const dayOfMonth = new Date().getDate();
+    const revenueTargets = ['2330', '2317', '2454', '2382', '2308']; // 台積電、鴻海、聯發科、廣達、台達電
+    const revenueCacheKey = `finmind-monthly-revenue-${today.slice(0, 7)}`; // 按月快取
+    const revenueCache = this.cache.get(revenueCacheKey, 86400000); // 24 小時快取
+    if (revenueCache) {
+      results.monthlyRevenue = revenueCache;
+      logger.info('使用 FinMind 月營收快取');
+    } else if (dayOfMonth <= 10) {
+      try {
+        await rateLimiter.acquire('finmind');
+        const revenueData = await this._fetchMonthlyRevenue(revenueTargets);
+        costLedger.recordApiCall('finmind');
+        this.cache.set(revenueCacheKey, revenueData, { pretty: true });
+        results.monthlyRevenue = revenueData;
+        logger.info(`FinMind 月營收取得 ${revenueData.length} 筆`);
+      } catch (err) {
+        logger.error('FinMind 月營收失敗', err);
+        results.monthlyRevenue = [];
+      }
+    } else {
+      results.monthlyRevenue = []; // 月中以後不重新抓取，避免浪費配額
+    }
+
     results.fetchedAt = new Date().toISOString();
     return results;
+  }
+
+  /**
+   * 月營收資料（指定標的，取最近 2 個月方便計算 MoM）
+   * 僅月初 1-10 日呼叫（月營收在此區間陸續公佈）
+   */
+  async _fetchMonthlyRevenue(stockIds) {
+    const today = new Date();
+    // 取最近 2 個月範圍（含上月與本月，讓前端可以算 MoM）
+    const twoMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const startDate = twoMonthsAgo.toISOString().slice(0, 10);
+    const endDate = today.toISOString().slice(0, 10);
+
+    const allRevenue = [];
+    for (const stockId of stockIds) {
+      const params = new URLSearchParams({
+        dataset: 'TaiwanStockMonthRevenue',
+        data_id: stockId,
+        start_date: startDate,
+        end_date: endDate,
+        token: this.apiToken
+      });
+      const url = `${this.baseUrl}/data?${params}`;
+      try {
+        const result = await this._httpsGet(url);
+        const rows = result.data || [];
+        // 計算 YoY / MoM（若有足夠資料）
+        if (rows.length >= 2) {
+          const latest = rows[rows.length - 1];
+          const prev = rows[rows.length - 2];
+          allRevenue.push({
+            stockId,
+            date: latest.date,
+            revenue: latest.revenue,
+            mom: prev.revenue > 0
+              ? parseFloat(((latest.revenue - prev.revenue) / prev.revenue * 100).toFixed(2))
+              : null,
+            yoy: latest.revenue_year > 0
+              ? parseFloat(((latest.revenue - latest.revenue_year) / latest.revenue_year * 100).toFixed(2))
+              : null
+          });
+        } else if (rows.length === 1) {
+          const latest = rows[0];
+          allRevenue.push({
+            stockId,
+            date: latest.date,
+            revenue: latest.revenue,
+            mom: null,
+            yoy: latest.revenue_year > 0
+              ? parseFloat(((latest.revenue - latest.revenue_year) / latest.revenue_year * 100).toFixed(2))
+              : null
+          });
+        }
+      } catch (err) {
+        logger.warn(`FinMind 月營收失敗 ${stockId}: ${err.message}`);
+      }
+    }
+    return allRevenue;
   }
 
   /**

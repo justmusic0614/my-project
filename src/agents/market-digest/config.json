@@ -202,7 +202,7 @@
   "rateLimits": {
     "perplexity": { "reqPerMin": 5 },
     "fmp": { "reqPerMin": 10 },
-    "finmind": { "reqPerMin": 25 }
+    "finmind": { "reqPerMin": 26 }
   },
 
   "costLedger": {

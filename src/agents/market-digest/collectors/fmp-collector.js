@@ -64,8 +64,9 @@ class FMPCollector extends BaseCollector {
         earnings:  []
       };
 
-      // 並行取得：指數 + Watchlist 報價 + 財報日曆
-      const apiCallCount = Math.ceil(this.watchlist.length) + 2; // 粗估
+      // 並行取得：指數 + Watchlist 報價 + 財報日曆（逐一查詢）
+      const indexCount = INDEX_SYMBOLS.length + Object.keys(MACRO_SYMBOLS).length;
+      const apiCallCount = this.watchlist.length + indexCount + 3; // watchlist + 指數 + earnings/gainers/losers
       this.costLedger.recordApiCall('fmp', apiCallCount);
       this.costLedger.incrementFmpQuota(apiCallCount);
 
@@ -107,14 +108,18 @@ class FMPCollector extends BaseCollector {
     });
   }
 
-  /** Batch 報價（一次取多支） */
+  /** 逐一報價（stable API 不支援多符號批次查詢） */
   async _fetchBatchQuotes(symbols) {
-    const joined = symbols.join(',');
-    const data = await this._get(`${FMP_BASE}/quote?symbol=${encodeURIComponent(joined)}&apikey=${this.apiKey}`);
-    if (!Array.isArray(data)) return {};
+    const results = await Promise.allSettled(
+      symbols.map(s => this._get(`${FMP_BASE}/quote?symbol=${encodeURIComponent(s)}&apikey=${this.apiKey}`))
+    );
 
     const result = {};
-    for (const q of data) {
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue;
+      const arr = r.value;
+      if (!Array.isArray(arr) || arr.length === 0) continue;
+      const q = arr[0];
       result[q.symbol] = {
         symbol: q.symbol,
         name:   q.name,
@@ -132,12 +137,17 @@ class FMPCollector extends BaseCollector {
   /** 指數報價（^GSPC / ^IXIC / ^DJI / ^VIX / DXY / US10Y） */
   async _fetchIndexQuotes() {
     const symbols = [...INDEX_SYMBOLS, ...Object.values(MACRO_SYMBOLS)];
-    const joined = symbols.map(s => encodeURIComponent(s)).join(',');
-    const data = await this._get(`${FMP_BASE}/quote?symbol=${joined}&apikey=${this.apiKey}`);
-    if (!Array.isArray(data)) return {};
+    const results = await Promise.allSettled(
+      symbols.map(s => this._get(`${FMP_BASE}/quote?symbol=${encodeURIComponent(s)}&apikey=${this.apiKey}`))
+    );
 
     const result = {};
-    for (const q of data) result[q.symbol] = q;
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue;
+      const arr = r.value;
+      if (!Array.isArray(arr) || arr.length === 0) continue;
+      result[arr[0].symbol] = arr[0];
+    }
     return result;
   }
 
@@ -183,8 +193,20 @@ class FMPCollector extends BaseCollector {
         let body = '';
         res.on('data', c => body += c);
         res.on('end', () => {
-          try { resolve(JSON.parse(body)); }
-          catch (e) { reject(new Error(`JSON parse: ${e.message}`)); }
+          try {
+            const parsed = JSON.parse(body);
+            // FMP 錯誤格式：{ "Error Message": "..." }
+            if (parsed && parsed['Error Message']) {
+              this.logger.warn(`FMP API error: ${parsed['Error Message'].slice(0, 80)}`);
+              resolve([]);
+              return;
+            }
+            resolve(parsed);
+          } catch (e) {
+            // 非 JSON 回應（如 "Premium Quota exceeded"）→ 降級為空陣列
+            this.logger.warn(`FMP non-JSON response: ${body.slice(0, 60)}`);
+            resolve([]);
+          }
         });
       });
       req.on('error', reject);

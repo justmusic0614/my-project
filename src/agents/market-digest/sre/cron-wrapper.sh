@@ -135,12 +135,33 @@ cleanup_old_logs() {
     log_success "日誌清理完成"
 }
 
-# 發送 Telegram 告警
+# 發送 Telegram 告警（含冷卻機制，避免重複轟炸）
 send_alert() {
     local SEVERITY="$1"
     local MESSAGE="$2"
 
     log "📢 發送告警: [$SEVERITY] $MESSAGE"
+
+    # 冷卻機制：相同告警 30 分鐘內不重複發送（CRITICAL 為 10 分鐘）
+    local ALERT_KEY
+    ALERT_KEY=$(printf '%s' "${SEVERITY}_${MESSAGE}" | md5sum | cut -d' ' -f1)
+    local COOLDOWN_FILE="/tmp/market-digest-alert-${ALERT_KEY}.cooldown"
+    local COOLDOWN_SECONDS=1800  # 30 分鐘
+
+    if [ "$SEVERITY" = "CRITICAL" ]; then
+        COOLDOWN_SECONDS=600  # CRITICAL 10 分鐘
+    fi
+
+    if [ -f "$COOLDOWN_FILE" ]; then
+        local LAST_SENT
+        LAST_SENT=$(cat "$COOLDOWN_FILE" 2>/dev/null || echo 0)
+        local NOW
+        NOW=$(date +%s)
+        if [ $((NOW - LAST_SENT)) -lt $COOLDOWN_SECONDS ]; then
+            log "🔇 告警冷卻中，略過推播 (${SEVERITY}: ${MESSAGE})"
+            return 0
+        fi
+    fi
 
     # 需要 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID（從 .env 載入）
     if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
@@ -166,6 +187,9 @@ Message: ${MESSAGE}"
         -d "chat_id=${TELEGRAM_CHAT_ID}" \
         --data-urlencode "text=${TEXT}" \
         -o /dev/null || log "⚠️  Telegram 推播失敗（curl error）"
+
+    # 記錄發送時間（用於冷卻計算）
+    date +%s > "$COOLDOWN_FILE"
 }
 
 # ==================== 主流程 ====================
@@ -180,6 +204,9 @@ main() {
     
     # 確保日誌目錄存在
     mkdir -p "$LOG_DIR"
+
+    # 提前設定任務名稱（用於告警顯示，避免 "Job: unknown"）
+    TASK_NAME="${1:-unspecified}"
 
     # 載入 .env（若存在），自動設定所有 API keys（ANTHROPIC_API_KEY 等）
     ENV_FILE="$PROJECT_ROOT/.env"
@@ -198,24 +225,25 @@ main() {
         send_alert "CRITICAL" "依賴檢查失敗"
         exit 1
     fi
-    
-    # 2. 健康檢查（非阻塞）
-    if ! health_check; then
-        log "⚠️  健康檢查未通過，但繼續執行..."
-        send_alert "WARNING" "健康檢查未通過"
+
+    # 2. 健康檢查（非阻塞；health job 本身跳過，避免重複執行）
+    if [ "$TASK_NAME" != "health" ]; then
+        if ! health_check; then
+            log "⚠️  健康檢查未通過，但繼續執行..."
+            send_alert "WARNING" "健康檢查未通過"
+        fi
     fi
-    
+
     # 3. 清理舊日誌
     cleanup_old_logs
-    
+
     # 4. 執行主要任務
     if [ $# -eq 0 ]; then
         log_error "未指定任務"
         log "用法: $0 <task_name> <task_command>"
         exit 1
     fi
-    
-    TASK_NAME="$1"
+
     shift
     TASK_CMD="$*"
     
@@ -224,10 +252,12 @@ main() {
         exit 1
     fi
     
-    # 5. 執行後健康檢查
-    log "🏥 執行後健康檢查..."
-    if ! health_check; then
-        send_alert "WARNING" "執行後健康檢查未通過"
+    # 5. 執行後健康檢查（health job 本身跳過，避免重複執行）
+    if [ "$TASK_NAME" != "health" ]; then
+        log "🏥 執行後健康檢查..."
+        if ! health_check; then
+            send_alert "WARNING" "執行後健康檢查未通過"
+        fi
     fi
     
     log "════════════════════════════════════════════════════════════"

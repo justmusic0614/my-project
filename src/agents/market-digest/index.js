@@ -124,7 +124,8 @@ function _getFlag(args, flag) {
 function _printResult(result) {
   const status = result.status || (result.phases ? 'done' : 'ok');
   const cost   = result.cost?.totalCost ?? result.cost;
-  console.log(`[done] status=${status} cost=$${cost != null ? Number(cost).toFixed(4) : 'N/A'}`);
+  const costStr = (cost != null && !isNaN(cost)) ? Number(cost).toFixed(4) : 'N/A';
+  console.log(`[done] status=${status} cost=$${costStr}`);
 }
 
 function _loadWatchlist(watchlistPath) {

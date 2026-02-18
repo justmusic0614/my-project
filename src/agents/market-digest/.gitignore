@@ -93,3 +93,6 @@ archive/
 # ====================
 !.gitignore
 !.env.example
+# 保留 test/ 目錄下的測試檔案（新架構統一放在 test/ 子目錄）
+!test/
+!test/*.js

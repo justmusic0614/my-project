@@ -2,19 +2,33 @@
  * Rate Limiter — Token Bucket 算法
  * 為每個外部 API 提供獨立的限流器
  *
+ * 支援兩種限速模式：
+ *   - reqPerMin: 每分鐘請求數（perplexity/fmp/finmind）
+ *   - intervalMs: 固定間隔毫秒數（SEC EDGAR: 100ms = 10 req/sec）
+ *
  * 使用方式：
  *   const rateLimiter = require('./shared/rate-limiter');
- *   await rateLimiter.acquire('perplexity');  // 等待令牌可用
+ *   await rateLimiter.acquire('perplexity');   // 每分鐘 5 次
+ *   await rateLimiter.acquire('secEdgar');      // 每 100ms 1 次
  */
 
 class TokenBucket {
   constructor(name, options = {}) {
     this.name = name;
-    this.reqPerMin = options.reqPerMin || 10;
-    this.maxTokens = options.maxTokens || this.reqPerMin;
+
+    // 支援 intervalMs（sec-level）或 reqPerMin（min-level）
+    if (options.intervalMs) {
+      // SEC EDGAR: intervalMs: 100 → 10 req/sec
+      this.refillIntervalMs = options.intervalMs;
+      this.reqPerMin = Math.round(60000 / options.intervalMs);
+    } else {
+      this.reqPerMin = options.reqPerMin || 10;
+      this.refillIntervalMs = 60000 / this.reqPerMin;
+    }
+
+    this.maxTokens = options.maxTokens || Math.max(1, Math.min(this.reqPerMin, 10));
     this.tokens = this.maxTokens;
     this.lastRefill = Date.now();
-    this.refillIntervalMs = 60000 / this.reqPerMin; // 每次補充一個令牌的間隔
   }
 
   /**
@@ -55,7 +69,8 @@ class TokenBucket {
       name: this.name,
       tokens: Math.floor(this.tokens),
       maxTokens: this.maxTokens,
-      reqPerMin: this.reqPerMin
+      reqPerMin: this.reqPerMin,
+      refillIntervalMs: Math.round(this.refillIntervalMs)
     };
   }
 }
@@ -95,7 +110,7 @@ class RateLimiter {
 
   /**
    * 等待並取得一個令牌
-   * @param {string} name - API 名稱（perplexity / fmp / finmind）
+   * @param {string} name - API 名稱（perplexity / fmp / finmind / secEdgar / twse / yahoo）
    */
   async acquire(name) {
     if (!this.buckets.has(name)) {
@@ -117,19 +132,14 @@ class RateLimiter {
   }
 
   /**
-   * 用於單元測試
+   * 批次等待：同時對同一 API 發出多個請求時，依序等待
+   * @param {string} name - API 名稱
+   * @param {number} count - 需要的令牌數
    */
-  async test() {
-    console.log('🧪 Rate Limiter test...');
-    this.register('test-api', { reqPerMin: 60 });
-
-    const start = Date.now();
-    await this.acquire('test-api');
-    await this.acquire('test-api');
-    const elapsed = Date.now() - start;
-
-    console.log(`✅ Acquired 2 tokens in ${elapsed}ms (expected < 100ms)`);
-    console.log('Status:', JSON.stringify(this.getStatus(), null, 2));
+  async acquireN(name, count) {
+    for (let i = 0; i < count; i++) {
+      await this.acquire(name);
+    }
   }
 }
 

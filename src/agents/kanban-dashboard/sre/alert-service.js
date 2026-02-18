@@ -8,15 +8,36 @@ const https = require('https');
 // 告警狀態持久化檔案（解決 cron 每次重建實例導致 cooldown 失效的問題）
 const ALERT_STATE_FILE = path.join(__dirname, '../logs/health/alert-state.json');
 
+// 指數退避冷卻設定（避免持續性 DEGRADED 告警轟炸）
+const BACKOFF_THRESHOLDS = [
+  { minAlerts: 7, cooldownMs: 2 * 60 * 60 * 1000 }, // 7+ 次 → 2 小時
+  { minAlerts: 4, cooldownMs: 30 * 60 * 1000 },      // 4-6 次 → 30 分鐘
+  { minAlerts: 0, cooldownMs: 15 * 60 * 1000 }        // 1-3 次 → 15 分鐘（基礎）
+];
+
 class AlertService {
   constructor(options = {}) {
     this.botToken = options.botToken || process.env.TELEGRAM_BOT_TOKEN;
     this.chatId = options.chatId || process.env.TELEGRAM_ALERT_CHAT_ID;
-    this.cooldownMs = options.cooldownMs || 15 * 60 * 1000; // 15 分鐘（從 5 分鐘改為 15 分鐘）
+    this.baseCooldownMs = options.cooldownMs || 15 * 60 * 1000; // 15 分鐘基礎冷卻
     this.recentAlerts = new Map();
+    this.consecutiveAlerts = {}; // { alertKey: count } 連續告警計數
 
     // 讀取持久化的告警狀態（解決 cron 重建實例問題）
     this._loadState();
+  }
+
+  /**
+   * 根據連續告警次數計算實際冷卻時間（指數退避）
+   */
+  _getCooldownMs(alertKey) {
+    const count = this.consecutiveAlerts[alertKey] || 0;
+    for (const { minAlerts, cooldownMs } of BACKOFF_THRESHOLDS) {
+      if (count >= minAlerts) {
+        return cooldownMs;
+      }
+    }
+    return this.baseCooldownMs;
   }
 
   /**
@@ -28,10 +49,17 @@ class AlertService {
         const saved = JSON.parse(fs.readFileSync(ALERT_STATE_FILE, 'utf8'));
         const now = Date.now();
 
-        // 還原 recentAlerts（過濾掉已過期的）
+        // 還原 consecutiveAlerts
+        this.consecutiveAlerts = saved.consecutiveAlerts || {};
+
+        // 還原 recentAlerts（過濾掉已過期的，使用各自的冷卻時間判斷）
         for (const [key, ts] of Object.entries(saved.recentAlerts || {})) {
-          if (now - ts < this.cooldownMs) {
+          const cooldownMs = this._getCooldownMs(key);
+          if (now - ts < cooldownMs) {
             this.recentAlerts.set(key, ts);
+          } else {
+            // 冷卻已過期，重置連續計數
+            delete this.consecutiveAlerts[key];
           }
         }
 
@@ -56,6 +84,7 @@ class AlertService {
 
       const state = {
         recentAlerts: Object.fromEntries(this.recentAlerts),
+        consecutiveAlerts: this.consecutiveAlerts,
         savedAt: new Date().toISOString()
       };
 
@@ -81,20 +110,23 @@ class AlertService {
       return { skipped: true, reason: 'cooldown' };
     }
 
-    // 格式化訊息
-    const formattedMessage = this.formatMessage(message, level, details);
+    // 格式化訊息（附上連續告警次數，讓收件人了解嚴重程度）
+    const count = (this.consecutiveAlerts[alertKey] || 0) + 1;
+    const formattedMessage = this.formatMessage(message, level, details, count);
 
     try {
       await this.sendTelegramMessage(formattedMessage);
 
-      // 記錄此告警，防止短時間內重複發送
+      // 更新連續告警計數和發送時間
+      this.consecutiveAlerts[alertKey] = count;
       this.recentAlerts.set(alertKey, Date.now());
 
       // 持久化狀態（確保 cron 下次執行時 cooldown 仍有效）
       this._saveState();
 
-      console.log(`[Alert] Sent ${level} alert successfully`);
-      return { success: true, level, message };
+      const cooldownMs = this._getCooldownMs(alertKey);
+      console.log(`[Alert] Sent ${level} alert #${count} (next cooldown: ${cooldownMs / 60000} min)`);
+      return { success: true, level, message, alertCount: count };
     } catch (err) {
       console.error(`[Alert] Failed to send alert:`, err.message);
       return { success: false, error: err.message };
@@ -102,7 +134,7 @@ class AlertService {
   }
 
   /**
-   * 檢查是否應該跳過此告警（防止告警風暴）
+   * 檢查是否應該跳過此告警（防止告警風暴，含指數退避）
    */
   shouldSkipAlert(alertKey) {
     const lastSent = this.recentAlerts.get(alertKey);
@@ -111,25 +143,43 @@ class AlertService {
     }
 
     const elapsed = Date.now() - lastSent;
-    if (elapsed < this.cooldownMs) {
-      const remainingMinutes = Math.ceil((this.cooldownMs - elapsed) / 60000);
-      console.log(`[Alert] Cooldown active, ${remainingMinutes} min remaining for: ${alertKey}`);
+    const cooldownMs = this._getCooldownMs(alertKey);
+
+    if (elapsed < cooldownMs) {
+      const remainingMinutes = Math.ceil((cooldownMs - elapsed) / 60000);
+      const count = this.consecutiveAlerts[alertKey] || 0;
+      console.log(`[Alert] Cooldown active (${remainingMinutes} min remaining, alert #${count}): ${alertKey}`);
       return true; // 冷卻時間內，跳過
     }
 
-    // 超過冷卻時間，移除舊記錄
+    // 超過冷卻時間，移除舊記錄（但保留 consecutiveAlerts 計數，等待狀態恢復才重置）
     this.recentAlerts.delete(alertKey);
     return false;
   }
 
   /**
+   * 發送恢復通知（系統回到 HEALTHY 時呼叫，重置連續計數）
+   */
+  resetConsecutiveAlerts(alertKey) {
+    if (this.consecutiveAlerts[alertKey]) {
+      console.log(`[Alert] Resetting consecutive count for ${alertKey} (was: ${this.consecutiveAlerts[alertKey]})`);
+      delete this.consecutiveAlerts[alertKey];
+      this._saveState();
+    }
+  }
+
+  /**
    * 格式化訊息
    */
-  formatMessage(message, level, details) {
+  formatMessage(message, level, details, alertCount = null) {
     const emoji = this.getLevelEmoji(level);
     const timestamp = new Date().toISOString();
 
-    let formatted = `${emoji} *${level} Alert*\n\n`;
+    let formatted = `${emoji} *${level} Alert*`;
+    if (alertCount && alertCount > 1) {
+      formatted += ` _(#${alertCount})_`;
+    }
+    formatted += `\n\n`;
     formatted += `📋 ${message}\n\n`;
     formatted += `🕐 Time: \`${timestamp}\`\n`;
 
@@ -211,13 +261,16 @@ class AlertService {
   }
 
   /**
-   * 清理過期的告警記錄
+   * 清理過期的告警記錄（同時重置長時間無活動的連續計數）
    */
   cleanup() {
     const now = Date.now();
+    const maxCooldownMs = 2 * 60 * 60 * 1000; // 2 小時（最長退避時間）
+
     for (const [key, timestamp] of this.recentAlerts.entries()) {
-      if (now - timestamp > this.cooldownMs * 2) {
+      if (now - timestamp > maxCooldownMs * 2) {
         this.recentAlerts.delete(key);
+        delete this.consecutiveAlerts[key]; // 一起清除連續計數
       }
     }
     this._saveState();

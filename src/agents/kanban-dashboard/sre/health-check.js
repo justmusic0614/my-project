@@ -289,86 +289,35 @@ function registerKanbanDashboardChecks(healthCheck) {
     }
   }, { critical: true, timeout: 6000 });
 
-  // 3. 檢查 Cloudflare Tunnel 進程
-  healthCheck.register('cloudflare-tunnel', async () => {
+  // 3. 檢查 Telegram Poller 進程（取代原 cloudflare-tunnel + webhook-url 檢查）
+  healthCheck.register('telegram-poller', async () => {
     try {
-      const output = execSync('pgrep -f cloudflared', {
+      const output = execSync('pm2 jlist', {
         encoding: 'utf8',
-        timeout: 3000
+        timeout: 5000
       });
 
-      const pids = output.trim().split('\n').filter(Boolean);
+      const processes = JSON.parse(output);
+      const poller = processes.find(p => p.name === 'telegram-poller');
 
-      if (pids.length === 0) {
-        throw new Error('No cloudflared process found');
+      if (!poller) {
+        throw new Error('telegram-poller process not found in PM2');
+      }
+
+      if (poller.pm2_env.status !== 'online') {
+        throw new Error(`telegram-poller status: ${poller.pm2_env.status}`);
       }
 
       return {
-        processCount: pids.length,
-        pids: pids.join(', ')
+        status: poller.pm2_env.status,
+        uptime: `${Math.floor(poller.pm2_env.pm_uptime / 1000 / 60)} minutes`,
+        restarts: poller.pm2_env.restart_time,
+        memory: `${(poller.monit.memory / 1024 / 1024).toFixed(2)} MB`
       };
     } catch (err) {
-      if (err.status === 1) {
-        throw new Error('Cloudflare Tunnel not running (pgrep returned no results)');
-      }
-      throw new Error(`Tunnel check failed: ${err.message}`);
+      throw new Error(`Poller check failed: ${err.message}`);
     }
-  }, { critical: true, timeout: 4000 });
-
-  // 4. 驗證 Telegram Webhook URL
-  healthCheck.register('webhook-url', async () => {
-    return new Promise((resolve, reject) => {
-      const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
-      const req = https.request({
-        hostname: 'api.telegram.org',
-        path: `/bot${BOT_TOKEN}/getWebhookInfo`,
-        method: 'GET',
-        timeout: 10000
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const result = JSON.parse(data);
-            if (!result.ok) {
-              reject(new Error('Telegram API returned not ok'));
-              return;
-            }
-
-            const webhookUrl = result.result.url;
-            const pendingCount = result.result.pending_update_count;
-
-            // 檢查是否有設定 webhook
-            if (!webhookUrl) {
-              reject(new Error('No webhook URL configured'));
-              return;
-            }
-
-            // 檢查是否有錯誤
-            if (result.result.last_error_message) {
-              console.warn(`⚠️  Last webhook error: ${result.result.last_error_message}`);
-            }
-
-            resolve({
-              url: webhookUrl,
-              pendingUpdates: pendingCount,
-              lastErrorDate: result.result.last_error_date || 'none'
-            });
-          } catch (err) {
-            reject(new Error(`Parse error: ${err.message}`));
-          }
-        });
-      });
-
-      req.on('error', reject);
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Request timeout'));
-      });
-      req.end();
-    });
-  }, { critical: false, timeout: 12000 });
+  }, { critical: true, timeout: 6000 });
 
   // 5. 檢查記憶體使用
   healthCheck.register('memory', async () => {

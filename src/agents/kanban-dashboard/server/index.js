@@ -1,6 +1,9 @@
-// Load environment variables from .env file
+// Load environment variables: 優先集中式 ~/clawd/.env，fallback 本地 .env
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const fs = require('fs');
+const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
+const localEnv = path.join(__dirname, '../.env');
+require('dotenv').config({ path: fs.existsSync(centralEnv) ? centralEnv : localEnv });
 
 const express = require('express');
 const cors = require('cors');

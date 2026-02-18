@@ -17,29 +17,26 @@ module.exports = {
       merge_logs: true
     },
 
-    // Cloudflare Tunnel
+    // Telegram Long Polling（取代 Cloudflare Tunnel + Webhook）
     {
-      name: 'cloudflare-tunnel',
-      script: 'scripts/start-tunnel.sh',
-      interpreter: '/bin/bash',
+      name: 'telegram-poller',
+      script: 'scripts/telegram-poller.js',
       cwd: __dirname,
 
       // 重啟策略
       autorestart: true,
-      restart_delay: 5000,        // 重啟前等待 5 秒
-      max_restarts: 10,            // 1 分鐘內最多重啟 10 次
-      min_uptime: '10s',           // 運行少於 10 秒視為異常重啟
+      restart_delay: 3000,
+      max_restarts: 10,
+      min_uptime: '10s',
 
-      // 資源限制
-      max_memory_restart: '100M',  // cloudflared 通常使用 30-50MB
+      // 資源限制（比 cloudflared 更輕量）
+      max_memory_restart: '80M',
 
       // 日誌配置
-      error_file: 'logs/tunnel-error.log',
-      out_file: 'logs/tunnel-out.log',
+      error_file: 'data/logs/poller-error.log',
+      out_file: 'data/logs/poller-out.log',
       merge_logs: true,
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
-
-      // 環境變數由 VPS 的 .env 提供，不在此硬編碼
+      log_date_format: 'YYYY-MM-DD HH:mm:ss'
     }
   ]
 };

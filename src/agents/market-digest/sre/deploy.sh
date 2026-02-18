@@ -82,7 +82,6 @@ FILES=(
   "renderers/daily-renderer.js"
   "renderers/weekly-renderer.js"
   "renderers/telegram-formatter.js"
-  "renderers/section-templates.js"
 
   # publishers/
   "publishers/telegram-publisher.js"

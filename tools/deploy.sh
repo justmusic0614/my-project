@@ -164,7 +164,7 @@ do_audit() {
   local vps_changes=""
 
   if [[ "$paths" == "." ]]; then
-    vps_changes=$(rsync -avzn --itemize-changes \
+    vps_changes=$(rsync -avzn --checksum --itemize-changes \
       -e "$(ssh_e_flag)" \
       "${EXCLUDE_FLAGS[@]}" \
       "${VPS_USER}@${VPS_HOST}:${remote_dir}/" \
@@ -176,16 +176,19 @@ do_audit() {
       local changes=""
 
       if [[ -d "$local_path" ]]; then
-        changes=$(rsync -avzn --itemize-changes \
+        changes=$(rsync -avzn --checksum --itemize-changes \
           -e "$(ssh_e_flag)" \
           "${EXCLUDE_FLAGS[@]}" \
           "${VPS_USER}@${VPS_HOST}:${remote_path}/" \
           "${local_path}/" 2>/dev/null | grep '^[<>ch]' || true)
       elif [[ -f "$local_path" ]]; then
-        changes=$(rsync -avzn --itemize-changes \
-          -e "$(ssh_e_flag)" \
-          "${VPS_USER}@${VPS_HOST}:${remote_path}" \
-          "${local_path}" 2>/dev/null | grep '^[<>ch]' || true)
+        # 單檔用 ssh md5sum 比較（rsync dry-run 對單檔 checksum 不可靠）
+        local vps_md5 local_md5
+        vps_md5=$(run_ssh "md5sum '${remote_path}' 2>/dev/null | cut -d' ' -f1" || echo "")
+        local_md5=$(md5 -q "${local_path}" 2>/dev/null || echo "")
+        if [[ -n "$vps_md5" && "$vps_md5" != "$local_md5" ]]; then
+          changes="[content differs] ${sub}"
+        fi
       fi
       [[ -n "$changes" ]] && vps_changes="${vps_changes}${changes}
 "

@@ -18,7 +18,33 @@ LOCAL_BASE="${PROJECT_ROOT}/src/agents"
 BACKUP_DIR="/home/clawbot/clawd/backups/pre-deploy"
 DEPLOY_LOG="/home/clawbot/clawd/logs/deploy.log"
 
-# ── 共用函式（log_*, run_ssh, ssh_e_flag）─────────────────────────────────────
+# ── 支援的 agent 清單（bash 3.2 相容，不用 declare -A）────────────────────────
+ALL_AGENTS="kanban-dashboard market-digest security-patrol knowledge-digest deploy-monitor shared"
+
+# 查詢 agent 要同步的子路徑（"." = 整個目錄）
+get_agent_paths() {
+  local agent="$1"
+  case "$agent" in
+    kanban-dashboard) echo "server scripts sre ecosystem.config.js package.json" ;;
+    market-digest)    echo "." ;;
+    security-patrol)  echo "patrol.js patrol-wrapper.sh config.json setup-cron.sh" ;;
+    knowledge-digest) echo "scripts" ;;
+    deploy-monitor)   echo "scripts" ;;
+    shared)           echo "." ;;
+    *) echo ""; return 1 ;;
+  esac
+}
+
+# 查詢 agent 對應的 PM2 process 名稱（空字串 = 無需重啟）
+get_pm2_processes() {
+  local agent="$1"
+  case "$agent" in
+    kanban-dashboard) echo "kanban-dashboard telegram-poller" ;;
+    *)                echo "" ;;
+  esac
+}
+
+# ── 共用函式 ──────────────────────────────────────────────────────────────────
 log_info()    { echo -e "\033[0;32m[INFO]\033[0m  $*"; }
 log_warn()    { echo -e "\033[0;33m[WARN]\033[0m  $*"; }
 log_error()   { echo -e "\033[0;31m[ERROR]\033[0m $*"; }
@@ -35,23 +61,6 @@ run_ssh() {
 ssh_e_flag() {
   echo "ssh -i ${VPS_KEY} -p ${VPS_PORT} -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
 }
-
-# ── Agent 部署對照表 ──────────────────────────────────────────────────────────
-# 格式：AGENT_PATHS[agent]="要同步的子路徑（空格分隔）"
-# "." 表示整個目錄
-declare -A AGENT_PATHS=(
-  [kanban-dashboard]="server scripts sre ecosystem.config.js package.json"
-  [market-digest]="."
-  [security-patrol]="patrol.js patrol-wrapper.sh config.json setup-cron.sh"
-  [knowledge-digest]="scripts"
-  [deploy-monitor]="scripts"
-  [shared]="."
-)
-
-# 需要 PM2 重啟的 agent（名稱對應 PM2 process name）
-declare -A PM2_PROCESSES=(
-  [kanban-dashboard]="kanban-dashboard telegram-poller"
-)
 
 # rsync 排除清單
 RSYNC_EXCLUDES=(
@@ -92,7 +101,7 @@ usage() {
   $(basename "$0") shared kanban-dashboard  # 部署多個
 
 可用 agents：
-  $(printf '  %s\n' "${!AGENT_PATHS[@]}" | sort)
+$(for a in $ALL_AGENTS; do echo "  $a"; done)
 EOF
   exit 1
 }
@@ -104,14 +113,15 @@ while [[ $# -gt 0 ]]; do
     --skip-restart)  SKIP_RESTART=true ;;
     --help|-h)       usage ;;
     all)
-      AGENTS=("${!AGENT_PATHS[@]}")
+      # shellcheck disable=SC2206
+      AGENTS=($ALL_AGENTS)
       ;;
     *)
-      if [[ -n "${AGENT_PATHS[$1]+x}" ]]; then
+      if get_agent_paths "$1" >/dev/null 2>&1; then
         AGENTS+=("$1")
       else
         log_error "未知的 agent：$1"
-        echo "可用：${!AGENT_PATHS[*]}"
+        echo "可用：${ALL_AGENTS}"
         exit 1
       fi
       ;;
@@ -146,52 +156,49 @@ do_audit() {
   local agent="$1"
   local local_dir="${LOCAL_BASE}/${agent}"
   local remote_dir="${REMOTE_BASE}/${agent}"
-  local paths="${AGENT_PATHS[$agent]}"
+  local paths
+  paths="$(get_agent_paths "$agent")"
 
   log_info "Audit：檢查 VPS 端是否有未同步修改..."
 
   local vps_changes=""
 
   if [[ "$paths" == "." ]]; then
-    # 整個目錄：反向 rsync --dry-run 偵測 VPS 獨有修改
     vps_changes=$(rsync -avzn --itemize-changes \
       -e "$(ssh_e_flag)" \
       "${EXCLUDE_FLAGS[@]}" \
       "${VPS_USER}@${VPS_HOST}:${remote_dir}/" \
       "${local_dir}/" 2>/dev/null | grep '^[<>ch]' || true)
   else
-    # 逐個子路徑檢查
     for sub in $paths; do
       local local_path="${local_dir}/${sub}"
       local remote_path="${remote_dir}/${sub}"
+      local changes=""
 
       if [[ -d "$local_path" ]]; then
-        local changes
         changes=$(rsync -avzn --itemize-changes \
           -e "$(ssh_e_flag)" \
           "${EXCLUDE_FLAGS[@]}" \
           "${VPS_USER}@${VPS_HOST}:${remote_path}/" \
           "${local_path}/" 2>/dev/null | grep '^[<>ch]' || true)
-        [[ -n "$changes" ]] && vps_changes+="${changes}\n"
       elif [[ -f "$local_path" ]]; then
-        local changes
         changes=$(rsync -avzn --itemize-changes \
           -e "$(ssh_e_flag)" \
           "${VPS_USER}@${VPS_HOST}:${remote_path}" \
           "${local_path}" 2>/dev/null | grep '^[<>ch]' || true)
-        [[ -n "$changes" ]] && vps_changes+="${changes}\n"
       fi
+      [[ -n "$changes" ]] && vps_changes="${vps_changes}${changes}
+"
     done
   fi
 
   if [[ -n "$vps_changes" ]]; then
     log_warn "VPS 端有未同步的修改："
-    echo -e "$vps_changes" | head -20
+    echo "$vps_changes" | head -20
     local change_count
-    change_count=$(echo -e "$vps_changes" | grep -c '^' || true)
+    change_count=$(echo "$vps_changes" | grep -c '.' || true)
     [[ $change_count -gt 20 ]] && log_warn "... 還有 $((change_count - 20)) 個變更"
 
-    # 自動備份
     log_info "自動備份 VPS 修改到 ${BACKUP_DIR}/${agent}/..."
     if [[ "$DRY_RUN" != "true" ]]; then
       run_ssh "mkdir -p '${BACKUP_DIR}/${agent}' && cp -a '${remote_dir}' '${BACKUP_DIR}/${agent}/$(date +%Y%m%d-%H%M%S)'" 2>/dev/null || true
@@ -211,14 +218,14 @@ do_sync() {
   local agent="$1"
   local local_dir="${LOCAL_BASE}/${agent}"
   local remote_dir="${REMOTE_BASE}/${agent}"
-  local paths="${AGENT_PATHS[$agent]}"
+  local paths
+  paths="$(get_agent_paths "$agent")"
 
   local rsync_flags=(-avz --checksum --progress)
   rsync_flags+=("${EXCLUDE_FLAGS[@]}")
   rsync_flags+=(-e "$(ssh_e_flag)")
   [[ "$DRY_RUN" == "true" ]] && rsync_flags+=(--dry-run)
 
-  # 確保遠端目錄存在
   if [[ "$DRY_RUN" != "true" ]]; then
     run_ssh "mkdir -p '${remote_dir}'"
   fi
@@ -256,7 +263,8 @@ do_sync() {
 # PM2 重啟
 do_restart() {
   local agent="$1"
-  local processes="${PM2_PROCESSES[$agent]:-}"
+  local processes
+  processes="$(get_pm2_processes "$agent")"
 
   if [[ -z "$processes" ]]; then
     log_info "（${agent} 無需 PM2 重啟，cron-based agent 下次排程自動生效）"

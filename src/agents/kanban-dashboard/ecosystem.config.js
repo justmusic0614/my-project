@@ -39,11 +39,7 @@ module.exports = {
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
 
-      // 環境變數
-      env: {
-        TELEGRAM_BOT_TOKEN: 'REDACTED_TOKEN',
-        TELEGRAM_WEBHOOK_SECRET: 'REDACTED_SECRET'  // ⚠️ 生產環境請修改
-      }
+      // 環境變數由 VPS 的 .env 提供，不在此硬編碼
     }
   ]
 };

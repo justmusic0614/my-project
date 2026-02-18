@@ -59,7 +59,7 @@ Kanban Dashboard 現在支援透過 Telegram 指令建立和管理任務。
    ```bash
    curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
      -d "url=https://abc123.ngrok.io/api/telegram/webhook" \
-     -d "secret_token=REDACTED_SECRET"
+     -d "secret_token=<WEBHOOK_SECRET>"
    ```
 
 4. **驗證 Webhook**

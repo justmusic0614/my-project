@@ -221,7 +221,7 @@ async function integrateAndPush() {
     console.log('📤 推播中...');
     
     const result = execSync(
-      `clawdbot message send --channel telegram --target REDACTED_CHAT_ID --message "${report.replace(/"/g, '\\"')}"`,
+      `clawdbot message send --channel telegram --target ${process.env.TELEGRAM_CHAT_ID} --message "${report.replace(/"/g, '\\"')}"`,
       { 
         encoding: 'utf8', 
         maxBuffer: 10 * 1024 * 1024,

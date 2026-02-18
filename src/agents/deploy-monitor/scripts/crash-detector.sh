@@ -54,10 +54,10 @@ if [ "$CRASHES" -gt 0 ]; then
 建議：觀察 24 小時確認是否改善
 EOF
     
-    export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-REDACTED_TOKEN}"
+    export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}"
     cat /tmp/crash-alert.txt | clawdbot message send \
       --channel telegram \
-      --target REDACTED_CHAT_ID \
+      --target "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}" \
       --message "$(cat)" \
       2>&1 || echo "[$(timestamp)] 推播失敗"
   else

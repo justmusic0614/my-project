@@ -75,7 +75,7 @@
 
 查看當前 webhook 設定：
 ```bash
-curl -s "https://api.telegram.org/botREDACTED_TOKEN/getWebhookInfo" | jq .
+curl -s "https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo" | jq .
 ```
 
 ## 常見問題
@@ -93,7 +93,7 @@ A: 免費 tunnel 每次重啟 URL 會變，需要重新設定 webhook：
 ssh clawbot@159.65.136.0 "grep 'trycloudflare.com' /home/clawbot/clawd/agents/kanban-dashboard/logs/cloudflare.log | tail -1"
 
 # 2. 更新 webhook（替換 URL）
-curl -X POST "https://api.telegram.org/botREDACTED_TOKEN/setWebhook" \
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://NEW_URL.trycloudflare.com/api/telegram/webhook","secret_token":"REDACTED_SECRET"}'
 ```

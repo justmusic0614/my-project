@@ -4,9 +4,9 @@ const https = require('https');
 const { execSync } = require('child_process');
 const { asyncHandler } = require('../middleware/error-handler');
 
-// Environment variables
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || 'REDACTED_SECRET';
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'REDACTED_TOKEN';
+// Environment variables（必須在 .env 中設定，不提供預設值）
+const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 /**
  * Send reply message to Telegram via direct API call

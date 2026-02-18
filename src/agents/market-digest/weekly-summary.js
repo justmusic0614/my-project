@@ -564,7 +564,7 @@ function pushWeeklySummary(summary) {
     fs.writeFileSync(tempFile, summary);
     
     execSync(
-      `clawdbot message send --channel telegram --target REDACTED_CHAT_ID --message "$(cat ${tempFile})"`,
+      `clawdbot message send --channel telegram --target ${process.env.TELEGRAM_CHAT_ID} --message "$(cat ${tempFile})"`,
       { encoding: 'utf8', timeout: 30000 }
     );
     

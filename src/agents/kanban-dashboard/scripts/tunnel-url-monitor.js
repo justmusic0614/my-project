@@ -31,8 +31,7 @@ const TUNNEL_URL_FILE = path.join(DATA_DIR, 'tunnel-url.txt');
 const MONITOR_LOG = path.join(LOG_DIR, 'tunnel-monitor.log');
 const UPDATE_WEBHOOK_SCRIPT = path.join(SCRIPTS_DIR, 'update-webhook.sh');
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ||
-  'REDACTED_TOKEN';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // ==================== 日誌函數 ====================
 

@@ -8,8 +8,8 @@ export PATH="/home/clawbot/.nvm/versions/node/v22.22.0/bin:$PATH"
 export XDG_RUNTIME_DIR="/run/user/1000"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 
-# Export Telegram token for clawdbot CLI
-export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-REDACTED_TOKEN}"
+# Export Telegram token for clawdbot CLI（必須在環境中設定）
+export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$HOME/clawd/logs/monitor.log"
@@ -37,7 +37,7 @@ if echo "$FULL_CHECK" | grep -q "❌"; then
   
   cat /tmp/monitor-alert.txt | clawdbot message send \
     --channel telegram \
-    --target REDACTED_CHAT_ID \
+    --target "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}" \
     --message "$(cat)" \
     2>&1 >> "$LOG_FILE"
   

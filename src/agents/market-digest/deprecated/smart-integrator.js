@@ -606,7 +606,7 @@ async function integrateAndPush(level = 'minimal') {
     fs.writeFileSync(tempFile, report);
     
     const result = execSync(
-      `/home/clawbot/.nvm/versions/node/v22.22.0/bin/clawdbot message send --channel telegram --target REDACTED_CHAT_ID --message "$(cat ${tempFile})"`,
+      `/home/clawbot/.nvm/versions/node/v22.22.0/bin/clawdbot message send --channel telegram --target ${process.env.TELEGRAM_CHAT_ID} --message "$(cat ${tempFile})"`,
       {
         encoding: 'utf8',
         maxBuffer: 10 * 1024 * 1024,

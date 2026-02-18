@@ -34,8 +34,8 @@ if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
   exit 1
 fi
 
-# chat_id 從 .env 取，fallback 到個人 chat_id
-TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-REDACTED_CHAT_ID}"
+# chat_id 必須在 .env 中設定
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID 未在 .env 中設定}"
 
 # ==================== 路徑設定 ====================
 

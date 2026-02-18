@@ -3,8 +3,8 @@
 
 set -e
 
-# Export Telegram token for clawdbot CLI
-export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-REDACTED_TOKEN}"
+# Export Telegram token for clawdbot CLI（必須在環境中設定）
+export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACTION="${1:-help}"
@@ -104,7 +104,7 @@ case "$ACTION" in
     
     echo "$REPORT" | clawdbot message send \
       --channel telegram \
-      --target REDACTED_CHAT_ID \
+      --target "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}" \
       --message "$(cat)" \
       2>&1
     

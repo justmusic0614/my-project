@@ -2,3 +2,8 @@ data/runtime/latest.json
 data/history/*.json
 data/history/*.jsonl
 logs/*.log
+.env
+.env.local
+.env.*.local
+node_modules/
+package-lock.json

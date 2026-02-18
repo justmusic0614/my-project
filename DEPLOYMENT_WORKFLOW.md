@@ -241,7 +241,7 @@ ssh clawbot@159.65.136.0 "ps aux | grep 'node server/index.js'"
 ssh clawbot@159.65.136.0 "tail -50 /home/clawbot/clawd/agents/kanban-dashboard/logs/server.log"
 
 # 3. 檢查 Telegram webhook 設定
-curl -s "https://api.telegram.org/botREDACTED_TOKEN/getWebhookInfo" | jq .url
+curl -s "https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo" | jq .url
 ```
 
 ### Q: Cloudflare Tunnel URL 改變了？
@@ -253,9 +253,9 @@ Tunnel 重啟後 URL 會改變，需要更新 webhook：
 ssh clawbot@159.65.136.0 "grep 'trycloudflare.com' /home/clawbot/clawd/agents/kanban-dashboard/logs/cloudflare.log | tail -1"
 
 # 2. 更新 webhook
-curl -X POST "https://api.telegram.org/botREDACTED_TOKEN/setWebhook" \
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://NEW_URL.trycloudflare.com/api/telegram/webhook","secret_token":"REDACTED_SECRET"}'
+  -d '{"url":"https://NEW_URL.trycloudflare.com/api/telegram/webhook","secret_token":"<WEBHOOK_SECRET>"}'
 ```
 
 ### Q: npm install 失敗？

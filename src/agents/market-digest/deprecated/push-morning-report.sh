@@ -16,7 +16,7 @@ REPORT_CONTENT=$(cat "$REPORT_FILE")
 
 clawdbot message send \
   --channel telegram \
-  --target REDACTED_CHAT_ID \
+  --target "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}" \
   --message "$REPORT_CONTENT"
 
 echo "✅ 早報已推播到 Telegram"

@@ -318,7 +318,7 @@ function registerKanbanDashboardChecks(healthCheck) {
   // 4. 驗證 Telegram Webhook URL
   healthCheck.register('webhook-url', async () => {
     return new Promise((resolve, reject) => {
-      const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'REDACTED_TOKEN';
+      const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
       const req = https.request({
         hostname: 'api.telegram.org',

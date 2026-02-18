@@ -7,7 +7,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACTION="${1:-help}"
-TARGET_USER="${TELEGRAM_TARGET_USER:-REDACTED_CHAT_ID}"
+TARGET_USER="${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}"
 
 case "$ACTION" in
   add-note)

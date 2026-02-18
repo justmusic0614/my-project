@@ -13,7 +13,7 @@
 const https = require('https');
 const BaseCollector = require('./base-collector');
 
-const FMP_BASE = 'https://financialmodelingprep.com/api';
+const FMP_BASE = 'https://financialmodelingprep.com/stable';
 const CACHE_TTL = 1800000; // 30min
 
 // 美股主要指數符號
@@ -84,12 +84,12 @@ class FMPCollector extends BaseCollector {
       // 處理指數數據
       if (indexResult.status === 'fulfilled') {
         const idx = indexResult.value;
-        if (idx['^GSPC'])  result.SP500  = this.makeDataPoint(idx['^GSPC'].price,  { changePct: idx['^GSPC'].changesPercentage,  source: 'fmp' });
-        if (idx['^IXIC'])  result.NASDAQ = this.makeDataPoint(idx['^IXIC'].price,  { changePct: idx['^IXIC'].changesPercentage,  source: 'fmp' });
-        if (idx['^DJI'])   result.DJI    = this.makeDataPoint(idx['^DJI'].price,   { changePct: idx['^DJI'].changesPercentage,   source: 'fmp' });
-        if (idx['^VIX'])   result.VIX    = this.makeDataPoint(idx['^VIX'].price,   { changePct: idx['^VIX'].changesPercentage,   source: 'fmp' });
-        if (idx['DX-Y.NYB']) result.DXY  = this.makeDataPoint(idx['DX-Y.NYB'].price, { changePct: idx['DX-Y.NYB'].changesPercentage, source: 'fmp' });
-        if (idx['TNX'])    result.US10Y  = this.makeDataPoint(idx['TNX'].price,    { changePct: idx['TNX'].changesPercentage,    source: 'fmp' });
+        if (idx['^GSPC'])  result.SP500  = this.makeDataPoint(idx['^GSPC'].price,  { changePct: idx['^GSPC'].changePercentage,  source: 'fmp' });
+        if (idx['^IXIC'])  result.NASDAQ = this.makeDataPoint(idx['^IXIC'].price,  { changePct: idx['^IXIC'].changePercentage,  source: 'fmp' });
+        if (idx['^DJI'])   result.DJI    = this.makeDataPoint(idx['^DJI'].price,   { changePct: idx['^DJI'].changePercentage,   source: 'fmp' });
+        if (idx['^VIX'])   result.VIX    = this.makeDataPoint(idx['^VIX'].price,   { changePct: idx['^VIX'].changePercentage,   source: 'fmp' });
+        if (idx['DX-Y.NYB']) result.DXY  = this.makeDataPoint(idx['DX-Y.NYB'].price, { changePct: idx['DX-Y.NYB'].changePercentage, source: 'fmp' });
+        if (idx['TNX'])    result.US10Y  = this.makeDataPoint(idx['TNX'].price,    { changePct: idx['TNX'].changePercentage,    source: 'fmp' });
       }
 
       // 財報日曆
@@ -110,7 +110,7 @@ class FMPCollector extends BaseCollector {
   /** Batch 報價（一次取多支） */
   async _fetchBatchQuotes(symbols) {
     const joined = symbols.join(',');
-    const data = await this._get(`${FMP_BASE}/v3/quote/${encodeURIComponent(joined)}?apikey=${this.apiKey}`);
+    const data = await this._get(`${FMP_BASE}/quote?symbol=${encodeURIComponent(joined)}&apikey=${this.apiKey}`);
     if (!Array.isArray(data)) return {};
 
     const result = {};
@@ -120,7 +120,7 @@ class FMPCollector extends BaseCollector {
         name:   q.name,
         price:  q.price,
         change: q.change,
-        changePct: q.changesPercentage,
+        changePct: q.changePercentage,
         volume:    q.volume,
         marketCap: q.marketCap,
         fetchedAt: new Date().toISOString()
@@ -133,7 +133,7 @@ class FMPCollector extends BaseCollector {
   async _fetchIndexQuotes() {
     const symbols = [...INDEX_SYMBOLS, ...Object.values(MACRO_SYMBOLS)];
     const joined = symbols.map(s => encodeURIComponent(s)).join(',');
-    const data = await this._get(`${FMP_BASE}/v3/quote/${joined}?apikey=${this.apiKey}`);
+    const data = await this._get(`${FMP_BASE}/quote?symbol=${joined}&apikey=${this.apiKey}`);
     if (!Array.isArray(data)) return {};
 
     const result = {};
@@ -145,7 +145,7 @@ class FMPCollector extends BaseCollector {
   async _fetchEarningsCalendar() {
     const from = this._todayStr();
     const to = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-    const data = await this._get(`${FMP_BASE}/v3/earning_calendar?from=${from}&to=${to}&apikey=${this.apiKey}`);
+    const data = await this._get(`${FMP_BASE}/earning-calendar?from=${from}&to=${to}&apikey=${this.apiKey}`);
     if (!Array.isArray(data)) return [];
 
     return data.slice(0, 20).map(e => ({
@@ -162,13 +162,13 @@ class FMPCollector extends BaseCollector {
   /** 漲跌幅排名 */
   async _fetchGainersLosers() {
     const [gainers, losers] = await Promise.all([
-      this._get(`${FMP_BASE}/v3/stock_market/gainers?apikey=${this.apiKey}`),
-      this._get(`${FMP_BASE}/v3/stock_market/losers?apikey=${this.apiKey}`)
+      this._get(`${FMP_BASE}/gainers?apikey=${this.apiKey}`),
+      this._get(`${FMP_BASE}/losers?apikey=${this.apiKey}`)
     ]);
 
     const fmt = arr => (Array.isArray(arr) ? arr : []).slice(0, 5).map(s => ({
       symbol: s.symbol, name: s.name, price: s.price,
-      changePct: s.changesPercentage, source: 'fmp'
+      changePct: s.changePercentage, source: 'fmp'
     }));
 
     return { gainers: fmt(gainers), losers: fmt(losers) };

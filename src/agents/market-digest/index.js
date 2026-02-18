@@ -19,6 +19,13 @@
 
 'use strict';
 
+// 集中式 .env 載入：優先 ~/clawd/.env（VPS），fallback 本地 .env
+const path = require('path');
+const fs = require('fs');
+const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
+const localEnv = path.join(__dirname, '.env');
+require('dotenv').config({ path: fs.existsSync(centralEnv) ? centralEnv : localEnv });
+
 const { getConfig } = require('./shared/config-loader');
 const costLedger    = require('./shared/cost-ledger');
 const { createLogger } = require('./shared/logger');

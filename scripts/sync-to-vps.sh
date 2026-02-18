@@ -12,11 +12,14 @@ echo "🔄 開始同步到 VPS..."
 echo ""
 
 # 需要同步的檔案/目錄列表
+# 注意：此腳本為過渡期用，新部署請改用 tools/deploy.sh
 SYNC_ITEMS=(
   "src/agents/shared"                           # Dispatcher 相關
   "src/agents/knowledge-digest/scripts"         # Knowledge Digest
   "src/agents/kanban-dashboard/server"          # Kanban server（完整）
-  "src/agents/kanban-dashboard/data"            # Kanban data
+  "src/agents/kanban-dashboard/scripts"         # Telegram poller 等
+  "src/agents/kanban-dashboard/sre"             # SRE 健康檢查
+  "src/agents/kanban-dashboard/ecosystem.config.js"  # PM2 設定
   "src/agents/kanban-dashboard/package.json"    # Dependencies
 )
 

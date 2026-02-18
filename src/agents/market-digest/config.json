@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "lastUpdated": "2026-02-17",
+  "version": "2.0",
+  "lastUpdated": "2026-02-18",
 
   "http": {
     "timeout": 10000,
@@ -114,12 +114,25 @@
         "tw50Filter": true,
         "cacheTtl": 3600000,
         "enabled": true
+      },
+      "secEdgar": {
+        "baseUrl": "https://efts.sec.gov/LATEST/search-index?q=",
+        "filingUrl": "https://www.sec.gov/cgi-bin/browse-edgar",
+        "eftsUrl": "https://efts.sec.gov/LATEST/search-index",
+        "edgarFullTextSearch": "https://efts.sec.gov/LATEST/search-index",
+        "submissionsUrl": "https://data.sec.gov/submissions/CIK{cik}.json",
+        "userAgent": "${SEC_EDGAR_USER_AGENT}",
+        "filingTypes": ["8-K", "13F", "4", "10-K", "10-Q"],
+        "lookbackHours": 24,
+        "rateLimitMs": 100,
+        "cacheTtl": 1800000,
+        "enabled": true
       }
     },
     "manual_input": {
       "type": "line_group",
-      "description": "LINE 群組早報（主要資料源）",
-      "enabled": true
+      "description": "LINE 群組早報（已停用，改用 API+RSS+Perplexity）",
+      "enabled": false
     }
   },
 
@@ -182,38 +195,38 @@
     "price_change_threshold": 2.0
   },
 
-  "paths": {
-    "data": "data",
-    "cache": "data/cache",
-    "output": "data/output",
-    "newsCollect": "data/news-collect",
-    "dailyBrief": "data/daily-brief",
-    "watchlist": "data/watchlist.json",
-    "logs": "logs"
-  },
-
-  "dataRetention": {
-    "news": 30,
-    "marketData": 90,
-    "cache": 7,
-    "logs": 30
-  },
-
   "rateLimits": {
     "perplexity": { "reqPerMin": 5 },
     "fmp": { "reqPerMin": 10 },
-    "finmind": { "reqPerMin": 26 }
+    "finmind": { "reqPerMin": 26 },
+    "secEdgar": { "reqPerSec": 10, "intervalMs": 100 }
   },
 
   "costLedger": {
     "enabled": true,
-    "dailyBudgetUsd": 1.0,
+    "dailyBudgetUsd": 2.0,
     "usdToTwd": 33,
     "llmPrices": {
       "haiku_input": 0.00000025,
       "haiku_output": 0.00000125,
       "sonnet_input": 0.000003,
       "sonnet_output": 0.000015
+    }
+  },
+
+  "anthropic": {
+    "apiKeyEnv": "ANTHROPIC_API_KEY",
+    "models": {
+      "screening": "claude-haiku-4-5-20251001",
+      "analysis": "claude-sonnet-4-5-20250929"
+    },
+    "maxTokens": {
+      "screening": 1024,
+      "analysis": 4096
+    },
+    "temperature": {
+      "screening": 0.3,
+      "analysis": 0.5
     }
   },
 
@@ -268,6 +281,92 @@
     }
   },
 
+  "pipeline": {
+    "phases": {
+      "phase1": {
+        "name": "US Market Collection",
+        "cronUtc": "30 21 * * 1-5",
+        "description": "美股收集（UTC 21:30 = 台北 05:30）",
+        "timeout": 120000,
+        "retries": 3
+      },
+      "phase2": {
+        "name": "TW Market + RSS + Perplexity",
+        "cronUtc": "30 23 * * 1-5",
+        "description": "台股+RSS+Perplexity（UTC 23:30 = 台北 07:30）",
+        "timeout": 180000,
+        "retries": 3
+      },
+      "phase3": {
+        "name": "Process & Analyze",
+        "cronUtc": "45 23 * * 1-5",
+        "description": "驗證+去重+AI分析（UTC 23:45 = 台北 07:45）",
+        "timeout": 120000,
+        "retries": 2
+      },
+      "phase4": {
+        "name": "Assemble & Publish",
+        "cronUtc": "0 0 * * 2-6",
+        "description": "組裝+推播（UTC 00:00 = 台北 08:00）",
+        "timeout": 60000,
+        "retries": 2
+      },
+      "weekend": {
+        "cronUtc": "0 0 * * 0,6",
+        "description": "週末日報（快取+Perplexity）",
+        "timeout": 180000,
+        "retries": 2
+      },
+      "weekly": {
+        "cronUtc": "30 9 * * 5",
+        "description": "週報（UTC 09:30 = 台北 17:30 週五）",
+        "timeout": 300000,
+        "retries": 2
+      }
+    },
+    "stateDir": "data/pipeline-state",
+    "degradation": {
+      "labels": {
+        "delayed": "[DELAYED]",
+        "unverified": "[UNVERIFIED]",
+        "unavailable": "N/A"
+      }
+    }
+  },
+
+  "validation": {
+    "thresholds": {
+      "TAIEX": { "min": 10000, "max": 50000, "maxDailyChange": 0.10, "crossCheckTolerance": 0.005 },
+      "SP500": { "min": 2000, "max": 15000, "maxDailyChange": 0.07, "crossCheckTolerance": 0.003 },
+      "NASDAQ": { "min": 5000, "max": 30000, "maxDailyChange": 0.07, "crossCheckTolerance": 0.003 },
+      "USDTWD": { "min": 28.0, "max": 35.0, "maxDailyChange": 0.02, "crossCheckTolerance": 0.005 },
+      "VIX": { "min": 8, "max": 90, "maxDailyChange": 0.50 },
+      "DXY": { "min": 80, "max": 130, "maxDailyChange": 0.03 },
+      "US10Y": { "min": 0.5, "max": 8.0, "maxDailyChange": 0.003 }
+    },
+    "crossCheck": {
+      "TAIEX": ["twse", "finmind"],
+      "SP500": ["fmp", "yahoo"],
+      "NASDAQ": ["fmp", "yahoo"],
+      "USDTWD": ["twse", "yahoo"]
+    }
+  },
+
+  "perplexityQueries": {
+    "fixed": [
+      "今日全球金融市場最重要的5件事，包含美股、台股、總經、地緣政治"
+    ],
+    "dynamic": {
+      "enabled": true,
+      "description": "根據 Phase 1 熱點動態生成查詢"
+    },
+    "geopolitics": {
+      "enabled": true,
+      "triggerKeywords": ["戰爭", "制裁", "關稅", "地震", "海峽", "war", "sanction", "tariff"],
+      "query": "最新地緣政治風險事件對金融市場的影響"
+    }
+  },
+
   "sre": {
     "healthCheck": {
       "enabled": true,
@@ -282,6 +381,34 @@
     "metrics": {
       "enabled": true,
       "collectInterval": 60000
+    },
+    "alerting": {
+      "enabled": true,
+      "pipelineFailure": true,
+      "phaseTimeout": true,
+      "validationFailure": true,
+      "costOverBudget": true
     }
+  },
+
+  "paths": {
+    "data": "data",
+    "cache": "data/cache",
+    "output": "data/output",
+    "newsCollect": "data/news-collect",
+    "dailyBrief": "data/daily-brief",
+    "weeklyReport": "data/weekly-report",
+    "pipelineState": "data/pipeline-state",
+    "watchlist": "data/watchlist.json",
+    "logs": "logs"
+  },
+
+  "dataRetention": {
+    "news": 30,
+    "marketData": 90,
+    "cache": 7,
+    "logs": 30,
+    "pipelineState": 7,
+    "weeklyReport": 90
   }
 }

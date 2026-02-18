@@ -1,15 +1,19 @@
 {
   "name": "market-digest",
-  "version": "1.0.0",
-  "description": "",
-  "main": "renderer.js",
+  "version": "2.0.0",
+  "description": "Market Digest Agent - Daily Brief Pipeline",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/",
+    "pipeline": "node index.js pipeline",
+    "weekly": "node index.js weekly",
+    "dry-run": "node index.js pipeline --dry-run"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "axios": "^1.13.4",
     "node-fetch": "^2.7.0",
     "rss-parser": "^3.13.0"

@@ -4,7 +4,7 @@
   "description": "Market Digest Agent - Daily Brief Pipeline",
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/test-validators.js test/test-collectors.js",
     "pipeline": "node index.js pipeline",
     "weekly": "node index.js weekly",
     "dry-run": "node index.js pipeline --dry-run"

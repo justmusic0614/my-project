@@ -1,0 +1,69 @@
+# ============================================================
+# Market Digest Agent v2 — Crontab 配置（VPS，UTC 時區）
+#
+# 安裝方式：crontab -e 後貼入以下配置
+# 路徑前綴：~/clawd/agents/market-digest
+# 時區說明：VPS UTC → 台北 = UTC+8
+# ============================================================
+
+# ── 環境變數（cron 環境需要明確設定）─────────────────────────────
+SHELL=/bin/bash
+PATH=/home/clawbot/.nvm/versions/node/v22.22.0/bin:/usr/local/bin:/usr/bin:/bin
+HOME=/home/clawbot
+
+# .env 由 cron-wrapper.sh 自動載入（含 API keys）
+
+# ── Pipeline v2 多階段排程 ────────────────────────────────────────
+
+# Phase 1 美股（UTC 21:30 = 台北 05:30，週一至五）
+30 21 * * 1-5 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase1 "node index.js pipeline --phase 1"
+
+# Phase 2 台股 + RSS + Perplexity（UTC 23:30 = 台北 07:30，週一至五）
+30 23 * * 1-5 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase2 "node index.js pipeline --phase 2"
+
+# Phase 3 + 4 分析推播（UTC 00:00 = 台北 08:00，週二至六）
+# 注意：執行週一至五的 UTC 00:00，對應台北隔日 08:00
+0 0 * * 2-6 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase34 "node index.js pipeline --phase 3 && node index.js pipeline --phase 4"
+
+# 週末日報（台北 08:00，週日+週一 UTC 00:00）
+# 0 = 週日 UTC 00:00（台北週日 08:00）
+# 1 = 週一 UTC 00:00（台北週一 08:00，即週末日報的最後一天）
+0 0 * * 0,1 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh weekend "node index.js pipeline --weekend"
+
+# 週報（UTC 09:30 = 台北 17:30，週五收盤後）
+30 9 * * 5 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh weekly "node index.js weekly"
+
+# ── SRE ────────────────────────────────────────────────────────────
+
+# 健康檢查（每 5 分鐘）
+*/5 * * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh health "node sre/health-check.js" >/dev/null 2>&1
+
+# 每日備份（UTC 18:00 = 台北 02:00）
+0 18 * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh backup "./sre/backup-strategy.sh"
+
+# ============================================================
+# 舊版 cron（停用時在行首加 # 注解掉）
+# ============================================================
+
+# 舊版日報（已停用，改由 phase1-4 取代）
+# 30 23 * * 1-5 cd ~/clawd/agents/market-digest && node smart-integrator.js push
+# 0 0 * * 1-5   cd ~/clawd/agents/market-digest && node generate-brief-pipeline.js
+
+# ============================================================
+# 除錯指令
+# ============================================================
+#
+# 查看 cron 日誌：
+#   tail -f ~/clawd/agents/market-digest/logs/cron-YYYY-MM-DD.log
+#
+# 手動執行任一 phase：
+#   cd ~/clawd/agents/market-digest
+#   ./sre/cron-wrapper.sh phase1 "node index.js pipeline --phase 1"
+#
+# 手動完整 pipeline（dry-run）：
+#   node index.js pipeline --dry-run
+#
+# 確認 crontab 已安裝：
+#   crontab -l
+#
+# ============================================================

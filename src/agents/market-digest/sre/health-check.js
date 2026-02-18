@@ -318,15 +318,138 @@ function registerDefaultChecks(healthCheck) {
   }, { critical: false, timeout: 500 });
 }
 
+/**
+ * Pipeline 專屬健康檢查
+ * 檢查各 phase 的最後執行時間、今日完成狀態、成本預算
+ */
+function registerPipelineChecks(healthCheck) {
+  const STATE_DIR = path.join(__dirname, '../data/pipeline-state');
+
+  // P1. 今日 Pipeline 完成狀態
+  healthCheck.register('pipeline-daily', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
+    const status = {};
+    let criticalMissing = false;
+
+    for (const phase of phases) {
+      const file = path.join(STATE_DIR, `${phase}-result.json`);
+      if (!fs.existsSync(file)) {
+        status[phase] = 'missing';
+        if (phase === 'phase3' || phase === 'phase4') {
+          criticalMissing = true;
+        }
+        continue;
+      }
+      try {
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const date = data.date || data.collectedAt?.slice(0, 10);
+        const errors = Object.keys(data.errors || {}).length;
+        status[phase] = date === today
+          ? (errors > 0 ? `today-with-${errors}-errors` : 'today-ok')
+          : `stale-${date}`;
+      } catch {
+        status[phase] = 'unreadable';
+      }
+    }
+
+    // 若 phase3/phase4 今日未完成且已過 08:30 台北時間 → 告警
+    const utcHour = new Date().getUTCHours();
+    const isTaipeiPast830 = utcHour >= 1; // UTC 00:30 = 台北 08:30
+    if (criticalMissing && isTaipeiPast830) {
+      throw new Error(`Daily pipeline incomplete after 08:30: ${JSON.stringify(status)}`);
+    }
+
+    return status;
+  }, { critical: true, timeout: 3000 });
+
+  // P2. Pipeline 錯誤數量
+  healthCheck.register('pipeline-errors', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
+    let totalErrors = 0;
+    let totalWarnings = 0;
+    const errorSources = [];
+
+    for (const phase of phases) {
+      const file = path.join(STATE_DIR, `${phase}-result.json`);
+      if (!fs.existsSync(file)) continue;
+      try {
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const date = data.date || data.collectedAt?.slice(0, 10);
+        if (date !== today) continue;
+
+        const errors = Object.entries(data.errors || {});
+        totalErrors += errors.length;
+        errors.forEach(([src]) => errorSources.push(`${phase}/${src}`));
+
+        const degraded = data.validationReport?.degradedFields?.length || 0;
+        if (degraded >= 5) totalWarnings++;
+      } catch {}
+    }
+
+    if (totalErrors >= 3) {
+      throw new Error(`High pipeline error count: ${totalErrors} errors (${errorSources.join(', ')})`);
+    }
+
+    return { errors: totalErrors, warnings: totalWarnings, sources: errorSources };
+  }, { critical: false, timeout: 3000 });
+
+  // P3. 成本預算使用率
+  healthCheck.register('cost-budget', async () => {
+    try {
+      const costLedger = require('../shared/cost-ledger');
+      const summary = costLedger.getDailySummary();
+      const budget = summary.dailyBudgetUsd || 2;
+      const pct = ((summary.totalCost || 0) / budget) * 100;
+
+      if (pct >= 100) {
+        throw new Error(`Daily budget exceeded: $${summary.totalCost?.toFixed(4)} / $${budget}`);
+      }
+
+      return {
+        cost:   `$${(summary.totalCost || 0).toFixed(4)}`,
+        budget: `$${budget}`,
+        usage:  `${pct.toFixed(1)}%`
+      };
+    } catch (err) {
+      if (err.message.includes('exceeded')) throw err;
+      return { cost: 'N/A', budget: '$2', usage: '0%' };
+    }
+  }, { critical: false, timeout: 2000 });
+
+  // P4. 關鍵環境變數檢查
+  healthCheck.register('api-keys', async () => {
+    const required = ['ANTHROPIC_API_KEY', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'];
+    const optional = ['FMP_API_KEY', 'FINMIND_API_TOKEN', 'PERPLEXITY_API_KEY'];
+    const missing  = required.filter(k => !process.env[k]);
+    const present  = required.filter(k =>  process.env[k]);
+    const optPresent = optional.filter(k => process.env[k]);
+
+    if (missing.length > 0) {
+      throw new Error(`Missing required env vars: ${missing.join(', ')}`);
+    }
+
+    return {
+      required: `${present.length}/${required.length}`,
+      optional: `${optPresent.length}/${optional.length}`
+    };
+  }, { critical: true, timeout: 500 });
+}
+
 // 建立實例
-function createHealthCheckSystem() {
+function createHealthCheckSystem(opts = {}) {
   const healthCheck = new HealthCheckSystem();
   registerDefaultChecks(healthCheck);
+  if (opts.pipeline !== false) {
+    registerPipelineChecks(healthCheck);
+  }
   return healthCheck;
 }
 
 module.exports = {
   HealthCheckSystem,
   registerDefaultChecks,
+  registerPipelineChecks,
   createHealthCheckSystem
 };

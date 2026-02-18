@@ -12,13 +12,18 @@ set -euo pipefail
 # --- SRE: fast exit for help/version (no side effects) ---
 case "${1:-}" in
   -h|--help)
-    echo "Usage: ./sre/cron-wrapper.sh <job> <args...>"
-    echo "Examples:"
-    echo "  ./sre/cron-wrapper.sh morning-report \"cd ... && node smart-integrator.js push\""
+    echo "Usage: ./sre/cron-wrapper.sh <job_name> <command...>"
+    echo ""
+    echo "Examples (v2 pipeline):"
+    echo "  ./sre/cron-wrapper.sh phase1  'node index.js pipeline --phase 1'"
+    echo "  ./sre/cron-wrapper.sh phase2  'node index.js pipeline --phase 2'"
+    echo "  ./sre/cron-wrapper.sh phase34 'node index.js pipeline --phase 3 && node index.js pipeline --phase 4'"
+    echo "  ./sre/cron-wrapper.sh weekend 'node index.js pipeline --weekend'"
+    echo "  ./sre/cron-wrapper.sh weekly  'node index.js weekly'"
+    echo "  ./sre/cron-wrapper.sh health  'node sre/health-check.js'"
     exit 0
     ;;
   -v|--version)
-    [ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"
     node -v 2>/dev/null || echo "node not found"
     exit 0
     ;;
@@ -130,15 +135,37 @@ cleanup_old_logs() {
     log_success "日誌清理完成"
 }
 
-# 錯誤通知（預留）
+# 發送 Telegram 告警
 send_alert() {
     local SEVERITY="$1"
     local MESSAGE="$2"
-    
+
     log "📢 發送告警: [$SEVERITY] $MESSAGE"
-    
-    # TODO: 整合 Telegram 或其他通知渠道
-    # 目前只記錄到日誌
+
+    # 需要 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID（從 .env 載入）
+    if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+        log "⚠️  Telegram 未設定（TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID），略過推播"
+        return 0
+    fi
+
+    local EMOJI
+    case "$SEVERITY" in
+        CRITICAL) EMOJI="🔴" ;;
+        ERROR)    EMOJI="🟠" ;;
+        WARNING)  EMOJI="🟡" ;;
+        *)        EMOJI="ℹ️" ;;
+    esac
+
+    local TEXT="${EMOJI} [${SEVERITY}] market-digest cron alert
+Job: ${TASK_NAME:-unknown}
+Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
+Message: ${MESSAGE}"
+
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        --data-urlencode "text=${TEXT}" \
+        -o /dev/null || log "⚠️  Telegram 推播失敗（curl error）"
 }
 
 # ==================== 主流程 ====================

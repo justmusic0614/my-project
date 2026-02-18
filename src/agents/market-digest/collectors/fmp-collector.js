@@ -5,7 +5,8 @@
  *
  * API: https://financialmodelingprep.com
  * Auth: FMP_API_KEY 環境變數
- * Quota: 免費版 250 req/day（config: dailyQuotaLimit: 200）
+ * Quota: Basic 250 req/day（dailyQuotaLimit: 200）/ Starter 300 req/min（無日配額上限）
+ * Plan-aware: config.fmpPlan = "starter" | "basic"
  */
 
 'use strict';
@@ -29,6 +30,7 @@ class FMPCollector extends BaseCollector {
     this.apiKey = process.env.FMP_API_KEY || '';
     this.watchlist = this.apiConfig.watchlist || ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'AVGO', 'TSM', 'AMD', 'QQQ', 'SPY'];
     this.quotaLimit = this.apiConfig.dailyQuotaLimit || 200;
+    this.plan = this.apiConfig.fmpPlan || 'basic';
   }
 
   /**
@@ -47,11 +49,13 @@ class FMPCollector extends BaseCollector {
     return this.withCache(cacheKey, CACHE_TTL, async () => {
       this.logger.info('collecting FMP data');
 
-      // 檢查配額
-      const quota = this.costLedger.checkFmpQuota();
-      if (!quota.canCall) {
-        this.logger.warn(`FMP quota exhausted (${quota.calls}/${this.quotaLimit}), using cached data`);
-        return null;
+      // 檢查配額（starter 方案無每日上限，跳過配額檢查）
+      if (this.plan !== 'starter') {
+        const quota = this.costLedger.checkFmpQuota();
+        if (!quota.canCall) {
+          this.logger.warn(`FMP quota exhausted (${quota.calls}/${this.quotaLimit}), using cached data`);
+          return null;
+        }
       }
 
       const result = {
@@ -212,6 +216,15 @@ class FMPCollector extends BaseCollector {
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     });
+  }
+
+  /** 取得當前 plan 的功能限制資訊 */
+  getPlanInfo() {
+    return {
+      plan:              this.plan,
+      premiumAvailable:  this.plan !== 'starter',
+      quotaEnforced:     this.plan !== 'starter'
+    };
   }
 
   _todayStr() {

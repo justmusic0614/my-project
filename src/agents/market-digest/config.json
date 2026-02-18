@@ -106,6 +106,7 @@
         "watchlist": ["NVDA","AAPL","MSFT","GOOGL","AMZN","META","AVGO","TSM","AMD","BRK-B","BAC","OXY","CVX","KO","QQQ","SPY"],
         "cacheTtl": 1800000,
         "dailyQuotaLimit": 200,
+        "fmpPlan": "starter",
         "enabled": true
       },
       "finmind": {

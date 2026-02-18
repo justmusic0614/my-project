@@ -151,6 +151,48 @@ describe('DailyRenderer', () => {
     assert.ok(result.includes('免責聲明'), 'should still have disclaimer');
   });
 
+  test('render: Equity_Market 顯示台股 Winners/Losers', () => {
+    const brief = {
+      ...sampleBrief,
+      gainersLosers: {
+        twGainers: [
+          { symbol: '2330', name: '台積電', changePct: 3.26, source: 'finmind' },
+          { symbol: '2454', name: '聯發科', changePct: 2.88, source: 'finmind' }
+        ],
+        twLosers: [
+          { symbol: '2603', name: '長榮', changePct: -2.15, source: 'finmind' }
+        ],
+        usGainers: [],
+        usLosers: []
+      }
+    };
+    const result = renderer.render(brief);
+    assert.ok(result.includes('Equity_Market'), 'should have equity section');
+    assert.ok(result.includes('台積電'), 'should show TW gainers');
+    assert.ok(result.includes('長榮'), 'should show TW losers');
+    assert.ok(result.includes('[需升級 FMP 方案]'), 'should show US degradation hint');
+  });
+
+  test('render: Taiwan_Market 顯示 FinMind 融資融券（絕對值+變化）', () => {
+    const brief = {
+      ...sampleBrief,
+      institutionalData: {
+        ...sampleBrief.institutionalData,
+        marginTotal: {
+          marginBalance: 82340000,
+          marginChange: -220000,
+          shortBalance: 54321,
+          shortChange: 121,
+          source: 'finmind'
+        }
+      }
+    };
+    const result = renderer.render(brief);
+    assert.ok(result.includes('融資餘額'), 'should include margin label');
+    assert.ok(result.includes('融券餘額'), 'should include short label');
+    assert.ok(result.includes('億'), 'should show 億 unit');
+  });
+
   test('_fmtChg: positive change shows UP arrow', () => {
     const result = renderer._fmtChg(1.5);
     assert.ok(result.includes('▲'), 'should show up arrow');

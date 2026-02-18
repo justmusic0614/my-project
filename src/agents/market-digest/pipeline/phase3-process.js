@@ -191,8 +191,10 @@ function _extractInstitutional(phase2) {
     trust:         twse.institutional?.trust   ?? finmind.institutional?.trust,
     dealer:        twse.institutional?.dealer  ?? finmind.institutional?.dealer,
     margin:        twse.margin        || null,
-    tw50Prices:    finmind.tw50Prices || {},
-    topMovers:     finmind.topMovers  || []
+    marginTotal:   finmind.marginTotal   || null,
+    tw50Prices:    finmind.tw50Prices    || {},
+    tw50AllPrices: finmind.tw50AllPrices || {},
+    topMovers:     finmind.topMovers     || []
   };
 }
 
@@ -220,12 +222,13 @@ function _extractEvents(phase2) {
  * 提取漲跌幅排名
  */
 function _extractGainersLosers(phase2) {
-  const fmp = phase2.phase1Ref?.fmp || {};
+  const fmp     = phase2.phase1Ref?.fmp || {};
+  const finmind = phase2.finmind || {};
   return {
-    usGainers: fmp.gainers || [],
-    usLosers:  fmp.losers  || [],
-    twGainers: [], // TWSE 漲停板資料（可後續擴展）
-    twLosers:  []
+    usGainers: fmp.gainers       || [],
+    usLosers:  fmp.losers        || [],
+    twGainers: finmind.twGainers || [],
+    twLosers:  finmind.twLosers  || []
   };
 }
 

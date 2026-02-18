@@ -16,12 +16,24 @@ const BaseCollector = require('./base-collector');
 const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4';
 const CACHE_TTL = 3600000; // 1h
 
+// 0050 成分股代碼（台灣市值前 50 大，供 Top5 漲跌幅排行用）
+const TW50_COMPONENTS = [
+  '2330', '2454', '2317', '2382', '2881', '2882', '2891',
+  '2308', '2303', '2412', '1301', '1303', '1326', '2886',
+  '3711', '2002', '5880', '2884', '3034', '2885', '1216',
+  '5871', '2892', '3231', '2207', '6505', '4938', '2357',
+  '4904', '2912', '9910', '1101', '2345', '3037', '5876',
+  '2327', '3008', '6669', '2301', '8046', '2395', '3045',
+  '6488', '3529', '2379', '3661', '3443', '6547', '2603', '1590'
+];
+
 class FinMindCollector extends BaseCollector {
   constructor(config = {}) {
     super('finmind', config);
     this.apiConfig = config.dataSources?.api?.finmind || {};
     this.token = process.env.FINMIND_API_TOKEN || '';
     this.watchlist = this.apiConfig.watchlist || ['2330', '0050', '0056'];
+    this._stockNames = null; // TW50 股票名稱快取（動態查詢 TaiwanStockInfo）
   }
 
   /**
@@ -39,12 +51,14 @@ class FinMindCollector extends BaseCollector {
 
     return this.withCache(cacheKey, CACHE_TTL, async () => {
       this.logger.info('collecting FinMind data', { date: today });
-      this.costLedger.recordApiCall('finmind', 3);
+      this.costLedger.recordApiCall('finmind', 6);
 
-      const [taiexResult, pricesResult, instResult] = await Promise.allSettled([
+      const [taiexResult, pricesResult, instResult, tw50Result, marginResult] = await Promise.allSettled([
         this.withRetry(() => this._fetchTaiex(today), 3, null),
         this.withRetry(() => this._fetchWatchlistPrices(today), 3, {}),
-        this.withRetry(() => this._fetchInstitutional(today), 2, null)
+        this.withRetry(() => this._fetchInstitutional(today), 2, null),
+        this.withRetry(() => this._fetchTw50Prices(today), 2, {}),
+        this.withRetry(() => this._fetchMarginTotal(today), 2, null)
       ]);
 
       const result = {
@@ -88,6 +102,29 @@ class FinMindCollector extends BaseCollector {
         }));
       }
 
+      // TW50 漲跌幅 Top5
+      if (tw50Result.status === 'fulfilled') {
+        const tw50 = tw50Result.value;
+        const sorted = Object.values(tw50).filter(p => p.changePct != null);
+
+        result.twGainers = [...sorted]
+          .sort((a, b) => b.changePct - a.changePct)
+          .slice(0, 5)
+          .map(p => ({ symbol: p.stockId, name: p.name, price: p.close, changePct: p.changePct, source: 'finmind' }));
+
+        result.twLosers = [...sorted]
+          .sort((a, b) => a.changePct - b.changePct)
+          .slice(0, 5)
+          .map(p => ({ symbol: p.stockId, name: p.name, price: p.close, changePct: p.changePct, source: 'finmind' }));
+
+        result.tw50AllPrices = tw50;
+      }
+
+      // 融資融券（FinMind 全市場版）
+      if (marginResult.status === 'fulfilled' && marginResult.value) {
+        result.marginTotal = marginResult.value;
+      }
+
       return result;
     });
   }
@@ -106,10 +143,10 @@ class FinMindCollector extends BaseCollector {
 
     const row = data.data[0];
     const close  = parseFloat(row.close || '0');
-    const open   = parseFloat(row.open  || '0');
-    const change = close - open;
+    const spread = parseFloat(row.spread || '0'); // 漲跌 = 今日收盤 - 前日收盤
+    const prevClose = close - spread;
 
-    return { close, change, changePct: open ? (change / open) * 100 : 0, volume: parseFloat(row.Trading_Volume || '0') / 1e8 };
+    return { close, change: spread, changePct: prevClose > 0 ? (spread / prevClose) * 100 : 0, volume: parseFloat(row.Trading_Volume || '0') / 1e8 };
   }
 
   /** 台股 Watchlist 個股價格 */
@@ -128,8 +165,10 @@ class FinMindCollector extends BaseCollector {
     if (!data?.data?.length) return result;
 
     for (const row of data.data) {
-      const close = parseFloat(row.close || '0');
-      const open  = parseFloat(row.open  || '0');
+      const close  = parseFloat(row.close || '0');
+      const open   = parseFloat(row.open  || '0');
+      const spread = parseFloat(row.spread || '0'); // 漲跌 = 今日收盤 - 前日收盤
+      const prevClose = close - spread;
       result[row.stock_id] = {
         stockId:   row.stock_id,
         date:      row.date,
@@ -138,8 +177,8 @@ class FinMindCollector extends BaseCollector {
         high:      parseFloat(row.max  || '0'),
         low:       parseFloat(row.min  || '0'),
         volume:    parseFloat(row.Trading_Volume || '0'),
-        change:    close - open,
-        changePct: open ? ((close - open) / open) * 100 : 0
+        change:    spread,
+        changePct: prevClose > 0 ? (spread / prevClose) * 100 : 0
       };
     }
     return result;
@@ -165,6 +204,78 @@ class FinMindCollector extends BaseCollector {
     }
 
     return { foreign, trust, dealer, fetchedAt: new Date().toISOString() };
+  }
+
+  /** 動態查詢 TW50 股票名稱（TaiwanStockInfo），快取在記憶體中 */
+  async _fetchStockNames() {
+    if (this._stockNames) return this._stockNames;
+    const params = new URLSearchParams({ dataset: 'TaiwanStockInfo', token: this.token });
+    const data = await this._get(`${FINMIND_BASE}/data?${params}`);
+    if (!data?.data?.length) return {};
+
+    const tw50Set = new Set(TW50_COMPONENTS);
+    const names = {};
+    for (const row of data.data) {
+      if (tw50Set.has(row.stock_id)) {
+        names[row.stock_id] = row.stock_name || row.stock_id;
+      }
+    }
+    this._stockNames = names;
+    return names;
+  }
+
+  /** TW50 成分股價格（供 Top5 漲跌幅排行用，1 次 API call） */
+  async _fetchTw50Prices(date) {
+    const ids = TW50_COMPONENTS.join(',');
+    const params = new URLSearchParams({
+      dataset: 'TaiwanStockPrice', data_id: ids,
+      start_date: date, end_date: date, token: this.token
+    });
+    const data = await this._get(`${FINMIND_BASE}/data?${params}`);
+    if (!data?.data?.length) return {};
+
+    const names = await this._fetchStockNames();
+    const result = {};
+    for (const row of data.data) {
+      const close  = parseFloat(row.close || '0');
+      const spread = parseFloat(row.spread || '0');
+      const prevClose = close - spread;
+      result[row.stock_id] = {
+        stockId:   row.stock_id,
+        name:      names[row.stock_id] || row.stock_id,
+        close,
+        spread,
+        changePct: prevClose > 0 ? (spread / prevClose) * 100 : 0,
+        volume:    parseFloat(row.Trading_Volume || '0')
+      };
+    }
+    return result;
+  }
+
+  /** 全市場融資融券餘額（TaiwanStockTotalMarginPurchaseShortSale，1 次 API call） */
+  async _fetchMarginTotal(date) {
+    const params = new URLSearchParams({
+      dataset: 'TaiwanStockTotalMarginPurchaseShortSale',
+      start_date: date, end_date: date, token: this.token
+    });
+    const data = await this._get(`${FINMIND_BASE}/data?${params}`);
+    if (!data?.data?.length) return null;
+
+    const row = data.data[0];
+    const marginToday = parseInt(row.MarginPurchaseTodayBalance || '0', 10);
+    const marginYes   = parseInt(row.MarginPurchaseYesBalance   || '0', 10);
+    const shortToday  = parseInt(row.ShortSaleTodayBalance      || '0', 10);
+    const shortYes    = parseInt(row.ShortSaleYesBalance        || '0', 10);
+
+    return {
+      marginBalance:    marginToday,
+      marginYesBalance: marginYes,
+      marginChange:     marginToday - marginYes,
+      shortBalance:     shortToday,
+      shortYesBalance:  shortYes,
+      shortChange:      shortToday - shortYes,
+      source:           'finmind'
+    };
   }
 
   _get(url) {

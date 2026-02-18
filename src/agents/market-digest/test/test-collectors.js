@@ -343,7 +343,6 @@ describe('FMPCollector — 邏輯測試', () => {
 
   test('無 API Key 時 collect 返回 error 物件（不拋出）', async () => {
     if (!collector) return;
-    // 確保沒有環境變數
     const saved = process.env.FMP_API_KEY;
     delete process.env.FMP_API_KEY;
     collector.apiKey = '';
@@ -353,6 +352,27 @@ describe('FMPCollector — 邏輯測試', () => {
     assert.equal(result.source, 'fmp');
 
     if (saved) process.env.FMP_API_KEY = saved;
+  });
+
+  test('getPlanInfo 預設 plan 為 basic', () => {
+    if (!collector) return;
+    const info = collector.getPlanInfo();
+    assert.equal(info.plan, 'basic');
+    assert.equal(info.premiumAvailable, true);
+    assert.equal(info.quotaEnforced, true);
+  });
+
+  test('starter plan 時 premiumAvailable=false, quotaEnforced=false', () => {
+    let starterCollector;
+    try {
+      starterCollector = new FMPCollector({
+        dataSources: { api: { fmp: { fmpPlan: 'starter', watchlist: ['NVDA'] } } }
+      });
+    } catch (e) { return; }
+    const info = starterCollector.getPlanInfo();
+    assert.equal(info.plan, 'starter');
+    assert.equal(info.premiumAvailable, false);
+    assert.equal(info.quotaEnforced, false);
   });
 });
 
@@ -389,5 +409,28 @@ describe('FinMindCollector — 邏輯測試', () => {
     assert.equal(result.error, 'no_token');
 
     if (saved) process.env.FINMIND_API_TOKEN = saved;
+  });
+
+  test('_fetchTw50Prices 方法存在', () => {
+    if (!collector) return;
+    assert.equal(typeof collector._fetchTw50Prices, 'function');
+  });
+
+  test('_fetchMarginTotal 方法存在', () => {
+    if (!collector) return;
+    assert.equal(typeof collector._fetchMarginTotal, 'function');
+  });
+
+  test('_fetchStockNames 方法存在', () => {
+    if (!collector) return;
+    assert.equal(typeof collector._fetchStockNames, 'function');
+  });
+
+  test('_stockNames 初始為 null（快取機制）', () => {
+    if (!collector) return;
+    // 新實例的 _stockNames 應為 null
+    let fresh;
+    try { fresh = new FinMindCollector({}); } catch (e) { return; }
+    assert.equal(fresh._stockNames, null);
   });
 });

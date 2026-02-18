@@ -224,7 +224,8 @@ class DailyRenderer {
     const lines = [];
     const { twGainers = [], twLosers = [], usGainers = [], usLosers = [] } = gainersLosers;
 
-    if (twGainers.length > 0 || usGainers.length > 0) {
+    const hasAnyData = twGainers.length > 0 || usGainers.length > 0 || twLosers.length > 0 || usLosers.length > 0;
+    if (hasAnyData) {
       lines.push('  Winners:');
       if (twGainers.length > 0) {
         const tw = twGainers.slice(0, 5).map(s => `${s.name || s.symbol}${s.changePct != null ? ` ${this._fmtChg(s.changePct)}` : ''}`).join('、');
@@ -233,10 +234,10 @@ class DailyRenderer {
       if (usGainers.length > 0) {
         const us = usGainers.slice(0, 5).map(s => `${s.symbol}${s.changePct != null ? ` ${this._fmtChg(s.changePct)}` : ''}`).join('、');
         lines.push(`    美股: ${us}`);
+      } else if (twGainers.length > 0) {
+        lines.push('    美股: [需升級 FMP 方案]');
       }
-    }
 
-    if (twLosers.length > 0 || usLosers.length > 0) {
       lines.push('  Losers:');
       if (twLosers.length > 0) {
         const tw = twLosers.slice(0, 5).map(s => `${s.name || s.symbol}${s.changePct != null ? ` ${this._fmtChg(s.changePct)}` : ''}`).join('、');
@@ -245,6 +246,8 @@ class DailyRenderer {
       if (usLosers.length > 0) {
         const us = usLosers.slice(0, 5).map(s => `${s.symbol}${s.changePct != null ? ` ${this._fmtChg(s.changePct)}` : ''}`).join('、');
         lines.push(`    美股: ${us}`);
+      } else if (twLosers.length > 0) {
+        lines.push('    美股: [需升級 FMP 方案]');
       }
     }
 
@@ -277,8 +280,18 @@ class DailyRenderer {
       if (parts.length > 0) lines.push(`• 三大法人: ${parts.join(' | ')}`);
     }
 
-    // 融資融券
-    if (md.margin?.marginBalance != null) {
+    // 融資融券（FinMind 全市場版優先，含絕對值+變化量）
+    if (inst.marginTotal) {
+      const mt    = inst.marginTotal;
+      const mBal  = (mt.marginBalance / 10000).toFixed(0);
+      const mChg  = (mt.marginChange  / 10000).toFixed(1);
+      const mSign = mt.marginChange >= 0 ? '+' : '';
+      const sBal  = mt.shortBalance.toLocaleString();
+      const sChg  = mt.shortChange;
+      const sSign = sChg >= 0 ? '+' : '';
+      lines.push(`• 融資餘額: ${mBal}億（${mSign}${mChg}）| 融券餘額: ${sBal}張（${sSign}${sChg.toLocaleString()}）`);
+    } else if (md.margin?.marginBalance != null) {
+      // TWSE fallback（舊格式）
       const margin = this._fmtBillion(md.margin.marginBalance / 1e8);
       const short  = md.margin.shortBalance != null ? `，融券 ${this._fmtBillion(md.margin.shortBalance / 1e8)} 億` : '';
       lines.push(`• 融資餘額: ${margin} 億${short}`);

@@ -283,8 +283,8 @@ class DailyRenderer {
     // 融資融券（FinMind 全市場版優先，含絕對值+變化量）
     if (inst.marginTotal) {
       const mt    = inst.marginTotal;
-      const mBal  = (mt.marginBalance / 10000).toFixed(0);
-      const mChg  = (mt.marginChange  / 10000).toFixed(1);
+      const mBal  = (mt.marginBalance / 1e8).toFixed(1);  // 元 → 億
+      const mChg  = (mt.marginChange  / 1e8).toFixed(1);  // 元 → 億
       const mSign = mt.marginChange >= 0 ? '+' : '';
       const sBal  = mt.shortBalance.toLocaleString();
       const sChg  = mt.shortChange;

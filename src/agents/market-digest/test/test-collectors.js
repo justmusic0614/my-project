@@ -411,9 +411,9 @@ describe('FinMindCollector — 邏輯測試', () => {
     if (saved) process.env.FINMIND_API_TOKEN = saved;
   });
 
-  test('_fetchTw50Prices 方法存在', () => {
+  test('_fetchAllPrices 方法存在（全市場查詢，取代逗號分隔 data_id）', () => {
     if (!collector) return;
-    assert.equal(typeof collector._fetchTw50Prices, 'function');
+    assert.equal(typeof collector._fetchAllPrices, 'function');
   });
 
   test('_fetchMarginTotal 方法存在', () => {

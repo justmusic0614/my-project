@@ -51,13 +51,13 @@ class FinMindCollector extends BaseCollector {
 
     return this.withCache(cacheKey, CACHE_TTL, async () => {
       this.logger.info('collecting FinMind data', { date: today });
-      this.costLedger.recordApiCall('finmind', 6);
+      // taiex(1) + allPrices/stockNames(2) + institutional(1) + margin(1) = 5
+      this.costLedger.recordApiCall('finmind', 5);
 
-      const [taiexResult, pricesResult, instResult, tw50Result, marginResult] = await Promise.allSettled([
+      const [taiexResult, allPricesResult, instResult, marginResult] = await Promise.allSettled([
         this.withRetry(() => this._fetchTaiex(today), 3, null),
-        this.withRetry(() => this._fetchWatchlistPrices(today), 3, {}),
+        this.withRetry(() => this._fetchAllPrices(today), 3, {}),
         this.withRetry(() => this._fetchInstitutional(today), 2, null),
-        this.withRetry(() => this._fetchTw50Prices(today), 2, {}),
         this.withRetry(() => this._fetchMarginTotal(today), 2, null)
       ]);
 
@@ -77,47 +77,46 @@ class FinMindCollector extends BaseCollector {
         });
       }
 
-      // 台股個股報價
-      if (pricesResult.status === 'fulfilled') {
-        result.tw50Prices = pricesResult.value;
-      }
+      // 全市場價格 → 過濾出 watchlist 和 TW50
+      if (allPricesResult.status === 'fulfilled') {
+        const allPrices = allPricesResult.value;
+        const tw50Set      = new Set(TW50_COMPONENTS);
+        const watchlistSet = new Set(this.watchlist);
 
-      // 三大法人（供交叉比對）
-      const inst = instResult.status === 'fulfilled' ? instResult.value : null;
-      if (inst) {
-        result.institutional = inst;
+        // watchlist 個股報價（供交叉比對 + Watchlist 區塊）
+        result.tw50Prices = {};
+        for (const [id, p] of Object.entries(allPrices)) {
+          if (watchlistSet.has(id)) result.tw50Prices[id] = p;
+        }
 
-        // 計算漲跌幅前5名（外資買超）
-        const movers = Object.values(result.tw50Prices || {})
-          .filter(p => p.foreignNet != null)
-          .sort((a, b) => (b.foreignNet || 0) - (a.foreignNet || 0));
+        // 三大法人（供交叉比對）
+        const inst = instResult.status === 'fulfilled' ? instResult.value : null;
+        if (inst) {
+          result.institutional = inst;
+          const movers = Object.values(result.tw50Prices)
+            .filter(p => p.foreignNet != null)
+            .sort((a, b) => (b.foreignNet || 0) - (a.foreignNet || 0));
+          result.topMovers = movers.slice(0, 5).map(p => ({
+            symbol: p.stockId, name: p.name || p.stockId,
+            price: p.close, changePct: p.changePct, foreignNet: p.foreignNet, source: 'finmind'
+          }));
+        }
 
-        result.topMovers = movers.slice(0, 5).map(p => ({
-          symbol:    p.stockId,
-          name:      p.name || p.stockId,
-          price:     p.close,
-          changePct: p.changePct,
-          foreignNet: p.foreignNet,
-          source:    'finmind'
-        }));
-      }
-
-      // TW50 漲跌幅 Top5
-      if (tw50Result.status === 'fulfilled') {
-        const tw50 = tw50Result.value;
-        const sorted = Object.values(tw50).filter(p => p.changePct != null);
-
-        result.twGainers = [...sorted]
-          .sort((a, b) => b.changePct - a.changePct)
-          .slice(0, 5)
+        // TW50 漲跌幅 Top5
+        const tw50List = Object.values(allPrices).filter(p => tw50Set.has(p.stockId) && p.changePct != null);
+        result.twGainers = [...tw50List]
+          .sort((a, b) => b.changePct - a.changePct).slice(0, 5)
           .map(p => ({ symbol: p.stockId, name: p.name, price: p.close, changePct: p.changePct, source: 'finmind' }));
-
-        result.twLosers = [...sorted]
-          .sort((a, b) => a.changePct - b.changePct)
-          .slice(0, 5)
+        result.twLosers = [...tw50List]
+          .sort((a, b) => a.changePct - b.changePct).slice(0, 5)
           .map(p => ({ symbol: p.stockId, name: p.name, price: p.close, changePct: p.changePct, source: 'finmind' }));
-
-        result.tw50AllPrices = tw50;
+        result.tw50AllPrices = Object.fromEntries(
+          Object.entries(allPrices).filter(([id]) => tw50Set.has(id))
+        );
+      } else {
+        // allPrices 失敗，仍嘗試組裝三大法人
+        const inst = instResult.status === 'fulfilled' ? instResult.value : null;
+        if (inst) result.institutional = inst;
       }
 
       // 融資融券（FinMind 全市場版）
@@ -149,34 +148,37 @@ class FinMindCollector extends BaseCollector {
     return { close, change: spread, changePct: prevClose > 0 ? (spread / prevClose) * 100 : 0, volume: parseFloat(row.Trading_Volume || '0') / 1e8 };
   }
 
-  /** 台股 Watchlist 個股價格 */
-  async _fetchWatchlistPrices(date) {
-    const result = {};
-    // FinMind 支援批次 stock_id 以逗號分隔
-    const ids = this.watchlist.join(',');
+  /**
+   * 全市場台股價格（不傳 data_id，Backer 支援）
+   * FinMind TaiwanStockPrice 不支援逗號分隔 data_id，須查全市場後客端過濾。
+   * 包含股票名稱（從 _fetchStockNames 快取）
+   */
+  async _fetchAllPrices(date) {
     const params = new URLSearchParams({
       dataset:    'TaiwanStockPrice',
-      data_id:    ids,
       start_date: date,
       end_date:   date,
       token:      this.token
     });
     const data = await this._get(`${FINMIND_BASE}/data?${params}`);
-    if (!data?.data?.length) return result;
+    if (!data?.data?.length) return {};
 
+    const names = await this._fetchStockNames();
+    const result = {};
     for (const row of data.data) {
-      const close  = parseFloat(row.close || '0');
-      const open   = parseFloat(row.open  || '0');
-      const spread = parseFloat(row.spread || '0'); // 漲跌 = 今日收盤 - 前日收盤
+      const close     = parseFloat(row.close  || '0');
+      const spread    = parseFloat(row.spread || '0'); // 今日收盤 - 前日收盤
       const prevClose = close - spread;
       result[row.stock_id] = {
         stockId:   row.stock_id,
+        name:      names[row.stock_id] || row.stock_id,
         date:      row.date,
-        open:      open,
-        close:     close,
+        open:      parseFloat(row.open || '0'),
+        close,
         high:      parseFloat(row.max  || '0'),
         low:       parseFloat(row.min  || '0'),
         volume:    parseFloat(row.Trading_Volume || '0'),
+        spread,
         change:    spread,
         changePct: prevClose > 0 ? (spread / prevClose) * 100 : 0
       };
@@ -224,35 +226,12 @@ class FinMindCollector extends BaseCollector {
     return names;
   }
 
-  /** TW50 成分股價格（供 Top5 漲跌幅排行用，1 次 API call） */
-  async _fetchTw50Prices(date) {
-    const ids = TW50_COMPONENTS.join(',');
-    const params = new URLSearchParams({
-      dataset: 'TaiwanStockPrice', data_id: ids,
-      start_date: date, end_date: date, token: this.token
-    });
-    const data = await this._get(`${FINMIND_BASE}/data?${params}`);
-    if (!data?.data?.length) return {};
-
-    const names = await this._fetchStockNames();
-    const result = {};
-    for (const row of data.data) {
-      const close  = parseFloat(row.close || '0');
-      const spread = parseFloat(row.spread || '0');
-      const prevClose = close - spread;
-      result[row.stock_id] = {
-        stockId:   row.stock_id,
-        name:      names[row.stock_id] || row.stock_id,
-        close,
-        spread,
-        changePct: prevClose > 0 ? (spread / prevClose) * 100 : 0,
-        volume:    parseFloat(row.Trading_Volume || '0')
-      };
-    }
-    return result;
-  }
-
-  /** 全市場融資融券餘額（TaiwanStockTotalMarginPurchaseShortSale，1 次 API call） */
+  /**
+   * 全市場融資融券餘額（TaiwanStockTotalMarginPurchaseShortSale）
+   * API 回傳 name-based 多行：
+   *   MarginPurchaseMoney → 融資金額（元）
+   *   ShortSale          → 融券張數
+   */
   async _fetchMarginTotal(date) {
     const params = new URLSearchParams({
       dataset: 'TaiwanStockTotalMarginPurchaseShortSale',
@@ -261,19 +240,20 @@ class FinMindCollector extends BaseCollector {
     const data = await this._get(`${FINMIND_BASE}/data?${params}`);
     if (!data?.data?.length) return null;
 
-    const row = data.data[0];
-    const marginToday = parseInt(row.MarginPurchaseTodayBalance || '0', 10);
-    const marginYes   = parseInt(row.MarginPurchaseYesBalance   || '0', 10);
-    const shortToday  = parseInt(row.ShortSaleTodayBalance      || '0', 10);
-    const shortYes    = parseInt(row.ShortSaleYesBalance        || '0', 10);
+    // 按 name 索引各行
+    const rows = {};
+    for (const row of data.data) rows[row.name] = row;
+
+    const mpm = rows['MarginPurchaseMoney'] || {};  // 融資金額，元
+    const ss  = rows['ShortSale']           || {};  // 融券，張
 
     return {
-      marginBalance:    marginToday,
-      marginYesBalance: marginYes,
-      marginChange:     marginToday - marginYes,
-      shortBalance:     shortToday,
-      shortYesBalance:  shortYes,
-      shortChange:      shortToday - shortYes,
+      marginBalance:    mpm.TodayBalance || 0,  // 元（渲染時 / 1e8 = 億）
+      marginYesBalance: mpm.YesBalance   || 0,
+      marginChange:     (mpm.TodayBalance || 0) - (mpm.YesBalance || 0),
+      shortBalance:     ss.TodayBalance  || 0,  // 張
+      shortYesBalance:  ss.YesBalance    || 0,
+      shortChange:      (ss.TodayBalance || 0) - (ss.YesBalance || 0),
       source:           'finmind'
     };
   }

@@ -3,8 +3,41 @@
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const { getManager: getCircuitBreakerManager } = require('./circuit-breaker');
 const { getInstance: getGracefulDegradation } = require('./graceful-degradation');
+
+/**
+ * 呼叫 Telegram Bot API（用於健康檢查）
+ */
+function telegramApi(botToken, method, body = null) {
+  return new Promise((resolve) => {
+    const postData = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: 'api.telegram.org',
+      path: `/bot${botToken}/${method}`,
+      method: postData ? 'POST' : 'GET',
+      headers: postData
+        ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+        : {},
+      timeout: 8000
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve({ ok: false, description: `HTTP ${res.statusCode}` }); }
+      });
+    });
+
+    req.on('error', () => resolve({ ok: false, description: 'Network error' }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, description: 'Timeout' }); });
+    if (postData) req.write(postData);
+    req.end();
+  });
+}
 
 class HealthCheckSystem {
   constructor(options = {}) {
@@ -435,6 +468,35 @@ function registerPipelineChecks(healthCheck) {
       optional: `${optPresent.length}/${optional.length}`
     };
   }, { critical: true, timeout: 500 });
+
+  // P5. Telegram 連通性驗證（token + chat_id 實際有效性）
+  healthCheck.register('telegram-connectivity', async () => {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+
+    if (!botToken || !chatId) {
+      throw new Error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID');
+    }
+
+    // Step 1: 驗證 token（getMe）
+    const meResult = await telegramApi(botToken, 'getMe');
+    if (!meResult.ok) {
+      throw new Error(`Token invalid: ${meResult.description || 'Unauthorized'}`);
+    }
+
+    // Step 2: 驗證 chat_id（getChat）
+    const chatResult = await telegramApi(botToken, 'getChat', { chat_id: chatId });
+    if (!chatResult.ok) {
+      throw new Error(`Chat ID ${chatId} unreachable: ${chatResult.description || 'Not Found'}`);
+    }
+
+    return {
+      botName: meResult.result.first_name,
+      botUsername: meResult.result.username,
+      chatType: chatResult.result.type,
+      chatTitle: chatResult.result.title || chatResult.result.first_name
+    };
+  }, { critical: true, timeout: 10000 });
 }
 
 // 建立實例

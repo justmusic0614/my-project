@@ -342,10 +342,98 @@ function crossCheck(valueA, valueB, tolerance) {
   return diff <= tolerance;
 }
 
+// ── Phase Output Contract（SRE Schema Registry）──────────────────────────────
+
+const CRITICAL_FIELDS = ['SP500', 'NASDAQ', 'DJI', 'VIX', 'USDTWD', 'GOLD', 'OIL_WTI', 'BTC'];
+const SUPPLEMENTARY_FIELDS = ['FED_RATE', 'HY_SPREAD', 'TAIEX', 'US10Y', 'DXY', 'PUT_CALL_RATIO'];
+
+const PhaseOutputContracts = {
+  phase1: {
+    required: ['phase', 'date', 'collectedAt'],
+    expectedSources: ['fmp', 'yahoo', 'secEdgar', 'fred']
+  },
+  phase2: {
+    required: ['phase', 'date', 'collectedAt', 'phase1Ref']
+  },
+  phase3: {
+    required: ['phase', 'date', 'processedAt', 'marketData', 'validationReport']
+  },
+  phase4: {
+    required: ['phase', 'date', 'status', 'duration']
+  }
+};
+
+/**
+ * 驗證 Phase 輸出是否符合 contract
+ * @param {string} phaseName - 'phase1' | 'phase2' | 'phase3' | 'phase4'
+ * @param {object} output - Phase 輸出物件
+ * @returns {{ valid, abortPipeline, missingRequired, missingCritical, missingSupplementary, errors }}
+ */
+function validatePhaseOutput(phaseName, output) {
+  const contract = PhaseOutputContracts[phaseName];
+  if (!contract) return { valid: true, abortPipeline: false, errors: [] };
+  if (!output || typeof output !== 'object') {
+    return { valid: false, abortPipeline: true, errors: [`${phaseName}: output is null or not an object`], missingRequired: [], missingCritical: [], missingSupplementary: [] };
+  }
+
+  const errors = [];
+  const missingRequired = [];
+  const missingCritical = [];
+  const missingSupplementary = [];
+
+  // 檢查必要欄位
+  for (const field of contract.required || []) {
+    if (output[field] == null) {
+      missingRequired.push(field);
+      errors.push(`${phaseName}: missing required '${field}'`);
+    }
+  }
+
+  // Phase 1: 檢查資料源是否存在
+  if (phaseName === 'phase1') {
+    for (const src of contract.expectedSources || []) {
+      if (output[src] == null) {
+        errors.push(`${phaseName}: source '${src}' is null`);
+      }
+    }
+  }
+
+  // Phase 3: 檢查關鍵/補充市場欄位
+  if (phaseName === 'phase3' && output.marketData) {
+    for (const f of CRITICAL_FIELDS) {
+      const pt = output.marketData[f];
+      if (!pt || pt.degraded === 'NA' || pt.value == null) {
+        missingCritical.push(f);
+      }
+    }
+    for (const f of SUPPLEMENTARY_FIELDS) {
+      const pt = output.marketData[f];
+      if (!pt || pt.degraded === 'NA' || pt.value == null) {
+        missingSupplementary.push(f);
+      }
+    }
+  }
+
+  // 全部關鍵欄位缺失才 abort
+  const abortPipeline = phaseName === 'phase3' && missingCritical.length === CRITICAL_FIELDS.length;
+
+  return {
+    valid: errors.length === 0 && !abortPipeline,
+    abortPipeline,
+    missingRequired,
+    missingCritical,
+    missingSupplementary,
+    errors
+  };
+}
+
 module.exports = {
   THRESHOLDS,
   DEGRADATION_LABELS,
   IMPORTANCE_LEVELS,
+  CRITICAL_FIELDS,
+  SUPPLEMENTARY_FIELDS,
+  PhaseOutputContracts,
   schemas: {
     MarketDataPoint: MarketDataPointSchema,
     MarketData:      MarketDataSchema,
@@ -360,6 +448,7 @@ module.exports = {
   validate: {
     marketDataPoint:  validateMarketDataPoint,
     dailyBriefData:   validateDailyBriefData,
-    crossCheck
+    crossCheck,
+    phaseOutput:      validatePhaseOutput
   }
 };

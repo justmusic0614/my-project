@@ -287,6 +287,7 @@ ${newsList}
         dailySnapshot:   response.content.slice(0, 200),
         marketRegime:    'Neutral',
         structuralTheme: '',
+        industryThemes:  [],
         keyInsights:     []
       };
     }

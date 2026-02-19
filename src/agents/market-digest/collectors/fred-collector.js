@@ -83,7 +83,9 @@ class FredCollector {
       // 取得最新一筆資料（limit=1, sort_order=desc）
       const url = `${this.baseUrl}/series/observations?series_id=${seriesId}&api_key=${this.apiKey}&file_type=json&limit=1&sort_order=desc`;
 
+      logger.info(`Fetching FRED series: ${seriesId}`);
       const req = https.get(url, (res) => {
+        logger.info(`FRED response received for ${seriesId}: status=${res.statusCode}`);
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
@@ -102,6 +104,7 @@ class FredCollector {
 
       // 設定 10 秒超時
       req.setTimeout(10000, () => {
+        logger.warn(`FRED API timeout for ${seriesId} (10s)`);
         req.destroy();
         reject(new Error(`FRED API timeout for ${seriesId}`));
       });

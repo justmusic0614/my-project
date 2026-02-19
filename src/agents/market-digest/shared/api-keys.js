@@ -117,6 +117,10 @@ class ApiKeysManager {
     return this.get('secEdgar', { fallbackEnv: 'SEC_EDGAR_USER_AGENT' });
   }
 
+  getFred() {
+    return this.get('fred', { fallbackEnv: 'FRED_API_KEY' });
+  }
+
   /**
    * 檢查所有 API keys 狀態
    */
@@ -127,7 +131,8 @@ class ApiKeysManager {
       anthropic: !!this.getAnthropic(),
       finmind: !!this.getFinmind(),
       telegram: !!(this.getTelegram().botToken && this.getTelegram().chatId),
-      secEdgar: !!this.getSecEdgar()
+      secEdgar: !!this.getSecEdgar(),
+      fred: !!this.getFred()
     };
   }
 

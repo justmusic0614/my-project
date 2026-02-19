@@ -51,36 +51,31 @@ async function runPhase1(config = {}) {
   const fmp      = new FMPCollector(config);
   const yahoo    = new YahooCollector(config);
   const secEdgar = new SecEdgarCollector(config);
-  const fred     = new FredCollector(config.fred || {});
+  const fred     = new FredCollector(config);
   const historyManager = new MarketHistoryManager();
 
-  let fmpResult, yahooResult, secResult;
+  let fmpResult, yahooResult, secResult, fredResult;
 
   if (xnysStatus && !xnysStatus.isTradingDay) {
-    // 美股休市：跳過 FMP 行情 + Yahoo，只收集 SEC
+    // 美股休市：跳過 FMP 行情 + Yahoo，只收集 SEC + FRED
     logger.info(`美股今日休市（${xnysStatus.reason}），跳過 FMP/Yahoo 行情收集`);
-    [fmpResult, yahooResult, secResult] = await Promise.allSettled([
+    [fmpResult, yahooResult, secResult, fredResult] = await Promise.allSettled([
       Promise.resolve({ skipped: true, reason: xnysStatus.reason }),
       Promise.resolve({ skipped: true, reason: xnysStatus.reason }),
-      _collectSafe(secEdgar, 'sec-edgar')
+      _collectSafe(secEdgar, 'sec-edgar'),
+      _collectSafe(fred, 'fred')
     ]);
   } else {
-    // 正常收集（單一失敗不阻塞）
-    [fmpResult, yahooResult, secResult] = await Promise.allSettled([
+    // 正常收集（單一失敗不阻塞，FRED 已有 CB + retry + stale fallback）
+    [fmpResult, yahooResult, secResult, fredResult] = await Promise.allSettled([
       _collectSafe(fmp,      'fmp'),
       _collectSafe(yahoo,    'yahoo'),
-      _collectSafe(secEdgar, 'sec-edgar')
+      _collectSafe(secEdgar, 'sec-edgar'),
+      _collectSafe(fred,     'fred')
     ]);
   }
 
-  // ── FRED 資料收集（Fed rate + High-Yield Spread）────────────────────────
-  let fredData = {};
-  try {
-    fredData = await fred.collect(_today());
-    logger.info(`FRED collection: ${Object.keys(fredData).length} fields`);
-  } catch (err) {
-    logger.warn(`FRED collection failed: ${err.message}`);
-  }
+  const fredData = fredResult.status === 'fulfilled' ? (fredResult.value || {}) : {};
 
   // ── 美股情緒資料收集（Put/Call Ratio + SPY Volume）─────────────────────
   let putCallRatio = null;
@@ -126,7 +121,7 @@ async function runPhase1(config = {}) {
     sentiment: { putCallRatio, spyVolume },
     marketData,
     marketHistory,
-    errors:    _collectErrors({ fmpResult, yahooResult, secResult })
+    errors:    _collectErrors({ fmpResult, yahooResult, secResult, fredResult })
   };
 
   // 寫入 pipeline-state
@@ -138,6 +133,7 @@ async function runPhase1(config = {}) {
     fmp:      result.fmp     ? 'ok' : 'failed',
     yahoo:    result.yahoo   ? 'ok' : 'failed',
     secEdgar: result.secEdgar? 'ok' : 'failed',
+    fred:     Object.keys(result.fred).length > 0 ? 'ok' : 'empty',
     cost:     `$${summary.totalCost?.toFixed(4) ?? '0.0000'}`
   });
 

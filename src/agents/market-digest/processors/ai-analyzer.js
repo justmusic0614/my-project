@@ -136,6 +136,7 @@ class AIAnalyzer {
         dailySnapshot:   stage2Result.dailySnapshot,
         marketRegime:    stage2Result.marketRegime,
         structuralTheme: stage2Result.structuralTheme,
+        industryThemes:  stage2Result.industryThemes,
         keyInsights:     stage2Result.keyInsights
       };
 

@@ -1,0 +1,404 @@
+{
+  "phase": "phase1",
+  "date": "2026-02-19",
+  "collectedAt": "2026-02-19T16:11:36.763Z",
+  "duration": 7380,
+  "fmp": {
+    "source": "fmp",
+    "error": "no_api_key",
+    "fetchedAt": "2026-02-19T16:11:29.384Z"
+  },
+  "yahoo": {
+    "date": "2026-02-19",
+    "source": "yahoo",
+    "fetchedAt": "2026-02-19T16:11:29.384Z",
+    "SP500": {
+      "value": 6861.39,
+      "change": 18.170000000000073,
+      "changePct": 0.2655182794064793,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "NASDAQ": {
+      "value": 22697.627,
+      "change": 119.24699999999939,
+      "changePct": 0.5281468378156421,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "DJI": {
+      "value": 49456.75,
+      "change": -76.44000000000233,
+      "changePct": -0.15432076956885338,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "VIX": {
+      "value": 20.22,
+      "change": -0.07000000000000028,
+      "changePct": -0.344997535731889,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "USDTWD": {
+      "value": 31.574,
+      "change": 0.1980000000000004,
+      "changePct": 0.6310555838857739,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "GOLD": {
+      "value": 5033,
+      "change": 46.5,
+      "changePct": 0.9325177980547479,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "OIL_WTI": {
+      "value": 66.55,
+      "change": 1.3599999999999994,
+      "changePct": 2.0862095413406956,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "COPPER": {
+      "value": 5.76,
+      "change": -0.03300000000000036,
+      "changePct": -0.5696530295183905,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "BTC": {
+      "value": 65965.78,
+      "change": -459.54000000000815,
+      "changePct": -0.6918145068778112,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    }
+  },
+  "secEdgar": {
+    "source": "secEdgar",
+    "fetchedAt": "2026-02-19T16:11:36.761Z",
+    "filings": [
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001493152-21-012086",
+        "filedAt": "2021-05-18T00:00:00.000Z",
+        "accession": "0001493152-21-012086:form8-ka.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001493152-21-012086/form8-ka.htm.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001493152-21-009600",
+        "filedAt": "2021-04-23T00:00:00.000Z",
+        "accession": "0001493152-21-009600:form8-ka.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001493152-21-009600/form8-ka.htm.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001093287-11-000058",
+        "filedAt": "2011-06-30T00:00:00.000Z",
+        "accession": "0001093287-11-000058:filename2.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001093287-11-000058/filename2.htm.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001193125-11-158238",
+        "filedAt": "2011-06-03T00:00:00.000Z",
+        "accession": "0001193125-11-158238:d8ka.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001193125-11-158238/d8ka.htm.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001204459-10-001304",
+        "filedAt": "2010-06-01T00:00:00.000Z",
+        "accession": "0001204459-10-001304:d8ka.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001204459-10-001304/d8ka.htm.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001144204-05-040219",
+        "filedAt": "2005-12-19T00:00:00.000Z",
+        "accession": "0001144204-05-040219:v031715_8k.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001144204-05-040219/v031715_8k.txt.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0000928385-02-003100",
+        "filedAt": "2002-09-16T00:00:00.000Z",
+        "accession": "0000928385-02-003100:d8k.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000928385-02-003100/d8k.txt.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0000928385-02-002310",
+        "filedAt": "2002-06-17T00:00:00.000Z",
+        "accession": "0000928385-02-002310:d8k.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000928385-02-002310/d8k.txt.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0000928385-02-000805",
+        "filedAt": "2002-03-15T00:00:00.000Z",
+        "accession": "0000928385-02-000805:d8k.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000928385-02-000805/d8k.txt.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "8-K",
+        "company": "Unknown",
+        "cik": "0001021408-01-511557",
+        "filedAt": "2001-12-19T00:00:00.000Z",
+        "accession": "0001021408-01-511557:d8k.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001021408-01-511557/d8k.txt.txt",
+        "summary": "Unknown 提交 8-K",
+        "importance": "P1"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0002011383-24-000045",
+        "filedAt": "2024-05-14T00:00:00.000Z",
+        "accession": "0002011383-24-000045:toeldte345poa.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0002011383-24-000045/toeldte345poa.htm.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0001209191-21-071005",
+        "filedAt": "2021-12-22T00:00:00.000Z",
+        "accession": "0001209191-21-071005:attachment1.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001209191-21-071005/attachment1.htm.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0001209191-21-071005",
+        "filedAt": "2021-12-22T00:00:00.000Z",
+        "accession": "0001209191-21-071005:attachment4.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001209191-21-071005/attachment4.htm.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0000899243-21-018646",
+        "filedAt": "2021-05-07T00:00:00.000Z",
+        "accession": "0000899243-21-018646:attachment1.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000899243-21-018646/attachment1.htm.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0000899243-21-007267",
+        "filedAt": "2021-02-18T00:00:00.000Z",
+        "accession": "0000899243-21-007267:attachment1.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000899243-21-007267/attachment1.htm.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0001209191-20-058162",
+        "filedAt": "2020-11-12T00:00:00.000Z",
+        "accession": "0001209191-20-058162:attachment1.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001209191-20-058162/attachment1.htm.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-18-007012",
+        "filedAt": "2018-10-15T00:00:00.000Z",
+        "accession": "0001056404-18-007012:ccr17c08_10ka-2017.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-007012/ccr17c08_10ka-2017.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-18-006247",
+        "filedAt": "2018-09-19T00:00:00.000Z",
+        "accession": "0001056404-18-006247:ubs17c07_10ka-2017.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-006247/ubs17c07_10ka-2017.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-18-006243",
+        "filedAt": "2018-09-19T00:00:00.000Z",
+        "accession": "0001056404-18-006243:ubs17c05_10ka-2017.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-006243/ubs17c05_10ka-2017.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-18-006246",
+        "filedAt": "2018-09-19T00:00:00.000Z",
+        "accession": "0001056404-18-006246:ubs17c06_10ka-2017.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-006246/ubs17c06_10ka-2017.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-18-003934",
+        "filedAt": "2018-06-22T00:00:00.000Z",
+        "accession": "0001056404-18-003934:ccc16c28_10ka-2017.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-003934/ccc16c28_10ka-2017.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-18-003922",
+        "filedAt": "2018-06-22T00:00:00.000Z",
+        "accession": "0001056404-18-003922:ccc15c23_10ka-2017.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-003922/ccc15c23_10ka-2017.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-16-004099",
+        "filedAt": "2016-04-05T00:00:00.000Z",
+        "accession": "0001056404-16-004099:wcm15c26_10ka-2015.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-16-004099/wcm15c26_10ka-2015.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0001056404-16-003829",
+        "filedAt": "2016-03-29T00:00:00.000Z",
+        "accession": "0001056404-16-003829:ccc15c24_10ka-2015.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001056404-16-003829/ccc15c24_10ka-2015.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0001343667-12-000012",
+        "filedAt": "2012-10-09T00:00:00.000Z",
+        "accession": "0001343667-12-000012:primary_doc.xml",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001343667-12-000012/primary_doc.xml.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0000950153-07-000431",
+        "filedAt": "2007-02-27T00:00:00.000Z",
+        "accession": "0000950153-07-000431:p73493exv24.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000950153-07-000431/p73493exv24.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "10-K",
+        "company": "Unknown",
+        "cik": "0000950153-06-000504",
+        "filedAt": "2006-02-27T00:00:00.000Z",
+        "accession": "0000950153-06-000504:p71867exv24.htm",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000950153-06-000504/p71867exv24.htm.txt",
+        "summary": "Unknown 提交 10-K",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0001112432-03-000004",
+        "filedAt": "2003-11-04T00:00:00.000Z",
+        "accession": "0001112432-03-000004:primary_doc.xml",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001112432-03-000004/primary_doc.xml.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0001113056-01-500014",
+        "filedAt": "2001-05-04T00:00:00.000Z",
+        "accession": "0001113056-01-500014:etgform405012001.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001113056-01-500014/etgform405012001.txt.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      },
+      {
+        "formType": "4",
+        "company": "Unknown",
+        "cik": "0000893750-01-000155",
+        "filedAt": "2001-03-09T00:00:00.000Z",
+        "accession": "0000893750-01-000155:0001.txt",
+        "url": "https://www.sec.gov/Archives/edgar/data/0000893750-01-000155/0001.txt.txt",
+        "summary": "Unknown 提交 4",
+        "importance": "P2"
+      }
+    ]
+  },
+  "errors": {}
+}

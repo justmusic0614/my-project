@@ -1,0 +1,126 @@
+{
+  "date": "2026-02-19",
+  "generatedAt": "2026-02-19T16:11:40.011Z",
+  "marketData": {
+    "date": "2026-02-19",
+    "TAIEX": {
+      "value": null,
+      "degraded": "NA",
+      "source": "none",
+      "fetchedAt": "2026-02-19T16:11:37.986Z"
+    },
+    "SP500": {
+      "value": 6861.39,
+      "change": 18.170000000000073,
+      "changePct": 0.2655182794064793,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "NASDAQ": {
+      "value": 22697.627,
+      "change": 119.24699999999939,
+      "changePct": 0.5281468378156421,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "DJI": {
+      "value": 49456.75,
+      "change": -76.44000000000233,
+      "changePct": -0.15432076956885338,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "USDTWD": {
+      "value": 31.574,
+      "change": 0.1980000000000004,
+      "changePct": 0.6310555838857739,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "VIX": {
+      "value": 20.22,
+      "change": -0.07000000000000028,
+      "changePct": -0.344997535731889,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "DXY": {
+      "value": null,
+      "degraded": "NA",
+      "source": "none",
+      "fetchedAt": "2026-02-19T16:11:37.986Z"
+    },
+    "US10Y": {
+      "value": null,
+      "degraded": "NA",
+      "source": "none",
+      "fetchedAt": "2026-02-19T16:11:37.986Z"
+    },
+    "GOLD": {
+      "value": 5033,
+      "change": 46.5,
+      "changePct": 0.9325177980547479,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "OIL_WTI": {
+      "value": 66.55,
+      "change": 1.3599999999999994,
+      "changePct": 2.0862095413406956,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "COPPER": {
+      "value": 5.76,
+      "change": -0.03300000000000036,
+      "changePct": -0.5696530295183905,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    },
+    "BTC": {
+      "value": 65965.78,
+      "change": -459.54000000000815,
+      "changePct": -0.6918145068778112,
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.501Z",
+      "verified": false,
+      "degraded": ""
+    }
+  },
+  "aiResult": {
+    "skipped": true,
+    "reason": "no_api_key",
+    "rankedNews": [],
+    "dailySnapshot": "",
+    "marketRegime": "Neutral",
+    "structuralTheme": "",
+    "keyInsights": []
+  },
+  "newsCount": 0,
+  "validationReport": {
+    "schemaErrors": [],
+    "reasonabilityWarnings": [],
+    "crossCheckWarnings": [],
+    "degradedFields": [
+      "TAIEX",
+      "DXY",
+      "US10Y"
+    ]
+  }
+}

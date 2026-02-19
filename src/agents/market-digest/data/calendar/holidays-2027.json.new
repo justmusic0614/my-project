@@ -1,0 +1,66 @@
+{
+  "version": "2027.1",
+  "lastUpdated": "2026-02-19",
+  "source": "auto-sync",
+  "markets": {
+    "XNYS": {
+      "timezone": "America/New_York",
+      "tradingHours": {
+        "open": "09:30",
+        "close": "16:00"
+      },
+      "holidays": [
+        {
+          "date": "2027-01-01",
+          "status": "CLOSED",
+          "reason": "New Year’s Day"
+        },
+        {
+          "date": "2027-01-18",
+          "status": "CLOSED",
+          "reason": "Martin Luther King, Jr. Day"
+        },
+        {
+          "date": "2027-02-15",
+          "status": "CLOSED",
+          "reason": "Washington&#x27;s Birthday"
+        },
+        {
+          "date": "2027-03-26",
+          "status": "CLOSED",
+          "reason": "Good Friday"
+        },
+        {
+          "date": "2027-05-31",
+          "status": "CLOSED",
+          "reason": "Memorial Day"
+        },
+        {
+          "date": "2027-06-18",
+          "status": "CLOSED",
+          "reason": "Juneteenth National Independence Day"
+        },
+        {
+          "date": "2027-07-05",
+          "status": "CLOSED",
+          "reason": "Independence Day"
+        },
+        {
+          "date": "2027-09-06",
+          "status": "CLOSED",
+          "reason": "Labor Day"
+        },
+        {
+          "date": "2027-11-25",
+          "status": "EARLY_CLOSE",
+          "reason": "Thanksgiving Day"
+        },
+        {
+          "date": "2027-12-24",
+          "status": "CLOSED",
+          "reason": "Christmas Day"
+        }
+      ]
+    }
+  }
+}

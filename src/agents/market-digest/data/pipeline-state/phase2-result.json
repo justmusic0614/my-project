@@ -1,0 +1,948 @@
+{
+  "phase": "phase2",
+  "date": "2026-02-19",
+  "collectedAt": "2026-02-19T16:11:37.983Z",
+  "duration": 1217,
+  "twse": {
+    "skipped": true,
+    "reason": "農曆春節"
+  },
+  "finmind": {
+    "skipped": true,
+    "reason": "農曆春節"
+  },
+  "rss": {
+    "source": "rss",
+    "fetchedAt": "2026-02-19T16:11:37.982Z",
+    "news": [
+      {
+        "id": "udn-business-5YyW5bel5qWt",
+        "title": "化工業受惠先進製程、先進封裝助攻 新年度關鍵布局與進展一次看",
+        "summary": "受先進製程及先進封裝助攻，化工業者2026年在高科技應用的布局，金馬年熱鬧開局，半導體相關應用仍是重中之重，大家都關注，...",
+        "source": "udn-business",
+        "url": "https://money.udn.com/money/story/10871/9322505",
+        "publishedAt": "2026-02-19T16:00:00.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-QW4gQUkgZGlz",
+        "title": "An AI disruption-proof option idea: This little known packaging company has strong cash flow",
+        "summary": "Amcor merged with Berry Global last April, creating a huge consumer and healthcare packaging portfolio and positioning it to realize high operating synergies.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/19/an-ai-disruption-proof-option-idea-a-little-known-packaging-company.html",
+        "publishedAt": "2026-02-19T15:44:21.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-V2FsbWFydCBy",
+        "title": "Walmart reports strong holiday growth, but earnings outlook falls short of estimates",
+        "summary": "It marks the first earnings report since new Walmart CEO John Furner took over in early February.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/19/walmart-wmt-q4-2026-earnings.html",
+        "publishedAt": "2026-02-19T15:40:52.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "earnings"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-V2F5ZmFpciBw",
+        "title": "Wayfair posts first annual sales gain since 2020, outperforms overall furniture market",
+        "summary": "Wayfair's growth comes during a challenging time for the furniture industry as tariffs, high interest rates and sluggish home sales are weighing on demand.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/19/wayfair-w-earnings-q4-2025.html",
+        "publishedAt": "2026-02-19T15:39:11.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-VWx0cmEtcmlj",
+        "title": "Ultra-rich families spend more on their private investment firms as their fortunes rise",
+        "summary": "Family offices with at least $1 billion in assets reported spending $6.6 million in annual operating costs on average, according to J.P. Morgan Private Bank.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/19/ultra-rich-families-private-investment-firms-costs-rise.html",
+        "publishedAt": "2026-02-19T15:31:24.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-V2h5IE5ldyBC",
+        "title": "Why New Balance&apos;s &apos;dad shoes&apos; are beating Nike as sales surge 19%",
+        "summary": "New Balance grew sales 19% to $9.2 billion in 2025 as its emphasis on street-wear styles and performance resonate with a wide range of shoppers.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/19/new-balance-2025-sales-jump-19percent-as-brand-takes-share-from-nike.html",
+        "publishedAt": "2026-02-19T13:30:01.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-6IqxMzAw5YWD",
+        "title": "花300元贏19萬！高中生套中台積電100股",
+        "summary": "[NOWnews今日新聞]近期有套圈圈攤販獎品寄出「台積電100股」引發關注，沒想到在過年傳出好消息，有一名高中生在高雄蓮池潭年街，玩套圈圈投兩次，就幸運命中，依台積電封關日收盤價1915元來計算，1",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/%E8%8A%B1300%E5%85%83%E8%B4%8F19%E8%90%AC-%E9%AB%98%E4%B8%AD%E7%94%9F%E5%A5%97%E4%B8%AD%E5%8F%B0%E7%A9%8D%E9%9B%BB100%E8%82%A1-130354164.html",
+        "publishedAt": "2026-02-19T13:03:54.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台積電"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-U21hbGwgZnVy",
+        "title": "Small furniture retailers face existential tariff threat, regardless of Supreme Court ruling",
+        "summary": "As retailers await a decision from the Supreme Court on the future of tariffs, small furniture businesses will see little relief as upholstery duties remain.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/19/supreme-court-tariffs-furniture-retailers-threat.html",
+        "publishedAt": "2026-02-19T13:00:02.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-VGhpcyBBSS1w",
+        "title": "This AI-powered health tech stock is undervalued and poised for big gains, says Mizuho",
+        "summary": "The bank initiated the stock with an outperform rating.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/19/this-ai-powered-health-tech-stock-is-undervalued-and-poised-for-big-gains-says-mizuho.html",
+        "publishedAt": "2026-02-19T12:58:13.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-VW5pdGVkIEFp",
+        "title": "United Airlines is paring back rewards for travelers who don&apos;t have its credit card in MileagePlus overhaul",
+        "summary": "United Airlines is overhauling its MileagePlus loyalty program to reward customers who have the carrier's credit card over those without it.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/19/united-airlines-frequent-flyer-mileage-plus-program-credit-card.html",
+        "publishedAt": "2026-02-19T12:55:53.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-UmF5bW9uZCBK",
+        "title": "Raymond James turns bullish on Chewy after steep sell-off, cites stronger consumer as upside driver",
+        "summary": "Raymond James sees shares of Chewy rising 16% from here.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/19/raymond-james-turns-bullish-on-chewy-after-steep-sell-off-cites-stronger-consumer-as-upside-driver.html",
+        "publishedAt": "2026-02-19T12:34:39.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-VGhpcyBzdG9j",
+        "title": "This stock has nearly 30% upside as AI data center demand grows, says Goldman",
+        "summary": "The bank initiated the company, which produces cables and chips to connect powerful AI computers, at a buy rating.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/19/this-stock-has-nearly-30percent-upside-as-ai-data-center-demand-grows-says-goldman.html",
+        "publishedAt": "2026-02-19T11:47:09.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5Y+w56mN6Zu7",
+        "title": "台積電漲46%只排第三？2025台股漲幅王出爐 「這檔權值股」股價翻倍賺",
+        "summary": "[FTNN新聞網]財經中心／綜合報導回顧2025年台股表現，在AI基礎建設需求的強力灌頂下，過去被視為穩健、波動小的權值龍頭，成功從傳統代工轉型為高效能運算核...",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E5%8F%B0%E7%A9%8D%E9%9B%BB%E6%BC%B246-%E5%8F%AA%E6%8E%92%E7%AC%AC%E4%B8%89-2025%E5%8F%B0%E8%82%A1%E6%BC%B2%E5%B9%85%E7%8E%8B%E5%87%BA%E7%88%90-%E9%80%99%E6%AA%94%E6%AC%8A%E5%80%BC%E8%82%A1-%E8%82%A1%E5%83%B9%E7%BF%BB%E5%80%8D%E8%B3%BA-092800444.html",
+        "publishedAt": "2026-02-19T09:28:00.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台積電",
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5LiN5YaN5Y+q",
+        "title": "不再只押台積電？跨國主動式ETF分散布局 績效更勝台股型",
+        "summary": "【記者呂承哲／台北報導】2025台��進入主動式ETF元年，積極參與各國強勢股的跨國主動式ETF後發先至，2026年以來包括主動元大AI新經濟(00990A)、主動統一全球創新(00988A)績效已達雙",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/%E4%B8%8D%E5%86%8D%E5%8F%AA%E6%8A%BC%E5%8F%B0%E7%A9%8D%E9%9B%BB-%E8%B7%A8%E5%9C%8B%E4%B8%BB%E5%8B%95%E5%BC%8Fetf%E5%88%86%E6%95%A3%E5%B8%83%E5%B1%80-%E7%B8%BE%E6%95%88%E6%9B%B4%E5%8B%9D%E5%8F%B0%E8%82%A1%E5%9E%8B-080000706.html",
+        "publishedAt": "2026-02-19T08:00:00.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台積電",
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5pil56+A5pyf",
+        "title": "春節期間國際股市走強 專家：台股開工紅盤機率高",
+        "summary": "[Newtalk新聞] 近期全球市場受到亞馬遜宣布大幅擴大 AI 資本支出影響，總投資規模上看 2000億美元。雖然AI產業需求持續強勁，但市場短線也擔憂獲利稀釋與傳產被顛覆，使費半指數與標普指數一度",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/%E6%98%A5%E7%AF%80%E6%9C%9F%E9%96%93%E5%9C%8B%E9%9A%9B%E8%82%A1%E5%B8%82%E8%B5%B0%E5%BC%B7-%E5%B0%88%E5%AE%B6-%E5%8F%B0%E8%82%A1%E9%96%8B%E5%B7%A5%E7%B4%85%E7%9B%A4%E6%A9%9F%E7%8E%87%E9%AB%98-050607975.html",
+        "publishedAt": "2026-02-19T05:06:07.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "udn-business-54Sh5Lq65qmf",
+        "title": "無人機拉飛戰術新高度 AI 與蜂群技術改寫作戰手段",
+        "summary": "隨著無人機在戰爭中逐漸嶄露頭角，成為主流偵查、攻擊手段之一，相關供應鏈也成為了市場熱議話題，近期更是有越來越多的反無人機...",
+        "source": "udn-business",
+        "url": "https://money.udn.com/money/story/11162/9326340",
+        "publishedAt": "2026-02-19T02:44:23.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "udn-business-5Zyw5pa55Ym1",
+        "title": "地方創生展現在地韌性 返鄉青年成家園風雨堅強後盾",
+        "summary": "國發會推動地方創生青年培力工作站，近年在全台遍地開花，政策初衷原僅希望為返鄉青年建立支持系統，未料年輕世代的能量遠超預期...",
+        "source": "udn-business",
+        "url": "https://money.udn.com/money/story/5612/9334405",
+        "publishedAt": "2026-02-19T02:12:30.000Z",
+        "importance": "P3",
+        "category": "Taiwan_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-6YeR6aas5bm0",
+        "title": "金馬年淘金攻略！台股破3萬點只看權值股還不夠？「亞洲納斯達克」7檔潛力黑馬出列",
+        "summary": "[FTNN新聞網]財經中心／綜合報導台股金蛇年以33,605點寫下歷史新高封關，全年漲幅達42.85%。隨著美國聯準會（Fed）降息循環啟動、資金寬鬆預期升溫，市場看好...",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E9%87%91%E9%A6%AC%E5%B9%B4%E6%B7%98%E9%87%91%E6%94%BB%E7%95%A5-%E5%8F%B0%E8%82%A1%E7%A0%B43%E8%90%AC%E9%BB%9E%E5%8F%AA%E7%9C%8B%E6%AC%8A%E5%80%BC%E8%82%A1%E9%82%84%E4%B8%8D%E5%A4%A0-%E4%BA%9E%E6%B4%B2%E7%B4%8D%E6%96%AF%E9%81%94%E5%85%8B-7%E6%AA%94%E6%BD%9B%E5%8A%9B%E9%BB%91%E9%A6%AC%E5%87%BA%E5%88%97-020500835.html",
+        "publishedAt": "2026-02-19T02:05:00.000Z",
+        "importance": "P0",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5biC5aC06KmV",
+        "title": "市場評估Fed紀要、輝達領軍AI股上漲！美股收高、台積電ADR下跌",
+        "summary": "[Newtalk新聞] 美國近日公布的最新經濟數據顯示消費者信心疲軟，家庭正努力應付美國總統川普（Donald Trump）關稅政策引發的高通膨之際，投資人評估美國聯邦準備理事會（Fed）政策會議紀要",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/%E5%B8%82%E5%A0%B4%E8%A9%95%E4%BC%B0fed%E7%B4%80%E8%A6%81-%E8%BC%9D%E9%81%94%E9%A0%98%E8%BB%8Dai%E8%82%A1%E4%B8%8A%E6%BC%B2-%E7%BE%8E%E8%82%A1%E6%94%B6%E9%AB%98-%E5%8F%B0%E7%A9%8D%E9%9B%BBadr%E4%B8%8B%E8%B7%8C-015054614.html",
+        "publishedAt": "2026-02-19T01:50:54.000Z",
+        "importance": "P0",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "Fed",
+          "台積電",
+          "AI",
+          "美股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "udn-business-6KuH5LqM5Luj",
+        "title": "談二代接班 環科歐仁傑：坐什麼位子就要扛什麼責任",
+        "summary": "台灣老牌電源廠環隆科技前董事長歐正明2025年2月辭世，兒子歐仁傑接棒滿一週年，過去一年他大刀闊斧改革，主張開源與節流並...",
+        "source": "udn-business",
+        "url": "https://money.udn.com/money/story/5612/9334381",
+        "publishedAt": "2026-02-19T01:36:42.000Z",
+        "importance": "P3",
+        "category": "Taiwan_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5Y+L6YGUQURS",
+        "title": "友達ADR18日上漲0.01美元漲幅0.20%折台股15.89元",
+        "summary": "(中央社台北2026年 2月19日電)友達光電在OTC US掛牌ADR以5.04美元作收，上漲0.01美元，漲幅 0.20%。由於每單位友達 ADR相當於台股10股友達普通股，以 2月13日新台幣匯市",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E5%8F%8B%E9%81%94adr18%E6%97%A5%E4%B8%8A%E6%BC%B20-01%E7%BE%8E%E5%85%83%E6%BC%B2%E5%B9%850-20-%E6%8A%98%E5%8F%B0%E8%82%A115-89%E5%85%83-013150833.html",
+        "publishedAt": "2026-02-19T01:31:50.000Z",
+        "importance": "P2",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5Lit6I+v6Zu7",
+        "title": "中華電信ADR18日下跌0.19美元跌幅0.44%折台股134.99元",
+        "summary": "(中央社台北2026年 2月19日電)中華電信在NYSE掛牌ADR 以 42.83美元作收，下跌0.19美元，跌幅 0.44%。由於每單位中華電信 ADR相當於台股10股中華電信普通股，以 2月13日",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E4%B8%AD%E8%8F%AF%E9%9B%BB%E4%BF%A1adr18%E6%97%A5%E4%B8%8B%E8%B7%8C0-19%E7%BE%8E%E5%85%83%E8%B7%8C%E5%B9%850-44-%E6%8A%98%E5%8F%B0%E8%82%A1134-99%E5%85%83-013146495.html",
+        "publishedAt": "2026-02-19T01:31:46.000Z",
+        "importance": "P2",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-6IGv6Zu7QURS",
+        "title": "聯電ADR18日下跌0.04美元跌幅0.39%折台股64.49元",
+        "summary": "(中央社台北2026年 2月19日電)聯電在NYSE掛牌 ADR以10.23美元作收，下跌0.04美元，跌幅 0.39%。由於每單位聯電 ADR相當於台股 5股聯電普通股，以 2月13日新台幣匯市收盤",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E8%81%AF%E9%9B%BBadr18%E6%97%A5%E4%B8%8B%E8%B7%8C0-04%E7%BE%8E%E5%85%83%E8%B7%8C%E5%B9%850-39-%E6%8A%98%E5%8F%B0%E8%82%A164-49%E5%85%83-013144433.html",
+        "publishedAt": "2026-02-19T01:31:44.000Z",
+        "importance": "P2",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-5Y+w56mN6Zu7",
+        "title": "台積電ADR18日下跌1.94美元跌幅0.53%折台股2283.54元",
+        "summary": "(中央社台北2026年 2月19日電)台積電在NYSE掛牌 ADR以362.26美元作收，下跌1.94美元，跌幅 0.53%。由於每單位台積電 ADR相當於台股 5股台積電普通股，以 2月13日新台幣",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E5%8F%B0%E7%A9%8D%E9%9B%BBadr18%E6%97%A5%E4%B8%8B%E8%B7%8C1-94%E7%BE%8E%E5%85%83%E8%B7%8C%E5%B9%850-53-%E6%8A%98%E5%8F%B0%E8%82%A12283-54%E5%85%83-013142667.html",
+        "publishedAt": "2026-02-19T01:31:42.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台積電",
+          "台股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "udn-business-55yf5oCn5oOF",
+        "title": "真性情創投教父 王伯元勤寫作、生日宴變個人演唱會",
+        "summary": "在產業界和金融圈享有盛名的創投教父、李國鼎科技發展基金會董事長王伯元，近年來勤於寫作，時有文章見報，或論時政、或談經貿，...",
+        "source": "udn-business",
+        "url": "https://money.udn.com/money/story/5612/9334368",
+        "publishedAt": "2026-02-19T01:22:26.000Z",
+        "importance": "P3",
+        "category": "Taiwan_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-RmVk5Yip546H",
+        "title": "Fed利率走向不明 美股收高科技股撐盤、台積電ADR跌0.53%",
+        "summary": "美國聯準會（Fed）週三公布上月底議息會議紀錄，顯示對利率走向仍存在分歧。在關鍵科技股的帶動之下，美國股市週三收盤上揚，台積電ADR小跌0.53%，收在362.26美元；輝達上漲1.63%，收187.",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/fed%E5%88%A9%E7%8E%87%E8%B5%B0%E5%90%91%E4%B8%8D%E6%98%8E-%E7%BE%8E%E8%82%A1%E6%94%B6%E9%AB%98%E7%A7%91%E6%8A%80%E8%82%A1%E6%92%90%E7%9B%A4-%E5%8F%B0%E7%A9%8D%E9%9B%BBadr%E8%B7%8C0-53-005935078.html",
+        "publishedAt": "2026-02-19T00:59:35.000Z",
+        "importance": "P0",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "Fed",
+          "台積電",
+          "美股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-VGh1cnNkYXkm",
+        "title": "Thursday&apos;s big stock stories: What’s likely to move the market in the next trading session",
+        "summary": "The major averages managed to post gains on Wednesday as tech shares rose. It was the third straight positive day for the S&P 500.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/18/thursdays-big-stock-stories-whats-likely-to-move-the-market.html",
+        "publishedAt": "2026-02-19T00:25:21.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-6JmO5bC+6Iqx",
+        "title": "虎尾花生品牌化 策略聯盟開通路、股東會田野樂",
+        "summary": "（中央社記者姜宜菁雲林縣19日電）雲林縣虎尾鎮農會研發花生系列商品，契作面積達230公頃，並與鄰近農會組花生策略聯盟，打開通路，還辦「花生股東會」，股東們採收期走進田間認識花生一生，另類食農教育。",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/%E8%99%8E%E5%B0%BE%E8%8A%B1%E7%94%9F%E5%93%81%E7%89%8C%E5%8C%96-%E7%AD%96%E7%95%A5%E8%81%AF%E7%9B%9F%E9%96%8B%E9%80%9A%E8%B7%AF-%E8%82%A1%E6%9D%B1%E6%9C%83%E7%94%B0%E9%87%8E%E6%A8%82-001416931.html",
+        "publishedAt": "2026-02-19T00:14:16.000Z",
+        "importance": "P3",
+        "category": "Taiwan_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-6Lyd6YGU44CB",
+        "title": "輝達、Meta合約引爆！美股四大指數全收紅 台積電ADR小跌0.53%",
+        "summary": "[FTNN新聞網]記者陳宣穎／綜合報導受到輝達與Meta簽下多年期供貨合約，帶動科技股回神，美股四大指數週三（18日）全面收紅，其中道瓊工業指數上漲129.47點或0...",
+        "source": "yahoo-tw",
+        "url": "https://tw.stock.yahoo.com/news/%E8%BC%9D%E9%81%94-meta%E5%90%88%E7%B4%84%E5%BC%95%E7%88%86-%E7%BE%8E%E8%82%A1%E5%9B%9B%E5%A4%A7%E6%8C%87%E6%95%B8%E5%85%A8%E6%94%B6%E7%B4%85-%E5%8F%B0%E7%A9%8D%E9%9B%BBadr%E5%B0%8F%E8%B7%8C0-53-233000593.html",
+        "publishedAt": "2026-02-18T23:30:00.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台積電",
+          "指數",
+          "美股"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-QXMgV2FsbWFy",
+        "title": "As Walmart and Target head in different directions, all eyes are on their new CEOs",
+        "summary": "The two big-box retailers are contending with the same economic backdrop, yet Target is trying to prove it can make a comeback.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/18/walmart-target-earnings-new-ceos-furner-fiddelke.html",
+        "publishedAt": "2026-02-18T22:28:08.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-RkRBIGNoaWVm",
+        "title": "FDA chief warns U.S. is losing ground to China in early drug development, calls for faster trial approvals",
+        "summary": "Makary pointed to three bottlenecks: hospital contracting; ethical reviews and approvals; and the Investigational New Drug applications process",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/18/fda-chief-warns-us-is-losing-ground-to-china-in-early-drug-trials.html",
+        "publishedAt": "2026-02-18T22:27:03.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-SW5zaWRlIERh",
+        "title": "Inside David Einhorn&apos;s eclectic stock portfolio: The value investor shuns AI in favor of a unique mix of companies",
+        "summary": "Einhorn's latest moves reflect his views on artificial intelligence and the market as a whole.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/18/inside-einhorns-eclectic-stock-portfolio-the-value-investor-shuns-ai.html",
+        "publishedAt": "2026-02-18T21:50:09.000Z",
+        "importance": "P1",
+        "category": "Equity_Market",
+        "keywords": [
+          "AI"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-R29sZCBhbmQg",
+        "title": "Gold and silver have been on a wild ride. How you can add exposure to the metals in your portfolio",
+        "summary": "The metals have had a solid rally to kick off 2026, but a closer look reveals plenty of dramatic swings in prices from one day to the next.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/18/how-you-can-add-gold-and-silver-exposure-to-your-portfolio.html",
+        "publishedAt": "2026-02-18T20:28:51.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-business-U2VhdHRsZSBT",
+        "title": "Seattle Seahawks begin sale process after Super Bowl win",
+        "summary": "The Seattle Seahawks are beginning a sale process in what could be one of the largest NFL sales in history.",
+        "source": "cnbc-business",
+        "url": "https://www.cnbc.com/2026/02/18/seattle-seahawks-sale-super-bowl.html",
+        "publishedAt": "2026-02-18T20:14:40.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-SGVkZ2UgZnVu",
+        "title": "Hedge funds have a clear favorite Magnificent 7 stock, attracting the likes of Ackman, Druckenmiller and Klarman",
+        "summary": "Notable institutional investors bought a net 40.9 million shares in the cloud provider in the fourth quarter, according to a CNBC analysis of data from Verity.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/18/hedge-funds-mag-7-favorite-attracts-ackman-druckenmiller-and-klarman.html",
+        "publishedAt": "2026-02-18T19:31:36.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "yahoo-tw-6IOh55Oc5bm0",
+        "title": "胡瓜年初3上《鈔錢部署》大談算數常算錯所以投財買房.台積電僅64元無緣 .800-1700元做當沖..算錯小數點：差點違約交割3100百萬.",
+        "summary": "算數常算錯.所以買房投資最安心/華視提供",
+        "source": "yahoo-tw",
+        "url": "https://tw.news.yahoo.com/%E8%83%A1%E7%93%9C19%E6%97%A5%E4%B8%8A-%E9%88%94%E9%8C%A2%E9%83%A8%E7%BD%B2-%E5%A4%A7%E8%AB%87%E5%8F%B0%E7%A9%8D%E9%9B%BB%E5%83%8564%E5%85%83%E7%84%A1%E7%B7%A3-800-%E5%85%83-180703209.html",
+        "publishedAt": "2026-02-18T18:07:03.000Z",
+        "importance": "P1",
+        "category": "Taiwan_Market",
+        "keywords": [
+          "台積電"
+        ],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-U2VhcmNoaW5n",
+        "title": "Searching software for value as shares get pummeled. UBS found four stocks it likes",
+        "summary": "As software stocks are battered amid the artificial intelligence threat, UBS likes HubSpot, Microsoft, ServiceNow and Autodesk.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/18/searching-software-for-value-amid-the-slump-four-stocks-ubs-likes.html",
+        "publishedAt": "2026-02-18T18:02:26.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      },
+      {
+        "id": "cnbc-investing-VGhpcyBjcnVp",
+        "title": "This cruise stock is forming a potential &apos;cup-and-handle&apos; chart pattern. These are the levels to look at",
+        "summary": "Frank Cappelleri takes a look at the charts in the cruise line operator.",
+        "source": "cnbc-investing",
+        "url": "https://www.cnbc.com/2026/02/18/this-cruise-stock-is-forming-a-potential-cup-and-handle-chart-pattern.html",
+        "publishedAt": "2026-02-18T18:00:01.000Z",
+        "importance": "P3",
+        "category": "Equity_Market",
+        "keywords": [],
+        "isDuplicate": false
+      }
+    ]
+  },
+  "perplexity": {
+    "source": "perplexity",
+    "error": "no_api_key",
+    "news": [],
+    "fetchedAt": "2026-02-19T16:11:36.774Z"
+  },
+  "phase1Ref": {
+    "fmp": {
+      "source": "fmp",
+      "error": "no_api_key",
+      "fetchedAt": "2026-02-19T16:11:29.384Z"
+    },
+    "yahoo": {
+      "date": "2026-02-19",
+      "source": "yahoo",
+      "fetchedAt": "2026-02-19T16:11:29.384Z",
+      "SP500": {
+        "value": 6861.39,
+        "change": 18.170000000000073,
+        "changePct": 0.2655182794064793,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "NASDAQ": {
+        "value": 22697.627,
+        "change": 119.24699999999939,
+        "changePct": 0.5281468378156421,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "DJI": {
+        "value": 49456.75,
+        "change": -76.44000000000233,
+        "changePct": -0.15432076956885338,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "VIX": {
+        "value": 20.22,
+        "change": -0.07000000000000028,
+        "changePct": -0.344997535731889,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "USDTWD": {
+        "value": 31.574,
+        "change": 0.1980000000000004,
+        "changePct": 0.6310555838857739,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "GOLD": {
+        "value": 5033,
+        "change": 46.5,
+        "changePct": 0.9325177980547479,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "OIL_WTI": {
+        "value": 66.55,
+        "change": 1.3599999999999994,
+        "changePct": 2.0862095413406956,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "COPPER": {
+        "value": 5.76,
+        "change": -0.03300000000000036,
+        "changePct": -0.5696530295183905,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      },
+      "BTC": {
+        "value": 65965.78,
+        "change": -459.54000000000815,
+        "changePct": -0.6918145068778112,
+        "source": "yahoo",
+        "fetchedAt": "2026-02-19T16:11:29.501Z",
+        "verified": false,
+        "degraded": ""
+      }
+    },
+    "secEdgar": {
+      "source": "secEdgar",
+      "fetchedAt": "2026-02-19T16:11:36.761Z",
+      "filings": [
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001493152-21-012086",
+          "filedAt": "2021-05-18T00:00:00.000Z",
+          "accession": "0001493152-21-012086:form8-ka.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001493152-21-012086/form8-ka.htm.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001493152-21-009600",
+          "filedAt": "2021-04-23T00:00:00.000Z",
+          "accession": "0001493152-21-009600:form8-ka.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001493152-21-009600/form8-ka.htm.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001093287-11-000058",
+          "filedAt": "2011-06-30T00:00:00.000Z",
+          "accession": "0001093287-11-000058:filename2.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001093287-11-000058/filename2.htm.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001193125-11-158238",
+          "filedAt": "2011-06-03T00:00:00.000Z",
+          "accession": "0001193125-11-158238:d8ka.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001193125-11-158238/d8ka.htm.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001204459-10-001304",
+          "filedAt": "2010-06-01T00:00:00.000Z",
+          "accession": "0001204459-10-001304:d8ka.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001204459-10-001304/d8ka.htm.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001144204-05-040219",
+          "filedAt": "2005-12-19T00:00:00.000Z",
+          "accession": "0001144204-05-040219:v031715_8k.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001144204-05-040219/v031715_8k.txt.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0000928385-02-003100",
+          "filedAt": "2002-09-16T00:00:00.000Z",
+          "accession": "0000928385-02-003100:d8k.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000928385-02-003100/d8k.txt.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0000928385-02-002310",
+          "filedAt": "2002-06-17T00:00:00.000Z",
+          "accession": "0000928385-02-002310:d8k.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000928385-02-002310/d8k.txt.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0000928385-02-000805",
+          "filedAt": "2002-03-15T00:00:00.000Z",
+          "accession": "0000928385-02-000805:d8k.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000928385-02-000805/d8k.txt.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "8-K",
+          "company": "Unknown",
+          "cik": "0001021408-01-511557",
+          "filedAt": "2001-12-19T00:00:00.000Z",
+          "accession": "0001021408-01-511557:d8k.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001021408-01-511557/d8k.txt.txt",
+          "summary": "Unknown 提交 8-K",
+          "importance": "P1"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0002011383-24-000045",
+          "filedAt": "2024-05-14T00:00:00.000Z",
+          "accession": "0002011383-24-000045:toeldte345poa.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0002011383-24-000045/toeldte345poa.htm.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0001209191-21-071005",
+          "filedAt": "2021-12-22T00:00:00.000Z",
+          "accession": "0001209191-21-071005:attachment1.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001209191-21-071005/attachment1.htm.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0001209191-21-071005",
+          "filedAt": "2021-12-22T00:00:00.000Z",
+          "accession": "0001209191-21-071005:attachment4.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001209191-21-071005/attachment4.htm.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0000899243-21-018646",
+          "filedAt": "2021-05-07T00:00:00.000Z",
+          "accession": "0000899243-21-018646:attachment1.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000899243-21-018646/attachment1.htm.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0000899243-21-007267",
+          "filedAt": "2021-02-18T00:00:00.000Z",
+          "accession": "0000899243-21-007267:attachment1.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000899243-21-007267/attachment1.htm.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0001209191-20-058162",
+          "filedAt": "2020-11-12T00:00:00.000Z",
+          "accession": "0001209191-20-058162:attachment1.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001209191-20-058162/attachment1.htm.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-18-007012",
+          "filedAt": "2018-10-15T00:00:00.000Z",
+          "accession": "0001056404-18-007012:ccr17c08_10ka-2017.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-007012/ccr17c08_10ka-2017.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-18-006247",
+          "filedAt": "2018-09-19T00:00:00.000Z",
+          "accession": "0001056404-18-006247:ubs17c07_10ka-2017.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-006247/ubs17c07_10ka-2017.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-18-006243",
+          "filedAt": "2018-09-19T00:00:00.000Z",
+          "accession": "0001056404-18-006243:ubs17c05_10ka-2017.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-006243/ubs17c05_10ka-2017.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-18-006246",
+          "filedAt": "2018-09-19T00:00:00.000Z",
+          "accession": "0001056404-18-006246:ubs17c06_10ka-2017.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-006246/ubs17c06_10ka-2017.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-18-003934",
+          "filedAt": "2018-06-22T00:00:00.000Z",
+          "accession": "0001056404-18-003934:ccc16c28_10ka-2017.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-003934/ccc16c28_10ka-2017.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-18-003922",
+          "filedAt": "2018-06-22T00:00:00.000Z",
+          "accession": "0001056404-18-003922:ccc15c23_10ka-2017.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-18-003922/ccc15c23_10ka-2017.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-16-004099",
+          "filedAt": "2016-04-05T00:00:00.000Z",
+          "accession": "0001056404-16-004099:wcm15c26_10ka-2015.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-16-004099/wcm15c26_10ka-2015.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0001056404-16-003829",
+          "filedAt": "2016-03-29T00:00:00.000Z",
+          "accession": "0001056404-16-003829:ccc15c24_10ka-2015.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001056404-16-003829/ccc15c24_10ka-2015.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0001343667-12-000012",
+          "filedAt": "2012-10-09T00:00:00.000Z",
+          "accession": "0001343667-12-000012:primary_doc.xml",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001343667-12-000012/primary_doc.xml.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0000950153-07-000431",
+          "filedAt": "2007-02-27T00:00:00.000Z",
+          "accession": "0000950153-07-000431:p73493exv24.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000950153-07-000431/p73493exv24.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "10-K",
+          "company": "Unknown",
+          "cik": "0000950153-06-000504",
+          "filedAt": "2006-02-27T00:00:00.000Z",
+          "accession": "0000950153-06-000504:p71867exv24.htm",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000950153-06-000504/p71867exv24.htm.txt",
+          "summary": "Unknown 提交 10-K",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0001112432-03-000004",
+          "filedAt": "2003-11-04T00:00:00.000Z",
+          "accession": "0001112432-03-000004:primary_doc.xml",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001112432-03-000004/primary_doc.xml.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0001113056-01-500014",
+          "filedAt": "2001-05-04T00:00:00.000Z",
+          "accession": "0001113056-01-500014:etgform405012001.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001113056-01-500014/etgform405012001.txt.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        },
+        {
+          "formType": "4",
+          "company": "Unknown",
+          "cik": "0000893750-01-000155",
+          "filedAt": "2001-03-09T00:00:00.000Z",
+          "accession": "0000893750-01-000155:0001.txt",
+          "url": "https://www.sec.gov/Archives/edgar/data/0000893750-01-000155/0001.txt.txt",
+          "summary": "Unknown 提交 4",
+          "importance": "P2"
+        }
+      ]
+    }
+  },
+  "marketContext": {
+    "twse": {
+      "isTradingDay": false,
+      "status": "CLOSED",
+      "reason": "農曆春節"
+    },
+    "xnys": {
+      "isTradingDay": true,
+      "status": "OPEN",
+      "reason": null
+    }
+  },
+  "errors": {}
+}

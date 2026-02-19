@@ -56,7 +56,8 @@ async function runPhase3(config = {}) {
     twse:    phase2.twse    || null,
     fmp:     phase2.phase1Ref?.fmp    || null,
     finmind: phase2.finmind || null,
-    yahoo:   phase2.phase1Ref?.yahoo  || null
+    yahoo:   phase2.phase1Ref?.yahoo  || null,
+    fred:    phase2.phase1Ref?.fred   || null
   };
 
   const { marketData, validationReport, hasErrors } = validator.validate(collectedData);

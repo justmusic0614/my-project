@@ -30,8 +30,6 @@ let warnings = 0;
 
 // 1. 檢查 .env 檔案
 console.log('\nCheck 1: .env file');
-const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
-const localEnv = path.join(__dirname, '../.env');
 
 if (fs.existsSync(centralEnv)) {
   console.log(`  OK  Found VPS central config: ${centralEnv}`);

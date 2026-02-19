@@ -150,6 +150,26 @@ async function runPhase4(config = {}) {
   const crossCheckWarns = phase3.validationReport?.crossCheckWarnings || [];
   await alerter.crossCheckAlert(crossCheckWarns);
 
+  // SRE: Lineage 異常告警
+  try {
+    const lineagePath = path.join(STATE_DIR, `lineage-${date}.json`);
+    if (fs.existsSync(lineagePath)) {
+      const lineageData = JSON.parse(fs.readFileSync(lineagePath, 'utf8'));
+      if (lineageData.anomalyCount > 0) {
+        const anomalyText = lineageData.anomalies.slice(0, 5)
+          .map(a => `${a.field}: ${a.type} (${a.from.phase} → ${a.to.phase})`)
+          .join('\n');
+        logger.warn(`lineage anomalies: ${lineageData.anomalyCount}`);
+        await alerter.crossCheckAlert([
+          `[Lineage] ${lineageData.anomalyCount} 個資料異常：`,
+          ...lineageData.anomalies.slice(0, 5).map(a => `  ${a.field}: ${a.type}`)
+        ]);
+      }
+    }
+  } catch (err) {
+    logger.debug(`lineage alert check skipped: ${err.message}`);
+  }
+
   // 成本告警
   const dailyCost = costLedger.getDailySummary();
   if (dailyCost.totalCost > 0) {

@@ -6,6 +6,9 @@
  *   - Phase 失敗時降級（標記警告，不阻斷後續 phase）
  *   - 整體超時控制
  *   - 推播告警到 Telegram
+ *   - SRE: Phase Output Schema 驗證
+ *   - SRE: Data Lineage 追蹤
+ *   - SRE: Pipeline Metrics 收集
  *
  * 使用方式：
  *   const orchestrator = new Orchestrator(config);
@@ -16,9 +19,14 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { createLogger } = require('../shared/logger');
 const costLedger = require('../shared/cost-ledger');
 const { getCalendarGuard } = require('../shared/calendar-guard');
+const { validate } = require('../shared/schemas/daily-brief.schema');
+const { LineageTracker } = require('../sre/lineage-tracker');
+const { getManager: getCBManager } = require('../sre/circuit-breaker');
 
 const { runPhase1 } = require('./phase1-us-collect');
 const { runPhase2 } = require('./phase2-tw-collect');
@@ -26,6 +34,8 @@ const { runPhase3 } = require('./phase3-process');
 const { runPhase4 } = require('./phase4-assemble');
 
 const logger = createLogger('pipeline:orchestrator');
+
+const STATE_DIR = path.join(__dirname, '../data/pipeline-state');
 
 // phase 配置（timeout 單位：ms）
 const PHASE_CONFIG = {
@@ -92,12 +102,42 @@ class Orchestrator {
 
     const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
     const results = {};
+    const overallStart = Date.now();
+
+    // SRE: 初始化 Lineage Tracker
+    const lineage = new LineageTracker(today);
 
     for (const phase of phases) {
       const cfg = PHASE_CONFIG[phase];
       try {
         logger.info(`--- Running ${phase} ---`);
         results[phase] = await this._runWithRetry(phase, cfg);
+
+        // SRE: Phase Output Schema 驗證
+        const schemaCheck = validate.phaseOutput(phase, results[phase]);
+        if (schemaCheck.abortPipeline) {
+          logger.error(`${phase}: ALL critical fields missing, aborting pipeline`);
+          results[phase].schemaValidation = schemaCheck;
+          break;
+        }
+        if (schemaCheck.missingCritical?.length > 0) {
+          logger.warn(`${phase}: ${schemaCheck.missingCritical.length} critical fields missing: ${schemaCheck.missingCritical.join(', ')}`);
+        }
+        if (schemaCheck.missingSupplementary?.length > 0) {
+          logger.info(`${phase}: ${schemaCheck.missingSupplementary.length} supplementary fields missing: ${schemaCheck.missingSupplementary.join(', ')}`);
+        }
+        if (schemaCheck.errors.length > 0) {
+          logger.warn(`${phase} schema warnings: ${schemaCheck.errors.join('; ')}`);
+        }
+
+        // SRE: Lineage 記錄（Phase 1 和 Phase 3 有 marketData）
+        if (phase === 'phase1' && results[phase]?.marketData) {
+          lineage.recordMarketData('phase1', results[phase].marketData);
+        }
+        if (phase === 'phase3' && results[phase]?.marketData) {
+          lineage.recordMarketData('phase3', results[phase].marketData);
+        }
+
       } catch (err) {
         logger.error(`${phase} failed after retries: ${err.message}`);
         results[phase] = { error: err.message, failed: true };
@@ -111,7 +151,18 @@ class Orchestrator {
       }
     }
 
-    return { mode: 'daily', phases: results, cost: costLedger.getDailySummary() };
+    // SRE: 儲存 Lineage 報告
+    let lineageReport = null;
+    try {
+      lineageReport = lineage.save();
+    } catch (err) {
+      logger.warn(`lineage save failed: ${err.message}`);
+    }
+
+    // SRE: 儲存 Pipeline Metrics
+    this._saveMetrics(today, overallStart, results, lineageReport);
+
+    return { mode: 'daily', phases: results, cost: costLedger.getDailySummary(), lineage: lineageReport };
   }
 
   /**
@@ -177,6 +228,62 @@ class Orchestrator {
     }
 
     throw lastError;
+  }
+
+  /**
+   * SRE: 儲存 Pipeline Metrics JSON
+   */
+  _saveMetrics(date, overallStart, results, lineageReport) {
+    try {
+      if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
+
+      const metrics = {
+        date,
+        timestamp: new Date().toISOString(),
+        totalDuration: Date.now() - overallStart,
+        phases: {},
+        dataQuality: {
+          criticalFieldsMissing: 0,
+          supplementaryFieldsMissing: 0,
+          degradedFields: 0,
+          lineageAnomalies: lineageReport?.anomalyCount || 0
+        },
+        circuitBreakers: {}
+      };
+
+      // Phase 狀態
+      for (const [phase, result] of Object.entries(results)) {
+        metrics.phases[phase] = {
+          status: result?.failed ? 'failed' : 'ok',
+          duration: result?.duration || 0,
+          errors: Object.keys(result?.errors || {}).length
+        };
+      }
+
+      // Phase 3 資料品質
+      if (results.phase3?.validationReport) {
+        metrics.dataQuality.degradedFields = results.phase3.validationReport.degradedFields?.length || 0;
+      }
+      if (results.phase3?.schemaValidation) {
+        metrics.dataQuality.criticalFieldsMissing = results.phase3.schemaValidation.missingCritical?.length || 0;
+        metrics.dataQuality.supplementaryFieldsMissing = results.phase3.schemaValidation.missingSupplementary?.length || 0;
+      }
+
+      // Circuit Breaker 狀態
+      try {
+        metrics.circuitBreakers = getCBManager().getStatus();
+      } catch { /* CB manager 可能未初始化 */ }
+
+      // 成本
+      const cost = costLedger.getDailySummary();
+      metrics.cost = cost.totalCost || 0;
+
+      const metricsPath = path.join(STATE_DIR, `metrics-${date}.json`);
+      fs.writeFileSync(metricsPath, JSON.stringify(metrics, null, 2), 'utf8');
+      logger.info(`metrics saved: ${metricsPath}`);
+    } catch (err) {
+      logger.warn(`metrics save failed: ${err.message}`);
+    }
   }
 
   _withTimeout(promise, ms, message) {

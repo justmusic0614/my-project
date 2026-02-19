@@ -56,14 +56,24 @@ class DailyRenderer {
       events           = [],
       secFilings       = [],
       institutionalData = {},
+      marketContext     = {},
       date
     } = briefData;
 
     const reportDate = date || marketData.date || this._today();
+    const mc = marketContext || {};
     const lines = [];
 
     // ── Header ───────────────────────────────────────────────────────────
     lines.push(`=== Daily Market Brief ${reportDate} ===`);
+
+    // ── 休市提示行 ───────────────────────────────────────────────────────
+    if (mc.twse && !mc.twse.isTradingDay) {
+      lines.push(`🔴 今日台股休市（${mc.twse.reason || ''}）`);
+    }
+    if (mc.xnys && !mc.xnys.isTradingDay) {
+      lines.push(`🔴 今日美股休市（${mc.xnys.reason || ''}）`);
+    }
     lines.push('');
 
     // ── 1. Daily Snapshot ─────────────────────────────────────────────────
@@ -143,19 +153,28 @@ class DailyRenderer {
     }
 
     // ── 9. Taiwan Market ──────────────────────────────────────────────────
-    const twLines = this._renderTaiwanMarket(marketData, institutionalData);
-    if (twLines.length > 0) {
-      lines.push('🇹🇼 Taiwan_Market');
-      twLines.forEach(l => lines.push(l));
+    if (mc.twse && !mc.twse.isTradingDay) {
+      lines.push('🇹🇼 今日台股休市');
       lines.push('');
+    } else {
+      const twLines = this._renderTaiwanMarket(marketData, institutionalData);
+      if (twLines.length > 0) {
+        lines.push('🇹🇼 Taiwan_Market');
+        twLines.forEach(l => lines.push(l));
+        lines.push('');
+      }
     }
 
     // ── 10. Watchlist Focus ───────────────────────────────────────────────
-    const wlLines = this._renderWatchlist(watchlist, institutionalData);
-    if (wlLines.length > 0) {
-      lines.push('🎯 Watchlist_Focus');
-      wlLines.forEach(l => lines.push(l));
-      lines.push('');
+    if (mc.twse && !mc.twse.isTradingDay) {
+      // 台股休市時 watchlist 也休市
+    } else {
+      const wlLines = this._renderWatchlist(watchlist, institutionalData);
+      if (wlLines.length > 0) {
+        lines.push('🎯 Watchlist_Focus');
+        wlLines.forEach(l => lines.push(l));
+        lines.push('');
+      }
     }
 
     // ── 11. Event Calendar ────────────────────────────────────────────────

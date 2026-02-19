@@ -82,7 +82,7 @@ function _loadWatchlist() {
   try {
     if (fs.existsSync(WATCHLIST_FILE)) {
       const data = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8'));
-      return Array.isArray(data) ? data : (data.watchlist || []);
+      return Array.isArray(data) ? data : (data.stocks || data.watchlist || []);
     }
   } catch {}
   return [];

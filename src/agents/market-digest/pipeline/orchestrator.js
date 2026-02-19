@@ -18,6 +18,7 @@
 
 const { createLogger } = require('../shared/logger');
 const costLedger = require('../shared/cost-ledger');
+const { getCalendarGuard } = require('../shared/calendar-guard');
 
 const { runPhase1 } = require('./phase1-us-collect');
 const { runPhase2 } = require('./phase2-tw-collect');
@@ -75,6 +76,20 @@ class Orchestrator {
    * 完整 4-phase 日報 pipeline
    */
   async _runDaily() {
+    // 查詢市場狀態，注入到 config 供各 phase 使用
+    const guard = getCalendarGuard();
+    const today = process.env.MARKET_DIGEST_DATE || new Date().toISOString().slice(0, 10);
+    const marketContext = guard.getMarketContext(today);
+    this.config.marketContext = marketContext;
+
+    logger.info('market context', {
+      date: today,
+      twse: marketContext.twse.status,
+      xnys: marketContext.xnys.status,
+      twseReason: marketContext.twse.reason || '-',
+      xnysReason: marketContext.xnys.reason || '-'
+    });
+
     const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
     const results = {};
 

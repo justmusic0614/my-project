@@ -55,19 +55,33 @@ async function runPhase2(config = {}) {
   }
 
   // 初始化收集器
-  const twse       = new TWSECollector(config);
-  const finmind    = new FinMindCollector(config);
   const rss        = new RSSCollector(config);
   const perplexity = new PerplexityCollector(config);
 
-  // 並行收集（所有來源同時啟動）
-  const [twseResult, finmindResult, rssResult, perplexityResult] = await Promise.allSettled([
-    _collectSafe(twse,       'twse'),
-    _collectSafe(finmind,    'finmind'),
-    _collectSafe(rss,        'rss'),
-    // Perplexity 接收 Phase1 context 做動態查詢
-    _collectPerplexitySafe(perplexity, phase1Data)
-  ]);
+  const twseStatus = config.marketContext?.twse;
+  let twseResult, finmindResult, rssResult, perplexityResult;
+
+  if (twseStatus && !twseStatus.isTradingDay) {
+    // 台股休市：跳過 TWSE/FinMind，保留 RSS + Perplexity
+    logger.info(`台股今日休市（${twseStatus.reason}），跳過 TWSE/FinMind 收集`);
+    [twseResult, finmindResult, rssResult, perplexityResult] = await Promise.allSettled([
+      Promise.resolve({ skipped: true, reason: twseStatus.reason }),
+      Promise.resolve({ skipped: true, reason: twseStatus.reason }),
+      _collectSafe(rss,        'rss'),
+      _collectPerplexitySafe(perplexity, phase1Data)
+    ]);
+  } else {
+    const twse    = new TWSECollector(config);
+    const finmind = new FinMindCollector(config);
+    // 並行收集（所有來源同時啟動）
+    [twseResult, finmindResult, rssResult, perplexityResult] = await Promise.allSettled([
+      _collectSafe(twse,       'twse'),
+      _collectSafe(finmind,    'finmind'),
+      _collectSafe(rss,        'rss'),
+      // Perplexity 接收 Phase1 context 做動態查詢
+      _collectPerplexitySafe(perplexity, phase1Data)
+    ]);
+  }
 
   const result = {
     phase:       'phase2',
@@ -84,6 +98,8 @@ async function runPhase2(config = {}) {
       yahoo:    phase1Data?.yahoo    || null,
       secEdgar: phase1Data?.secEdgar || null
     },
+    // 市場狀態（供 Phase3/4 透傳）
+    marketContext: config.marketContext || null,
     errors: _collectErrors({ twseResult, finmindResult, rssResult, perplexityResult })
   };
 

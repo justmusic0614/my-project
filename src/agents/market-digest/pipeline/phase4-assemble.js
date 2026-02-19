@@ -97,7 +97,8 @@ async function runPhase4(config = {}) {
     events:           phase3.events           || [],
     secFilings:       phase3.secFilings        || [],
     institutionalData: phase3.institutionalData || {},
-    gainersLosers:    phase3.gainersLosers     || {}
+    gainersLosers:    phase3.gainersLosers     || {},
+    marketContext:    phase3.marketContext      || config.marketContext || null
   };
 
   const briefText = renderer.render(briefData);
@@ -176,6 +177,11 @@ async function runPhase4(config = {}) {
 // ── 輔助函式 ───────────────────────────────────────────────────────────────
 
 function _isFullyDegraded(phase3) {
+  // 休市日不算 fully degraded（預期無市場數據）
+  const mc = phase3.marketContext || {};
+  if (mc.twse && !mc.twse.isTradingDay) return false;
+  if (mc.xnys && !mc.xnys.isTradingDay) return false;
+
   const md = phase3.marketData || {};
   const keyFields = ['TAIEX', 'SP500', 'NASDAQ'];
   return keyFields.every(f => md[f]?.degraded === 'NA');
@@ -186,7 +192,7 @@ function _loadWatchlist(watchlistPath) {
   try {
     if (fs.existsSync(p)) {
       const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-      return Array.isArray(data) ? data : (data.watchlist || []);
+      return Array.isArray(data) ? data : (data.stocks || data.watchlist || []);
     }
   } catch {}
   return [];

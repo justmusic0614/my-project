@@ -43,17 +43,31 @@ async function runPhase1(config = {}) {
 
   _ensureDir(STATE_DIR);
 
+  const xnysStatus = config.marketContext?.xnys;
+
   // 初始化收集器
   const fmp      = new FMPCollector(config);
   const yahoo    = new YahooCollector(config);
   const secEdgar = new SecEdgarCollector(config);
 
-  // 並行收集（單一失敗不阻塞）
-  const [fmpResult, yahooResult, secResult] = await Promise.allSettled([
-    _collectSafe(fmp,      'fmp'),
-    _collectSafe(yahoo,    'yahoo'),
-    _collectSafe(secEdgar, 'sec-edgar')
-  ]);
+  let fmpResult, yahooResult, secResult;
+
+  if (xnysStatus && !xnysStatus.isTradingDay) {
+    // 美股休市：跳過 FMP 行情 + Yahoo，只收集 SEC
+    logger.info(`美股今日休市（${xnysStatus.reason}），跳過 FMP/Yahoo 行情收集`);
+    [fmpResult, yahooResult, secResult] = await Promise.allSettled([
+      Promise.resolve({ skipped: true, reason: xnysStatus.reason }),
+      Promise.resolve({ skipped: true, reason: xnysStatus.reason }),
+      _collectSafe(secEdgar, 'sec-edgar')
+    ]);
+  } else {
+    // 正常收集（單一失敗不阻塞）
+    [fmpResult, yahooResult, secResult] = await Promise.allSettled([
+      _collectSafe(fmp,      'fmp'),
+      _collectSafe(yahoo,    'yahoo'),
+      _collectSafe(secEdgar, 'sec-edgar')
+    ]);
+  }
 
   const result = {
     phase:     'phase1',

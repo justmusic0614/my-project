@@ -125,7 +125,10 @@ async function runPhase3(config = {}) {
     watchlistPrices:   phase2.finmind?.tw50Prices || {},
     events:            _extractEvents(phase2),
     secFilings:        phase2.phase1Ref?.secEdgar?.filings || [],
-    gainersLosers:     _extractGainersLosers(phase2)
+    gainersLosers:     _extractGainersLosers(phase2),
+
+    // 市場狀態（透傳到 Phase 4 / Renderer）
+    marketContext: phase2.marketContext || config.marketContext || null
   };
 
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(result, null, 2), 'utf8');

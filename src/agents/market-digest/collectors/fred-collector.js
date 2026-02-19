@@ -11,7 +11,7 @@
 
 'use strict';
 
-const https = require('https');
+const { execSync } = require('child_process');
 const { createLogger } = require('../shared/logger');
 
 const logger = createLogger('collector:fred');
@@ -79,36 +79,24 @@ class FredCollector {
    * @returns {Promise<Array>} observations
    */
   async _fetchSeries(seriesId, endDate) {
-    return new Promise((resolve, reject) => {
-      // 取得最新一筆資料（limit=1, sort_order=desc）
+    try {
+      // 使用 curl（Node.js https 模組在某些環境下無法連線到 FRED API）
       const url = `${this.baseUrl}/series/observations?series_id=${seriesId}&api_key=${this.apiKey}&file_type=json&limit=1&sort_order=desc`;
 
       logger.info(`Fetching FRED series: ${seriesId}`);
-      const req = https.get(url, (res) => {
-        logger.info(`FRED response received for ${seriesId}: status=${res.statusCode}`);
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            if (json.error_code) {
-              reject(new Error(`FRED API error: ${json.error_message}`));
-            } else {
-              resolve(json.observations || []);
-            }
-          } catch (err) {
-            reject(err);
-          }
-        });
-      }).on('error', reject);
+      const result = execSync(`curl -s -m 10 "${url}"`, { encoding: 'utf8', maxBuffer: 1024 * 1024 });
 
-      // 設定 10 秒超時
-      req.setTimeout(10000, () => {
-        logger.warn(`FRED API timeout for ${seriesId} (10s)`);
-        req.destroy();
-        reject(new Error(`FRED API timeout for ${seriesId}`));
-      });
-    });
+      const json = JSON.parse(result);
+      if (json.error_code) {
+        throw new Error(`FRED API error: ${json.error_message}`);
+      }
+
+      logger.info(`FRED series ${seriesId} fetched successfully`);
+      return json.observations || [];
+    } catch (err) {
+      logger.error(`Failed to fetch ${seriesId}: ${err.message}`);
+      throw err;
+    }
   }
 }
 

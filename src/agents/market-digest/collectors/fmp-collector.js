@@ -193,6 +193,106 @@ class FMPCollector extends BaseCollector {
     return { gainers: fmt(gainers), losers: fmt(losers) };
   }
 
+  /**
+   * 收集 SPY 成交量（用於市場情緒評估）
+   * @param {string} date - 日期（YYYY-MM-DD）
+   * @returns {Promise<object|null>} { current, avg20Day, date }
+   */
+  async getSPYVolume(date) {
+    try {
+      const url = `${FMP_BASE}/quote/SPY?apikey=${this.apiKey}`;
+      const data = await this._get(url);
+
+      if (data && data.length > 0 && data[0].volume) {
+        return {
+          current: data[0].volume,
+          price: data[0].price,
+          date: data[0].timestamp ? data[0].timestamp.slice(0, 10) : date,
+          source: 'fmp',
+          fetchedAt: new Date().toISOString()
+        };
+      }
+      return null;
+    } catch (err) {
+      this.logger.warn(`Failed to fetch SPY volume: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 收集 Put/Call Ratio（用於市場情緒評估）
+   * 注意：FMP 免費版可能不支援，需改用 Yahoo Finance 或 Alpha Vantage
+   * @param {string} date - 日期（YYYY-MM-DD）
+   * @returns {Promise<object|null>} { value, date }
+   */
+  async getPutCallRatio(date) {
+    try {
+      // TODO: 確認 FMP 是否支援 Put/Call Ratio
+      // 若不支援，需改用 Yahoo Finance CBOE 資料或 Alpha Vantage
+      // 暫時標記為不可用
+      this.logger.info('Put/Call Ratio collection not yet implemented (需確認資料源)');
+      return null;
+    } catch (err) {
+      this.logger.warn(`Failed to fetch Put/Call Ratio: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 收集財報日曆（未來 7 天重點財報）
+   * @param {string} fromDate - 開始日期（YYYY-MM-DD）
+   * @param {string} toDate - 結束日期（YYYY-MM-DD）
+   * @returns {Promise<Array>} 財報事件列表
+   */
+  async getEarningCalendar(fromDate, toDate) {
+    try {
+      const url = `${FMP_BASE}/earning-calendar?from=${fromDate}&to=${toDate}&apikey=${this.apiKey}`;
+      const data = await this._get(url);
+
+      // 過濾出市值 > $100B 或在 watchlist 中的公司
+      return (Array.isArray(data) ? data : [])
+        .filter(e => (e.marketCap && e.marketCap > 100e9) || this.watchlist.includes(e.symbol))
+        .map(e => ({
+          date: e.date,
+          symbol: e.symbol,
+          company: e.name || e.symbol,
+          type: 'earnings',
+          event: e.time === 'bmo' ? 'Q財報（盤前）' : e.time === 'amc' ? 'Q財報（盤後）' : 'Q財報',
+          source: 'fmp'
+        }));
+    } catch (err) {
+      this.logger.warn(`Failed to fetch earning calendar: ${err.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 收集經濟數據日曆（未來 7 天重要經濟數據）
+   * @param {string} fromDate - 開始日期（YYYY-MM-DD）
+   * @param {string} toDate - 結束日期（YYYY-MM-DD）
+   * @returns {Promise<Array>} 經濟事件列表
+   */
+  async getEconomicCalendar(fromDate, toDate) {
+    try {
+      const url = `${FMP_BASE}/economic-calendar?from=${fromDate}&to=${toDate}&apikey=${this.apiKey}`;
+      const data = await this._get(url);
+
+      // 過濾 importance = High
+      return (Array.isArray(data) ? data : [])
+        .filter(e => e.importance === 'High')
+        .map(e => ({
+          date: e.date,
+          type: 'economic',
+          event: e.event,
+          country: e.country,
+          source: 'fmp'
+        }));
+    } catch (err) {
+      this.logger.warn(`Failed to fetch economic calendar: ${err.message}`);
+      return [];
+    }
+  }
+
   _get(url) {
     return new Promise((resolve, reject) => {
       const req = https.get(url, {

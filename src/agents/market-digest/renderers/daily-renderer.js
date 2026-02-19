@@ -142,12 +142,14 @@ class DailyRenderer {
     }
 
     // ── 7. Equity Market（漲跌幅 Top5）────────────────────────────────────
-    const equityLines = this._renderEquityMarket(marketData, briefData.gainersLosers);
-    if (equityLines.length > 0) {
-      lines.push('🔹 Equity_Market');
-      equityLines.forEach(l => lines.push(l));
-      lines.push('');
-    }
+    // ※ FMP gainers/losers 為付費端點，免費版無資料，暫時移除此區塊
+    // ※ 未來可改用 Yahoo Finance API 或其他免費資料源
+    // const equityLines = this._renderEquityMarket(marketData, briefData.gainersLosers);
+    // if (equityLines.length > 0) {
+    //   lines.push('🔹 Equity_Market');
+    //   equityLines.forEach(l => lines.push(l));
+    //   lines.push('');
+    // }
 
     // ── 8. Cross Asset ────────────────────────────────────────────────────
     const crossLines = this._renderCrossAsset(marketData);
@@ -237,9 +239,10 @@ class DailyRenderer {
 
   _renderMacroPolicy(md) {
     const parts = [];
-    if (md.US10Y?.value != null)  parts.push(`US 10Y: ${md.US10Y.value.toFixed(2)}`);
-    if (md.DXY?.value != null)    parts.push(`DXY: ${md.DXY.value.toFixed(1)}`);
-    if (md.VIX?.value != null)    parts.push(`VIX: ${md.VIX.value.toFixed(1)}`);
+    if (md.US10Y?.value != null)    parts.push(`US 10Y: ${md.US10Y.value.toFixed(2)}%`);
+    if (md.FED_RATE?.value != null) parts.push(`Fed Rate: ${md.FED_RATE.value.toFixed(2)}%`);
+    if (md.DXY?.value != null)      parts.push(`DXY: ${md.DXY.value.toFixed(1)}`);
+    if (md.VIX?.value != null)      parts.push(`VIX: ${md.VIX.value.toFixed(1)}`);
     if (parts.length === 0) return [];
     return [`• ${parts.join(' | ')}`];
   }
@@ -354,30 +357,39 @@ class DailyRenderer {
   _renderEvents(events = [], secFilings = []) {
     const lines = [];
 
-    // 財報 & 經濟日曆（FMP）
+    // 1. 財報日曆（未來 7 天）
     const earningsEvents = events.filter(e => e.type === 'earnings').slice(0, 5);
-    const econEvents     = events.filter(e => e.type === 'economic').slice(0, 5);
-
     if (earningsEvents.length > 0) {
-      lines.push('  財報:');
+      lines.push('  財報：');
       earningsEvents.forEach(e => {
-        lines.push(`  • ${e.date} ${e.company || e.symbol}${e.estimate ? `（EPS 預估 $${e.estimate}）` : ''}`);
+        const dateStr = e.date.slice(5);  // MM-DD
+        lines.push(`  • ${dateStr} ${e.company || e.symbol}${e.event ? ` - ${e.event}` : ''}`);
       });
     }
 
+    // 2. 經濟數據日曆（未來 7 天）
+    const econEvents = events.filter(e => e.type === 'economic').slice(0, 5);
     if (econEvents.length > 0) {
-      lines.push('  經濟數據:');
+      lines.push('  經濟數據：');
       econEvents.forEach(e => {
-        lines.push(`  • ${e.date} ${e.name || e.event}${e.actual ? `（實際 ${e.actual}）` : ''}`);
+        const dateStr = e.date.slice(5);  // MM-DD
+        lines.push(`  • ${dateStr} ${e.country || ''} ${e.event}`);
       });
     }
 
-    // SEC 重大申報（P0/P1）
-    const importantFilings = secFilings.filter(f => f.importance === 'P0' || f.importance === 'P1').slice(0, 3);
+    // 3. SEC 重大申報（過濾無描述的 8-K）
+    const importantFilings = secFilings
+      .filter(f =>
+        (f.importance === 'P0' || f.importance === 'P1') &&
+        f.description &&
+        f.description !== 'Unknown'
+      )
+      .slice(0, 3);
+
     if (importantFilings.length > 0) {
-      lines.push('  SEC 申報:');
+      lines.push('  SEC 重大申報：');
       importantFilings.forEach(f => {
-        lines.push(`  • [${f.formType}] ${f.company}${f.description ? `（${f.description.slice(0, 40)}）` : ''}`);
+        lines.push(`  • [${f.formType}] ${f.company}: ${f.description.slice(0, 50)}`);
       });
     }
 

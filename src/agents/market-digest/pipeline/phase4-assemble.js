@@ -98,7 +98,7 @@ async function runPhase4(config = {}) {
     secFilings:       phase3.secFilings        || [],
     institutionalData: phase3.institutionalData || {},
     gainersLosers:    phase3.gainersLosers     || {},
-    marketContext:    phase3.marketContext      || config.marketContext || null
+    marketContext:    phase3.marketContext || _getMarketContext(date)
   };
 
   // 渲染完整版（存檔用）
@@ -230,6 +230,16 @@ function _saveResult(result) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'phase4-result.json'), JSON.stringify(result, null, 2), 'utf8');
   } catch {}
+}
+
+function _getMarketContext(dateStr) {
+  try {
+    const { getCalendarGuard } = require('../processors/calendar-guard');
+    return getCalendarGuard().getMarketContext(dateStr);
+  } catch (err) {
+    logger.warn(`failed to get market context for ${dateStr}: ${err.message}`);
+    return null;
+  }
 }
 
 function _today() {

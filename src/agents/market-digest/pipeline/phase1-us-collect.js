@@ -124,6 +124,7 @@ async function runPhase1(config = {}) {
     secEdgar:  secResult.status    === 'fulfilled' ? secResult.value    : null,
     fred:      fredData,
     sentiment: { putCallRatio, spyVolume },
+    marketData,
     marketHistory,
     errors:    _collectErrors({ fmpResult, yahooResult, secResult })
   };

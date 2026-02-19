@@ -204,7 +204,12 @@ ${newsList}
       }));
     } catch (err) {
       logger.warn(`Stage 1 JSON parse failed: ${err.message}, using rule-based ranking`);
-      ranked = newsItems;
+      // Fallback：使用原始排序，並設定預設 category
+      ranked = newsItems.map(item => ({
+        ...item,
+        category: item.category === 'Macro_Policy' || item.category === 'Equity_Market' ? 'structural' : (item.category || 'structural'),
+        aiSummary: ''
+      }));
     }
 
     const counts = { P0: 0, P1: 0, P2: 0, P3: 0 };

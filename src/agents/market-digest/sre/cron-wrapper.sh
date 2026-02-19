@@ -79,10 +79,10 @@ check_dependencies() {
 # 健康檢查
 health_check() {
     log "🏥 執行健康檢查..."
-    
+
     # 執行健康檢查並捕獲結果
     if node -e "
-const { createHealthCheckSystem } = require('$SRE_DIR/health-check');
+const { createHealthCheckSystem } = require('./sre/health-check');
 (async () => {
     const healthCheck = createHealthCheckSystem();
     const status = await healthCheck.runAll();

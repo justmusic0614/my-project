@@ -1,0 +1,15 @@
+{
+  "phase": "phase4",
+  "date": "2026-02-19",
+  "status": "ok",
+  "duration": 2116,
+  "telegram": {
+    "sent": 1,
+    "failed": 0
+  },
+  "archive": {
+    "jsonPath": "/Users/suweicheng/projects/my-project/src/agents/market-digest/data/daily-brief/2026-02-19.json",
+    "txtPath": "/Users/suweicheng/projects/my-project/src/agents/market-digest/data/daily-brief/2026-02-19.txt"
+  },
+  "briefLength": 531
+}

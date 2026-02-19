@@ -267,7 +267,8 @@ ${newsList}
       const parsed = JSON.parse(this._extractJson(response.content));
 
       // DEBUG: 查看 Sonnet 原始回應
-      logger.info('[DEBUG] parsed.industryThemes:', JSON.stringify(parsed.industryThemes || null));
+      console.log('[DEBUG] parsed.industryThemes type:', typeof parsed.industryThemes);
+      console.log('[DEBUG] parsed.industryThemes value:', JSON.stringify(parsed.industryThemes, null, 2));
 
       // 產業白名單+黑名單驗證（寬鬆模式：允許 1 個「其他」）
       const validatedIndustries = this._validateIndustryThemes(parsed.industryThemes || []);

@@ -16,7 +16,7 @@ class Logger {
     this.component = component;
     this.format = options.format || process.env.LOG_FORMAT || 'pretty';
     this.level = options.level || process.env.LOG_LEVEL || 'info';
-    this.output = options.output || process.stdout;
+    this.output = options.output || process.stderr;
     this.errorOutput = options.errorOutput || process.stderr;
     
     this.levels = {

@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { execSync } = require('child_process');
 const { getManager: getCircuitBreakerManager } = require('./circuit-breaker');
 const { getInstance: getGracefulDegradation } = require('./graceful-degradation');
 
@@ -497,6 +498,21 @@ function registerPipelineChecks(healthCheck) {
       chatTitle: chatResult.result.title || chatResult.result.first_name
     };
   }, { critical: true, timeout: 10000 });
+
+  // P6. 指令路由驗證
+  healthCheck.register('command-routing', async () => {
+    const output = execSync('node index.js today --dry-run', {
+      cwd: path.join(__dirname, '..'),
+      encoding: 'utf8',
+      timeout: 30000,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    // 檢查輸出是否包含預期標記
+    if (output.includes('Daily Market Brief') || output.includes('[done]') || output.includes('dry-run')) {
+      return { verified: true, outputLength: output.length };
+    }
+    throw new Error(`unexpected output format: ${output.substring(0, 100)}`);
+  }, { critical: false, timeout: 35000 });
 }
 
 /**

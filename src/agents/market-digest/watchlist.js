@@ -496,10 +496,17 @@ function formatHistory(historyData) {
   return lines.join('\n');
 }
 
-// CLI 模式
+// CLI 模式（已廢棄）
 if (require.main === module) {
+  console.error('⚠️  此腳本已廢棄，請使用統一入口：');
+  console.error('    node index.js cmd <子命令>');
+  console.error('    node index.js today');
+  console.error('📖 完整說明：node index.js（無參數）');
+  process.exit(1);
+
+  // 以下為原始 CLI 程式碼（已停用）
   const command = process.argv[2];
-  
+
   if (command === 'add') {
     const codes = process.argv.slice(3);
     if (codes.length === 0) {

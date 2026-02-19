@@ -102,7 +102,12 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch(err => {
+  console.error('⚠️  此腳本已廢棄，請使用統一入口：');
+  console.error('    node index.js cmd <子命令>');
+  console.error('    node index.js today');
+  console.error('📖 完整說明：node index.js（無參數）');
+  process.exit(1);
+  main().catch(err => { // 原始 CLI（已停用）
     console.error('Error:', err.message);
     process.exit(1);
   });

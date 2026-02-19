@@ -6,6 +6,7 @@
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const { execSync } = require('child_process');
 
 // 載入環境變數：優先集中式 .env，fallback 本地 .env
 const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
@@ -13,6 +14,31 @@ const localEnv = path.join(__dirname, '../.env');
 require('dotenv').config({ path: fs.existsSync(centralEnv) ? centralEnv : localEnv });
 
 const { sendTelegramReply, forwardToOpenClaw } = require('../server/lib/telegram-utils');
+
+// ── Market Digest 指令對應表 ─────────────────────────────
+// ⚠️ 維護提醒：新增 agent 或指令時，須同步更新此表
+// 相關檔案：market-digest/commands/command-router.js、AGENTS.md
+const MARKET_DIGEST_DIR = path.join(process.env.HOME || '', 'clawd/agents/market-digest');
+const NODE_BIN = process.execPath; // 動態取得當前 Node.js 路徑
+
+const COMMAND_ROUTES = {
+  '/today':     { cmd: 'today',         directReply: false, replyText: '✅ 日報已推播到 Telegram' },
+  '/financial': { cmd: 'cmd financial', directReply: true },
+  '/f':         { cmd: 'cmd financial', directReply: true },
+  '/weekly':    { cmd: 'cmd weekly',    directReply: true },
+  '/alerts':    { cmd: 'cmd alerts',    directReply: true },
+  '/突發':      { cmd: 'cmd news',      directReply: true },
+};
+
+// 帶參數的指令（prefix match）
+const COMMAND_PREFIX_ROUTES = [
+  { prefix: '/watchlist', alias: '/w',  cmd: 'cmd watchlist' },
+  { prefix: '/analyze',   alias: '/a',  cmd: 'cmd analyze' },
+  { prefix: '/news',      alias: '/n',  cmd: 'cmd news' },
+  { prefix: '/query',     alias: null,  cmd: 'cmd query' },
+];
+
+const MAX_MSG_LEN = 4000;
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -73,17 +99,121 @@ async function handleUpdate(update) {
   if (!msg || !msg.text) return;
 
   const chatId = msg.chat.id;
-  const username = msg.from.username || msg.from.first_name;
   const text = msg.text.trim();
 
-  console.log('[Poller] Received:', { chatId, username, text: text.substring(0, 100) });
+  console.log('[Poller] Received:', { chatId, text: text.substring(0, 100) });
 
+  // ── 確定性前置路由（環境變數開關：COMMAND_ROUTING=openclaw 可停用）────
+  if (process.env.COMMAND_ROUTING !== 'openclaw') {
+    const routed = await tryDirectRoute(chatId, text);
+    if (routed) return;
+  }
+
+  // ── Fallback：未匹配的訊息走 OpenClaw LLM ───────────────
   const reply = await forwardToOpenClaw(text);
-
   if (reply) {
     await sendTelegramReply(chatId, reply);
   } else {
     console.warn('[Poller] OpenClaw returned no reply');
+  }
+}
+
+/**
+ * 嘗試確定性前置路由
+ * @returns {Promise<boolean>} 是否成功路由
+ */
+async function tryDirectRoute(chatId, text) {
+  const lower = text.toLowerCase();
+
+  // 1. 精確匹配（無參數指令）
+  const exactRoute = COMMAND_ROUTES[lower] || COMMAND_ROUTES[text];
+  if (exactRoute) {
+    return await executeRoute(chatId, exactRoute.cmd, '', exactRoute);
+  }
+
+  // 2. Prefix 匹配（帶參數指令）
+  for (const route of COMMAND_PREFIX_ROUTES) {
+    const matchPrefix = lower.startsWith(route.prefix + ' ') || lower === route.prefix;
+    const matchAlias = route.alias && (lower.startsWith(route.alias + ' ') || lower === route.alias);
+    if (matchPrefix || matchAlias) {
+      const prefix = matchPrefix ? route.prefix : route.alias;
+      const args = text.substring(prefix.length).trim();
+      return await executeRoute(chatId, route.cmd, args, { directReply: true });
+    }
+  }
+
+  return false; // 未匹配
+}
+
+/**
+ * 執行前置路由指令
+ */
+async function executeRoute(chatId, cmd, args, options = {}) {
+  const fullCmd = args ? `${cmd} ${args}` : cmd;
+  const command = `${NODE_BIN} index.js ${fullCmd}`;
+
+  console.log(`[Poller:Route] Executing: ${command}`);
+
+  try {
+    const output = execSync(command, {
+      cwd: MARKET_DIGEST_DIR,
+      encoding: 'utf8',
+      timeout: 60000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: `${path.dirname(NODE_BIN)}:${process.env.PATH}` }
+    });
+
+    if (options.directReply === false) {
+      // /today 腳本自己推播，只回覆確認訊息
+      await sendTelegramReply(chatId, options.replyText || '✅ 完成');
+    } else {
+      // 其他指令：將 stdout 轉發給用戶（過濾 log 行）
+      const reply = output.trim().replace(/^(ℹ️|⚠️).*\n/gm, '').trim();
+      if (reply) {
+        await sendLongReply(chatId, reply);
+      } else {
+        await sendTelegramReply(chatId, '⚠️ 指令執行完成但無輸出');
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error(`[Poller:Route] Failed: ${err.message}`);
+    // Fallback：前置路由失敗時，改走 OpenClaw
+    console.log('[Poller:Route] Falling back to OpenClaw...');
+    const reply = await forwardToOpenClaw(`${cmd} ${args}`.trim());
+    if (reply) {
+      await sendTelegramReply(chatId, reply);
+    } else {
+      await sendTelegramReply(chatId, `❌ 指令執行失敗：${err.message.substring(0, 100)}`);
+    }
+    return true;
+  }
+}
+
+/**
+ * 長訊息分段發送（Telegram 單條限制 4096 字元）
+ */
+async function sendLongReply(chatId, text) {
+  if (text.length <= MAX_MSG_LEN) {
+    return sendTelegramReply(chatId, text);
+  }
+
+  const parts = [];
+  let current = '';
+  for (const line of text.split('\n')) {
+    if ((current + '\n' + line).length > MAX_MSG_LEN) {
+      parts.push(current);
+      current = line;
+    } else {
+      current += (current ? '\n' : '') + line;
+    }
+  }
+  if (current) parts.push(current);
+
+  for (const part of parts) {
+    await sendTelegramReply(chatId, part);
+    if (parts.length > 1) await new Promise(r => setTimeout(r, 1000));
   }
 }
 

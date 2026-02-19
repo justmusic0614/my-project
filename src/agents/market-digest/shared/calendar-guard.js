@@ -8,6 +8,7 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const fs   = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
@@ -139,6 +140,22 @@ class CalendarGuard {
     const d = new Date(dateStr + 'T00:00:00');
     const day = d.getDay();
     return day === 0 || day === 6;
+  }
+
+  /**
+   * 計算指定市場年度的休市日 MD5 hash
+   * （供 ETL 同步時比對變更使用）
+   * @param {string} market - 'TWSE' | 'XNYS'
+   * @param {number} year
+   * @returns {string} MD5 hash (32 字元)
+   */
+  getHolidaysHash(market, year) {
+    const holidays = this._loadCalendar(market, year.toString());
+    const data = Array.from(holidays.values())
+      .map(h => `${h.date}|${h.status}|${h.reason}`)
+      .sort()
+      .join('\n');
+    return crypto.createHash('md5').update(data).digest('hex');
   }
 }
 

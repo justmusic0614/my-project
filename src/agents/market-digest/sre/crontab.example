@@ -41,6 +41,16 @@ HOME=/home/clawbot
 # 每日備份（UTC 18:00 = 台北 02:00）
 0 18 * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh backup "./sre/backup-strategy.sh"
 
+# ── 休市日同步（Calendar Guard ETL）────────────────────────────
+
+# 每月第一天同步（UTC 02:00 = 台北 10:00）
+# 覆蓋：1/1, 2/1, 3/1... 包含季度第一天（1/1, 4/1, 7/1, 10/1）
+0 2 1 * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh calendar-sync-monthly "node index.js sync-holidays"
+
+# 11/15 同步並自動預填次年（UTC 02:00 = 台北 10:00）
+# 目的：提前準備次年休市日資料（11 月官方通常已公告次年行事曆）
+0 2 15 11 * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh calendar-sync-annual "node index.js sync-holidays --next-year"
+
 # ============================================================
 # 舊版 cron（停用時在行首加 # 注解掉）
 # ============================================================
@@ -62,6 +72,12 @@ HOME=/home/clawbot
 #
 # 手動完整 pipeline（dry-run）：
 #   node index.js pipeline --dry-run
+#
+# 手動同步休市日（dry-run 模式）：
+#   cd ~/clawd/agents/market-digest
+#   node index.js sync-holidays --dry-run
+#   node index.js sync-holidays --year 2027 --dry-run
+#   mv data/calendar/holidays-YYYY.json.new data/calendar/holidays-YYYY.json  # 應用 .new 檔案
 #
 # 確認 crontab 已安裝：
 #   crontab -l

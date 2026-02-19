@@ -35,11 +35,13 @@ const logger = createLogger('index');
 // ── CLI 解析 ──────────────────────────────────────────────────────────────
 const [,, command, ...args] = process.argv;
 const flags = {
-  phase:   _getFlag(args, '--phase'),     // '1' | '2' | '3' | '4'
-  dryRun:  args.includes('--dry-run'),
-  weekend: args.includes('--weekend'),
-  today:   args.includes('--today'),
-  preview: args.includes('--preview')
+  phase:      _getFlag(args, '--phase'),     // '1' | '2' | '3' | '4'
+  dryRun:     args.includes('--dry-run'),
+  weekend:    args.includes('--weekend'),
+  today:      args.includes('--today'),
+  preview:    args.includes('--preview'),
+  year:       _getFlag(args, '--year'),      // sync-holidays: '2027'
+  nextYear:   args.includes('--next-year')   // sync-holidays: 同步次年
 };
 
 // ── 主函式 ────────────────────────────────────────────────────────────────
@@ -115,6 +117,26 @@ async function main() {
       break;
     }
 
+    // ── sync-holidays ─────────────────────────────────────────────────────
+    case 'sync-holidays': {
+      const HolidaySync = require('./etl/holiday-sync');
+      const sync = new HolidaySync(config);
+
+      const year = flags.year ? parseInt(flags.year) : new Date().getFullYear();
+      const dryRun = flags.dryRun || !config.calendarSync?.autoUpdate;
+
+      logger.info(`sync-holidays: year=${year}, dryRun=${dryRun}, nextYear=${flags.nextYear}`);
+
+      if (flags.nextYear) {
+        // 同步當年 + 次年
+        await sync.syncCurrentAndNext({ dryRun });
+      } else {
+        // 同步指定年份
+        await sync.syncYear(year, { dryRun });
+      }
+      break;
+    }
+
     // ── 未知命令 ───────────────────────────────────────────────────────────
     default:
       _printUsage();
@@ -160,6 +182,10 @@ Usage:
   node index.js weekly                週報 pipeline
   node index.js cost --today          今日成本報告
   node index.js preview               預覽最新日報
+  node index.js sync-holidays         同步當年休市日（TWSE）
+  node index.js sync-holidays --year 2027     同步指定年份
+  node index.js sync-holidays --next-year     同步當年 + 次年
+  node index.js sync-holidays --dry-run       Dry-run 模式（產生 .new 檔案）
 
 環境變數：
   ANTHROPIC_API_KEY    Claude API 金鑰

@@ -499,10 +499,61 @@ function registerPipelineChecks(healthCheck) {
   }, { critical: true, timeout: 10000 });
 }
 
+/**
+ * 配置完整性檢查
+ */
+function registerConfigChecks(healthCheck) {
+  // C1. 環境變數替換完整性
+  healthCheck.register('config-integrity', async () => {
+    const { getConfig } = require('../shared/config-loader');
+    const config = getConfig();
+
+    const diagnostics = config.getEnvDiagnostics();
+    const validation = config.validateApiKeys(false);
+
+    if (validation.placeholders && validation.placeholders.length > 0) {
+      throw new Error(
+        `Env interpolation failed: ${validation.placeholders.length} placeholders unreplaced`
+      );
+    }
+
+    return {
+      missingVars: diagnostics.missingVars.length,
+      missingKeys: validation.missing.length,
+      degraded: validation.missing.join(', ') || 'none'
+    };
+  }, { critical: true, timeout: 2000 });
+
+  // C2. API Keys 降級狀態
+  healthCheck.register('api-keys-validity', async () => {
+    const { getApiKeys } = require('../shared/api-keys');
+    const apiKeys = getApiKeys();
+    const status = apiKeys.checkStatus();
+    const degradation = apiKeys.getDegradationReport();
+
+    const required = ['telegram'];
+    const missingRequired = required.filter(k => !status[k]);
+
+    if (missingRequired.length > 0) {
+      throw new Error(`Missing required API keys: ${missingRequired.join(', ')}`);
+    }
+
+    if (degradation.count > 0) {
+      return {
+        status: 'degraded',
+        degradedServices: degradation.degradedServices.map(s => s.provider).join(', ')
+      };
+    }
+
+    return { status: 'healthy', allKeysConfigured: true };
+  }, { critical: false, timeout: 1000 });
+}
+
 // 建立實例
 function createHealthCheckSystem(opts = {}) {
   const healthCheck = new HealthCheckSystem();
   registerDefaultChecks(healthCheck);
+  registerConfigChecks(healthCheck);
   if (opts.pipeline !== false) {
     registerPipelineChecks(healthCheck);
   }
@@ -512,6 +563,7 @@ function createHealthCheckSystem(opts = {}) {
 module.exports = {
   HealthCheckSystem,
   registerDefaultChecks,
+  registerConfigChecks,
   registerPipelineChecks,
   createHealthCheckSystem
 };

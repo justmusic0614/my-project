@@ -10,21 +10,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// 確保環境變數已載入（雙保險）
-const dotenv = require('dotenv');
-const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
-const localEnv = path.join(__dirname, '../.env');
-if (fs.existsSync(centralEnv)) {
-  dotenv.config({ path: centralEnv });
-} else if (fs.existsSync(localEnv)) {
-  dotenv.config({ path: localEnv });
-}
-
 class ConfigLoader {
   constructor(configPath) {
     this.configPath = configPath || path.join(__dirname, '../config.json');
     this.config = null;
     this.env = process.env;
+    this.interpolationWarnings = [];
+    this.missingVars = new Set();
   }
 
   /**
@@ -34,13 +26,17 @@ class ConfigLoader {
     try {
       const content = fs.readFileSync(this.configPath, 'utf8');
       const rawConfig = JSON.parse(content);
-      
+
+      // 重置診斷狀態
+      this.interpolationWarnings = [];
+      this.missingVars.clear();
+
       // 環境變數替換
       this.config = this.interpolateEnv(rawConfig);
-      
+
       // 驗證配置
       this.validate();
-      
+
       return this.config;
     } catch (error) {
       throw new Error(`Failed to load config from ${this.configPath}: ${error.message}`);
@@ -72,20 +68,35 @@ class ConfigLoader {
 
   /**
    * 替換字串中的環境變數
+   * 支援格式：${VAR} 或 ${VAR:-default}
    */
   replaceEnvVars(str) {
     // 匹配 ${VAR} 或 ${VAR:-default}
-    return str.replace(/${([^}:]+)(?::-([^}]*))?}/g, (match, varName, defaultValue) => {
+    return str.replace(/\${([^}:]+)(?::-([^}]*))?}/g, (match, varName, defaultValue) => {
       const value = this.env[varName];
-      
-      if (value !== undefined) {
+
+      // 優先使用環境變數（非空）
+      if (value !== undefined && value !== '') {
         return value;
       }
-      
+
+      // 其次使用預設值
       if (defaultValue !== undefined) {
+        this.interpolationWarnings.push({
+          variable: varName,
+          reason: 'using-default',
+          defaultValue
+        });
         return defaultValue;
       }
-      
+
+      // 記錄缺失的變數
+      this.missingVars.add(varName);
+      this.interpolationWarnings.push({
+        variable: varName,
+        reason: 'not-found'
+      });
+
       // 保留原始字串（未找到環境變數）
       return match;
     });
@@ -246,6 +257,17 @@ class ConfigLoader {
   }
 
   /**
+   * 獲取環境變數診斷報告
+   */
+  getEnvDiagnostics() {
+    return {
+      totalWarnings: this.interpolationWarnings.length,
+      missingVars: Array.from(this.missingVars),
+      warnings: this.interpolationWarnings
+    };
+  }
+
+  /**
    * 獲取 API Keys 配置區塊
    */
   getApiKeys() {
@@ -274,18 +296,41 @@ class ConfigLoader {
    */
   validateApiKeys(strict = false) {
     const expectedKeys = ['fmp', 'perplexity', 'anthropic', 'finmind', 'telegram', 'secEdgar'];
-    const missing = expectedKeys.filter(k => !this.hasApiKey(k));
+    const missing = [];
+    const placeholders = [];
 
-    if (missing.length > 0) {
-      const msg = `Missing API keys: ${missing.join(', ')}`;
-      if (strict) {
-        throw new Error(msg);
-      } else {
-        logger.warn(msg + ' (features will be degraded)');
+    for (const key of expectedKeys) {
+      const value = this.getApiKey(key);
+
+      if (!value) {
+        missing.push(key);
+      } else if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
+        placeholders.push({ key, placeholder: value });
       }
     }
 
-    return { valid: missing.length === 0, missing };
+    // 檢查 Telegram 特殊結構
+    const telegramConfig = this.get('apiKeys.telegram', {});
+    if (typeof telegramConfig === 'object' && telegramConfig.botToken?.startsWith('${')) {
+      placeholders.push({ key: 'telegram.botToken', placeholder: telegramConfig.botToken });
+    }
+
+    if (placeholders.length > 0) {
+      const msg = `Env interpolation failed: ${placeholders.map(p => `${p.key}=${p.placeholder}`).join(', ')}`;
+      if (strict) {
+        throw new Error(msg);
+      }
+    }
+
+    if (missing.length > 0 && !strict) {
+      // 非嚴格模式僅記錄，不拋錯
+    }
+
+    return {
+      valid: missing.length === 0 && placeholders.length === 0,
+      missing,
+      placeholders
+    };
   }
 }
 

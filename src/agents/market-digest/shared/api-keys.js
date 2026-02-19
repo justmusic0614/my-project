@@ -14,6 +14,7 @@ const logger = createLogger('api-keys');
 class ApiKeysManager {
   constructor() {
     this.config = getConfig();
+    this.degradationStatus = new Map();
   }
 
   /**
@@ -27,21 +28,48 @@ class ApiKeysManager {
     // 優先從 config-loader 獲取（已處理環境變數替換）
     let key = this.config.getApiKey(provider);
 
+    // 檢查是否為未替換的佔位符
+    if (key && key.startsWith('${') && key.endsWith('}')) {
+      logger.warn(`API key for ${provider} is an unreplaced placeholder: ${key}`);
+      key = null;
+    }
+
     // Fallback to process.env（向後相容）
     if (!key && fallbackEnv) {
       key = process.env[fallbackEnv];
     }
 
-    // 檢查必需性
-    if (required && !key) {
-      throw new Error(`Required API key missing: ${provider}`);
-    }
-
+    // 處理缺失的 key
     if (!key) {
+      if (!this.degradationStatus.has(provider)) {
+        this.degradationStatus.set(provider, {
+          provider,
+          degraded: !required,
+          since: new Date().toISOString()
+        });
+      }
+
+      if (required) {
+        throw new Error(
+          `Required API key missing: ${provider}\n` +
+          `  Environment variable: ${fallbackEnv || `config.apiKeys.${provider}`}`
+        );
+      }
+
       logger.debug(`API key not configured: ${provider}`);
     }
 
     return key || '';
+  }
+
+  /**
+   * 獲取降級狀態報告
+   */
+  getDegradationReport() {
+    return {
+      degradedServices: Array.from(this.degradationStatus.values()),
+      count: this.degradationStatus.size
+    };
   }
 
   /**
@@ -65,10 +93,24 @@ class ApiKeysManager {
 
   getTelegram() {
     const telegramConfig = this.config.get('apiKeys.telegram', {});
-    return {
-      botToken: telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN || '',
-      chatId: telegramConfig.chatId || process.env.TELEGRAM_CHAT_ID || ''
-    };
+    let botToken = telegramConfig.botToken || '';
+    let chatId = telegramConfig.chatId || '';
+
+    // 檢查佔位符
+    if (botToken.startsWith('${')) {
+      logger.warn(`Telegram botToken is an unreplaced placeholder: ${botToken}`);
+      botToken = '';
+    }
+    if (chatId.startsWith('${')) {
+      logger.warn(`Telegram chatId is an unreplaced placeholder: ${chatId}`);
+      chatId = '';
+    }
+
+    // Fallback to process.env
+    if (!botToken) botToken = process.env.TELEGRAM_BOT_TOKEN || '';
+    if (!chatId) chatId = process.env.TELEGRAM_CHAT_ID || '';
+
+    return { botToken, chatId };
   }
 
   getSecEdgar() {

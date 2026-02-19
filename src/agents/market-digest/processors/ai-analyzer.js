@@ -33,6 +33,57 @@ const MODELS = {
   sonnet: 'claude-sonnet-4-5-20250929'
 };
 
+// 產業白名單（美股+台股重點產業，AI 提取時需至少匹配 1 個關鍵字）
+const INDUSTRY_WHITELIST = [
+  // 核心科技類
+  'AI', '人工智慧', 'Artificial Intelligence',
+  '半導體', '晶片', 'Semiconductor', 'Chip',
+  '雲端運算', '雲服務', 'Cloud Computing',
+  '電動車', '新能源車', 'EV', 'Electric Vehicle',
+  '生技', '生物科技', 'Biotech', 'Pharmaceuticals',
+  '軟體', 'SaaS', 'Software',
+  '網路安全', '資安', 'Cybersecurity',
+  '5G', '通訊', 'Telecommunications',
+  '伺服器', '資料中心', 'Data Center', 'Server',
+  'PCB', '印刷電路板', 'Printed Circuit Board',
+  // 台股供應鏈相關
+  '面板', '顯示器', 'Display', 'Panel',
+  '被動元件', '電子零組件', 'Electronic Components',
+  '組裝代工', 'ODM', 'OEM', 'Contract Manufacturing',
+  // 金融能源類
+  '銀行', '金融服務', 'Banking', 'Financial Services',
+  '保險', 'Insurance',
+  '支付', '金融科技', 'FinTech', 'Payment',
+  '石油', '天然氣', 'Oil', 'Natural Gas', 'Energy',
+  '再生能源', '綠能', 'Renewable Energy', 'Solar', 'Wind',
+  '電池', '儲能', 'Battery', 'Energy Storage',
+  // 消費工業類
+  '零售', '電商', 'Retail', 'E-commerce',
+  '餐飲', '食品', 'Food', 'Beverage',
+  '消費電子', 'Consumer Electronics',
+  '製造', '工業自動化', 'Manufacturing', 'Automation',
+  '航空', '國防', 'Aerospace', 'Defense',
+  '運輸', '物流', 'Transportation', 'Logistics',
+  // 原物料與其他
+  '貴金屬', '黃金', 'Gold', 'Precious Metals',
+  '工業金屬', '銅', 'Copper', 'Industrial Metals',
+  '農產品', '大宗商品', 'Commodities', 'Agriculture',
+  '房地產', 'REITs', 'Real Estate',
+  '醫療器材', '醫療服務', 'Medical Devices', 'Healthcare Services'
+];
+
+// 產業黑名單（娛樂/體育/政治/生活，完全排除）
+const INDUSTRY_BLACKLIST = [
+  '胡瓜', '綜藝', '演藝', '藝人', '明星', '電影', '戲劇', '偶像',
+  '球賽', '選手', '運動員', '比賽', '奧運', '世界盃', 'NBA', 'MLB',
+  '音樂', '演唱會', '歌手', 'KTV', '遊戲', '電競',
+  '選舉', '投票', '候選人', '政黨', '立委', '議員', '市長', '總統',
+  '抗議', '示威', '遊行', '罷工', '陳情', '請願',
+  '旅遊', '觀光', '美食', '餐廳', '咖啡', '甜點',
+  '學校', '大學', '考試', '升學', '補習班',
+  '展覽', '博物館', '藝術', '文化節', '慶典'
+];
+
 class AIAnalyzer {
   constructor(config = {}) {
     this.apiKey      = process.env.ANTHROPIC_API_KEY || '';
@@ -103,7 +154,7 @@ class AIAnalyzer {
       `${i + 1}. [${n.importance || 'P3'}] ${n.title}${n.summary ? `（${n.summary.slice(0, 60)}）` : ''}`
     ).join('\n');
 
-    const prompt = `你是投資分析師。請對以下 ${newsItems.length} 則今日市場新聞評估重要性等級，並為每則新聞提供 15 字以內的中文摘要。
+    const prompt = `你是投資分析師。請對以下 ${newsItems.length} 則今日市場新聞評估重要性等級、類別，並提供 15 字以內的中文摘要。
 
 市場背景：
 ${marketCtx}
@@ -117,10 +168,22 @@ ${newsList}
 - P2：籌碼異動（外資大量買賣超/三大法人/融資變化）
 - P3：一般市場資訊
 
+類別標籤（必須精確分類）：
+- geopolitics: 地緣政治衝突、軍事行動、國際制裁、兩岸關係、戰爭風險
+- structural: 產業結構變化、技術革新、監管政策、供應鏈調整
+- equity: 個股財報、併購、高管變動、公司治理
+- economic: 經濟數據（CPI/GDP/就業）、央行決策、利率變化
+
 請以 JSON 格式回傳（只要 JSON，不要其他說明）：
 {
   "ranked": [
-    {"index": 1, "priority": "P0", "title": "原標題", "aiSummary": "15字以內摘要"},
+    {
+      "index": 1,
+      "priority": "P0",
+      "category": "geopolitics|structural|equity|economic",
+      "title": "原標題",
+      "aiSummary": "15字以內摘要"
+    },
     ...
   ]
 }
@@ -136,6 +199,7 @@ ${newsList}
       ranked = (parsed.ranked || []).map((r, idx) => ({
         ...(newsItems[r.index - 1] || newsItems[idx] || {}),
         importance: r.priority || 'P3',
+        category:   r.category || 'structural',  // 新增：保留 AI 分類的 category
         aiSummary:  r.aiSummary || ''
       }));
     } catch (err) {
@@ -172,6 +236,13 @@ ${newsList}
   "dailySnapshot": "2-3句台灣投資人視角的今日市場總結。涵蓋：①台股表現 ②主要驅動因素 ③產業/個股亮點。每句不超過30字。",
   "marketRegime": "Risk-on 或 Risk-off 或 Neutral（必須是這三個之一）",
   "structuralTheme": "當前最主要的市場主題（例如：AI基礎設施、利率峰值、能源轉型、地緣風險等）",
+  "industryThemes": [
+    {
+      "industry": "產業名稱（如 AI伺服器、電動車、生技藥）",
+      "summary": "20字以內摘要，含關鍵公司動態",
+      "keyCompanies": ["NVDA", "SMCI"]
+    }
+  ],
   "keyInsights": [
     "3-5個關鍵洞察，每條不超過25字，聚焦對台股持股的具體影響"
   ]
@@ -181,6 +252,7 @@ ${newsList}
 - dailySnapshot 要具體，包含數字（指數漲跌 %、關鍵數據）
 - marketRegime 根據 VIX、利率方向、整體市場情緒判斷
 - structuralTheme 識別最影響當週市場的結構性主題
+- industryThemes 提取 2-3 個當日最熱門產業，優先選擇台股相關（台積電、鴻海等供應鏈）
 - keyInsights 要有操作參考價值`;
 
     const response = await this._callAPI(this.stage2Model, prompt, 1500);
@@ -188,14 +260,20 @@ ${newsList}
 
     try {
       const parsed = JSON.parse(this._extractJson(response.content));
+
+      // 產業白名單+黑名單驗證（寬鬆模式：允許 1 個「其他」）
+      const validatedIndustries = this._validateIndustryThemes(parsed.industryThemes || []);
+
       logger.info('[Stage 2] deep analysis complete', {
         marketRegime:    parsed.marketRegime,
-        structuralTheme: parsed.structuralTheme
+        structuralTheme: parsed.structuralTheme,
+        industries:      validatedIndustries.length
       });
       return {
         dailySnapshot:   parsed.dailySnapshot   || '',
         marketRegime:    parsed.marketRegime     || 'Neutral',
         structuralTheme: parsed.structuralTheme  || '',
+        industryThemes:  validatedIndustries,
         keyInsights:     parsed.keyInsights      || []
       };
     } catch (err) {
@@ -207,6 +285,50 @@ ${newsList}
         keyInsights:     []
       };
     }
+  }
+
+  /**
+   * 產業白名單+黑名單驗證（寬鬆模式）
+   * @param {Array} aiIndustryThemes - AI 提取的產業主題列表
+   * @returns {Array} 驗證通過的產業列表
+   */
+  _validateIndustryThemes(aiIndustryThemes) {
+    if (!Array.isArray(aiIndustryThemes)) return [];
+
+    const validated = [];
+    let otherCount = 0;
+    const maxOtherAllowed = 1;  // 寬鬆模式：允許 1 個「其他」
+
+    for (const theme of aiIndustryThemes) {
+      if (!theme || !theme.industry) continue;
+
+      const industry = theme.industry.toLowerCase();
+
+      // 1. 黑名單檢查（優先）
+      const isBlacklisted = INDUSTRY_BLACKLIST.some(kw => industry.includes(kw.toLowerCase()));
+      if (isBlacklisted) {
+        logger.warn(`[Validator] Rejected blacklisted industry: ${theme.industry}`);
+        continue;  // 完全排除
+      }
+
+      // 2. 白名單檢查
+      const isWhitelisted = INDUSTRY_WHITELIST.some(kw => industry.includes(kw.toLowerCase()));
+      if (isWhitelisted) {
+        validated.push({ ...theme, validated: true });
+        continue;
+      }
+
+      // 3. 寬鬆模式：允許 1 個「其他」
+      if (otherCount < maxOtherAllowed) {
+        validated.push({ ...theme, validated: false, tag: '其他' });
+        otherCount++;
+        logger.info(`[Validator] Allowed "other" industry: ${theme.industry}`);
+      } else {
+        logger.warn(`[Validator] Rejected (exceeded "other" quota): ${theme.industry}`);
+      }
+    }
+
+    return validated;
   }
 
   /**

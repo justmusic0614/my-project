@@ -116,23 +116,28 @@ class DailyRenderer {
     }
 
     // ── 5. Geopolitics（有 P0 地緣事件才顯示）────────────────────────────
-    const geoNews = rankedNews.filter(n => n.importance === 'P0' && this._isGeopolitics(n));
+    // 改用 AI 分類的 category 欄位（Stage 1 Haiku 判斷）
+    const geoNews = rankedNews.filter(n =>
+      n.importance === 'P0' && n.category === 'geopolitics'
+    );
     if (geoNews.length > 0) {
       lines.push('🔹 Geopolitics');
       geoNews.slice(0, 3).forEach(n => {
-        lines.push(`  • ${n.title}${n.aiSummary ? `（${n.aiSummary}）` : ''}`);
+        lines.push(`  • ${n.aiSummary || n.title}`);
       });
       lines.push('');
     }
 
-    // ── 6. Structural Theme（P0 + P1 重要新聞）────────────────────────────
-    const themeNews = rankedNews.filter(n => (n.importance === 'P0' || n.importance === 'P1') && !this._isGeopolitics(n));
-    if (themeNews.length > 0) {
-      lines.push('🔹 Structural_Theme');
-      themeNews.slice(0, 5).forEach(n => {
-        const badge = n.importance === 'P0' ? '[重大] ' : '';
-        lines.push(`  • ${badge}${n.title}${n.aiSummary ? `（${n.aiSummary}）` : ''}`);
-      });
+    // ── 6. Market Insights（產業熱點 + 市場情緒 + 貨幣利率）────────────────────────────
+    const insightLines = this._renderMarketInsights(
+      aiResult,
+      marketData,
+      briefData.institutionalData || {},
+      briefData.marketHistory || null  // Phase 2 才會有，現階段為 null
+    );
+    if (insightLines.length > 0) {
+      lines.push('🔹 Market_Insights');
+      lines.push(...insightLines);
       lines.push('');
     }
 
@@ -374,6 +379,82 @@ class DailyRenderer {
       importantFilings.forEach(f => {
         lines.push(`  • [${f.formType}] ${f.company}${f.description ? `（${f.description.slice(0, 40)}）` : ''}`);
       });
+    }
+
+    return lines;
+  }
+
+  _renderMarketInsights(aiResult, marketData, institutionalData, marketHistory) {
+    const lines = [];
+
+    // 1. 產業熱點追蹤（白名單+黑名單驗證後的結果）
+    if (aiResult.industryThemes && aiResult.industryThemes.length > 0) {
+      lines.push('產業熱點：');
+      aiResult.industryThemes.slice(0, 3).forEach(theme => {
+        const companies = theme.keyCompanies ? ` (${theme.keyCompanies.join('、')})` : '';
+        const tag = theme.tag ? ` [${theme.tag}]` : '';  // 標記「其他」類別
+        lines.push(`  • ${theme.industry}${tag}：${theme.summary}${companies}`);
+      });
+    }
+
+    // 2. 市場情緒評估（美股資料優先 + 趨勢分析）
+    lines.push('市場情緒：');
+
+    // VIX 趨勢（5日均線）
+    const vixCurrent = marketData.VIX?.value || 0;
+    const vix5DayAvg = marketHistory?.vix?.avg5Day || vixCurrent;
+    const vixTrend = vixCurrent > vix5DayAvg * 1.05 ? '恐慌上升' :
+                     vixCurrent < vix5DayAvg * 0.95 ? '風險偏好回升' : '觀望';
+    lines.push(`  • VIX ${vixCurrent.toFixed(1)} (5日均 ${vix5DayAvg.toFixed(1)})，${vixTrend}`);
+
+    // Put/Call Ratio 趨勢（10日均線）- 美股優先
+    if (marketData.PUT_CALL_RATIO?.value) {
+      const pcCurrent = marketData.PUT_CALL_RATIO.value;
+      const pc10DayAvg = marketHistory?.putCallRatio?.avg10Day || pcCurrent;
+      const pcTrend = pcCurrent > 1.0 ? '防禦情緒濃厚' :
+                      pcCurrent < 0.7 ? '樂觀情緒高漲' : '中性';
+      lines.push(`  • Put/Call ${pcCurrent.toFixed(2)} (10日均 ${pc10DayAvg.toFixed(2)})，${pcTrend}`);
+    }
+
+    // 成交量變化（SPY vs 20日均線）- 美股優先
+    if (marketData.SPY_VOLUME) {
+      const volumeRatio = marketData.SPY_VOLUME.current / marketData.SPY_VOLUME.avg20Day;
+      const volumeTrend = volumeRatio > 1.2 ? '放量' :
+                          volumeRatio < 0.8 ? '縮量' : '持平';
+      lines.push(`  • 成交量 ${volumeTrend} (${(volumeRatio * 100).toFixed(0)}% vs 20日均)`);
+    }
+
+    // High-Yield Spread（額外指標，FRED API）
+    if (marketData.HY_SPREAD?.value) {
+      const hySpread = marketData.HY_SPREAD.value;
+      const hyTrend = hySpread > 4.5 ? '信用風險上升' :
+                      hySpread < 3.0 ? '風險偏好強' : '正常';
+      lines.push(`  • 高收益債利差 ${hySpread.toFixed(2)}%，${hyTrend}`);
+    }
+
+    // 台股法人買賣超（選用，有資料才顯示）
+    if (institutionalData?.foreign?.netBuySell) {
+      const foreign = institutionalData.foreign.netBuySell > 0 ? '買超' : '賣超';
+      const consecutiveDays = institutionalData.foreign.consecutiveDays || 0;
+      const dayText = consecutiveDays > 1 ? `連${consecutiveDays}買` : '';
+      lines.push(`  • 外資${foreign} ${Math.abs(institutionalData.foreign.netBuySell / 1e8).toFixed(1)}億${dayText ? ` (${dayText})` : ''}`);
+    }
+
+    // 3. 貨幣/利率趨勢（DXY 已在 Macro_Policy 收集）
+    lines.push('貨幣利率：');
+    if (marketData.US10Y?.value) {
+      const us10yCurrent = marketData.US10Y.value;
+      const us10y5DayAvg = marketHistory?.us10y?.avg5Day || us10yCurrent;
+      const trend = us10yCurrent > us10y5DayAvg * 1.005 ? '殖利率上升' :
+                    us10yCurrent < us10y5DayAvg * 0.995 ? '殖利率下降' : '持平';
+      lines.push(`  • US 10Y ${us10yCurrent.toFixed(2)}% (${trend})`);
+    }
+    if (marketData.DXY?.value) {
+      const dxyCurrent = marketData.DXY.value;
+      const dxy5DayAvg = marketHistory?.dxy?.avg5Day || dxyCurrent;
+      const usdTrend = dxyCurrent > dxy5DayAvg ? '美元走強' : '美元走弱';
+      const impact = dxyCurrent > dxy5DayAvg ? '台幣貶值壓力' : '台幣升值空間';
+      lines.push(`  • ${usdTrend}，DXY ${dxyCurrent.toFixed(1)} (5日均 ${dxy5DayAvg.toFixed(1)})，${impact}`);
     }
 
     return lines;

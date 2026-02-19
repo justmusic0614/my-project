@@ -58,6 +58,25 @@ const KEYWORDS = {
   ]
 };
 
+// 黑名單關鍵字（娛樂/點擊誘導/政治社會類，強制降為 P3）
+const BLACKLIST_KEYWORDS = [
+  // 娛樂/體育
+  '胡瓜', '綜藝', '演藝', '藝人', '明星', '電影', '戲劇', '偶像',
+  '球賽', '選手', '運動員', '比賽', '奧運', '世界盃', 'NBA', 'MLB',
+  '音樂', '演唱會', '歌手', 'KTV', '遊戲', '電競',
+  // 點擊誘導
+  '驚爆', '獨家', '震撼', '震驚', '必看', '秘訣', '內幕', '爆料', '揭密',
+  '淘金攻略', '潛力黑馬', '飆股', '神準', '必賺', '穩賺',
+  '名嘴', '專家說', '大師', '算命', '風水', '命理',
+  // 政治/社會事件
+  '選舉', '投票', '候選人', '政黨', '立委', '議員', '市長', '總統',
+  '抗議', '示威', '遊行', '罷工', '陳情', '請願',
+  // 生活/教育/文化
+  '旅遊', '觀光', '美食', '餐廳', '咖啡', '甜點',
+  '學校', '大學', '考試', '升學', '補習班',
+  '展覽', '博物館', '藝術', '文化節', '慶典'
+];
+
 // 來源可信度等級
 const SOURCE_CREDIBILITY = {
   P0: ['sec-edgar', 'reuters', 'bloomberg', 'wsj', 'ft'],
@@ -113,6 +132,16 @@ class ImportanceScorer {
     const text   = `${item.title || ''} ${item.summary || ''}`;
     let score    = 0;
     let priority = 'P3';
+
+    // 黑名單檢查（優先，強制降為 P3）
+    const isBlacklisted = BLACKLIST_KEYWORDS.some(kw => text.toLowerCase().includes(kw.toLowerCase()));
+    if (isBlacklisted) {
+      return {
+        ...item,
+        importance: 'P3',
+        rawScore: 5  // 基礎分
+      };
+    }
 
     // 關鍵字評分（P0 優先）
     let p0Hit = 0, p1Hit = 0, p2Hit = 0;

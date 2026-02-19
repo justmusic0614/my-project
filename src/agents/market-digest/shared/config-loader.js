@@ -10,6 +10,16 @@
 const fs = require('fs');
 const path = require('path');
 
+// 確保環境變數已載入（雙保險）
+const dotenv = require('dotenv');
+const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
+const localEnv = path.join(__dirname, '../.env');
+if (fs.existsSync(centralEnv)) {
+  dotenv.config({ path: centralEnv });
+} else if (fs.existsSync(localEnv)) {
+  dotenv.config({ path: localEnv });
+}
+
 class ConfigLoader {
   constructor(configPath) {
     this.configPath = configPath || path.join(__dirname, '../config.json');

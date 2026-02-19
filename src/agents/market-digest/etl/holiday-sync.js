@@ -178,11 +178,14 @@ class HolidaySync {
    * @returns {Promise<array>} holidays
    */
   async _fetchXNYS(year) {
-    // 降級策略：PDF（優先）→ HTML（降級）
-    // 未來可擴展：Trading Calendar API → Finnhub API → PDF → HTML
+    // 降級策略：WebPage（優先）→ PDF（降級）→ HTML（最後手段）
+    // WebPage: 從 NYSE 官網解析多年份表格，最穩定且無需 PDF 解析
+    // PDF: 下載交易日曆 PDF，純文字提取（可能因格式限制失敗）
+    // HTML: ICE 新聞稿網頁（可能被 Cloudflare 阻擋）
     const strategies = [
-      { name: 'PDF',  fn: () => this._fetchFromPDF(year) },
-      { name: 'HTML', fn: () => this._fetchFromHTML(year) }
+      { name: 'WebPage', fn: () => this._fetchFromNYSEWebPage(year) },
+      { name: 'PDF',     fn: () => this._fetchFromPDF(year) },
+      { name: 'HTML',    fn: () => this._fetchFromHTML(year) }
     ];
 
     const errors = [];
@@ -300,6 +303,26 @@ class HolidaySync {
   }
 
   /**
+   * 從 NYSE 官網抓取休市日（網頁解析方案）
+   * @param {number} year - 目標年份
+   * @returns {Promise<array>} holidays
+   */
+  async _fetchFromNYSEWebPage(year) {
+    const url = 'https://www.nyse.com/trade/hours-calendars';
+    logger.info(`  Fetching NYSE web page: ${url}`);
+
+    const html = await this.http.fetchText(url);
+    if (!html || html.length < 1000) {
+      throw new Error('NYSE web page fetch failed or empty');
+    }
+
+    const holidays = this._parseNYSETableMultiYear(html, year);
+    logger.info(`  Parsed ${holidays.length} holidays from web page`);
+
+    return holidays;
+  }
+
+  /**
    * 解析 NYSE HTML table
    * @param {string} html
    * @param {number} year
@@ -365,6 +388,157 @@ class HolidaySync {
         if (reason.toLowerCase().includes('early close') ||
             dateText.toLowerCase().includes('1:00 pm') ||
             dateText.toLowerCase().includes('early')) {
+          status = 'EARLY_CLOSE';
+        }
+
+        holidays.push({ date, status, reason });
+      }
+    }
+
+    // 去重（同一日期可能出現多次）
+    const uniqueMap = new Map();
+    for (const h of holidays) {
+      if (!uniqueMap.has(h.date)) {
+        uniqueMap.set(h.date, h);
+      }
+    }
+
+    return Array.from(uniqueMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * 解析 NYSE 多年份表格（官網格式）
+   * 表格格式：
+   * | Holiday         | 2026      | 2027      | 2028      |
+   * | New Year's Day  | January 1 | January 1 | January 1*|
+   *
+   * @param {string} html - HTML 內容
+   * @param {number} targetYear - 目標年份
+   * @returns {array} holidays - 休市日陣列 [{ date, status, reason }]
+   */
+  _parseNYSETableMultiYear(html, targetYear) {
+    const holidays = [];
+
+    // 提取 table 區塊
+    const tableRegex = /<table[\s\S]*?>([\s\S]*?)<\/table>/gi;
+    let tableMatch;
+
+    while ((tableMatch = tableRegex.exec(html)) !== null) {
+      const tableHtml = tableMatch[1];
+
+      // 提取所有 rows
+      const rowRegex = /<tr[\s\S]*?>([\s\S]*?)<\/tr>/gi;
+      const rows = [];
+      let rowMatch;
+
+      while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+        rows.push(rowMatch[1]);
+      }
+
+      if (rows.length < 2) continue; // 至少需要 header + 1 data row
+
+      // 解析 header row，識別年份列
+      const headerRow = rows[0];
+      const yearHeaders = [];
+      const yearRegex = /<th[^>]*>(\d{4})<\/th>/g;
+      let yearMatch;
+
+      while ((yearMatch = yearRegex.exec(headerRow)) !== null) {
+        yearHeaders.push(parseInt(yearMatch[1], 10));
+      }
+
+      if (yearHeaders.length === 0) continue; // 不是多年份表格
+
+      // 定位目標年份索引
+      const targetYearIndex = yearHeaders.indexOf(targetYear);
+      if (targetYearIndex === -1) {
+        logger.warn(`  Year ${targetYear} not found in table header (available: ${yearHeaders.join(', ')})`);
+        continue;
+      }
+
+      logger.info(`  Found multi-year table with years: ${yearHeaders.join(', ')}, target year index: ${targetYearIndex}`);
+
+      // 解析資料列（跳過 header row）
+      for (let i = 1; i < rows.length; i++) {
+        const rowHtml = rows[i];
+
+        // 提取 cells（包含 th 和 td）
+        const cells = [];
+
+        // 第一列通常是 <th>（Holiday 名稱）
+        const thRegex = /<th[^>]*>([\s\S]*?)<\/th>/gi;
+        let thMatch;
+        while ((thMatch = thRegex.exec(rowHtml)) !== null) {
+          const text = thMatch[1].replace(/<[^>]+>/g, '').trim();
+          cells.push(text);
+        }
+
+        // 其他列是 <td>（日期）
+        const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        let tdMatch;
+        while ((tdMatch = tdRegex.exec(rowHtml)) !== null) {
+          const text = tdMatch[1].replace(/<[^>]+>/g, '').trim();
+          cells.push(text);
+        }
+
+        if (cells.length < 2) continue;
+
+        // cells[0] = "New Year's Day"
+        // cells[targetYearIndex + 1] = "January 1*"（+1 因為第一列是 Holiday 名稱）
+        const reason = cells[0];
+        const dateText = cells[targetYearIndex + 1];
+
+        if (!dateText || dateText === '') continue;
+
+        // 處理早收標記（*）
+        const hasEarlyClose = dateText.includes('*');
+        const cleanDateText = dateText.replace(/\*/g, '').trim();
+
+        // 解析日期格式："January 1" 或 "January 1, 2026"
+        // 支援多種格式：
+        // - "January 1"（無年份，使用 targetYear）
+        // - "January 1, 2026"（含年份）
+        // - "Jan 1"（縮寫）
+        const dateMatch = cleanDateText.match(/(\w+)\s+(\d{1,2})(?:,?\s+(\d{4}))?/);
+        if (!dateMatch) continue;
+
+        const monthStr = dateMatch[1];
+        const day      = parseInt(dateMatch[2], 10);
+        const yr       = dateMatch[3] ? parseInt(dateMatch[3], 10) : targetYear;
+
+        // 確保年份正確（如果 HTML 包含年份，應該與 targetYear 一致）
+        if (dateMatch[3] && yr !== targetYear) {
+          logger.warn(`  Date year mismatch: ${cleanDateText} (expected ${targetYear})`);
+          continue;
+        }
+
+        // 月份映射（支援全名和縮寫）
+        const monthMap = {
+          January: '01', Jan: '01',
+          February: '02', Feb: '02',
+          March: '03', Mar: '03',
+          April: '04', Apr: '04',
+          May: '05',
+          June: '06', Jun: '06',
+          July: '07', Jul: '07',
+          August: '08', Aug: '08',
+          September: '09', Sep: '09',
+          October: '10', Oct: '10',
+          November: '11', Nov: '11',
+          December: '12', Dec: '12'
+        };
+
+        const month = monthMap[monthStr];
+        if (!month) {
+          logger.warn(`  Unknown month: ${monthStr}`);
+          continue;
+        }
+
+        const date = `${yr}-${month}-${day.toString().padStart(2, '0')}`;
+
+        // 判斷狀態（早收 vs 全天休市）
+        let status = 'CLOSED';
+        if (hasEarlyClose || reason.toLowerCase().includes('early close')) {
           status = 'EARLY_CLOSE';
         }
 

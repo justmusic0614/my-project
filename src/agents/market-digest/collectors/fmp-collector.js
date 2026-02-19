@@ -198,44 +198,18 @@ class FMPCollector extends BaseCollector {
    * @param {string} date - 日期（YYYY-MM-DD）
    * @returns {Promise<object|null>} { current, avg20Day, date }
    */
+  /**
+   * @deprecated SPY_VOLUME 已由 YahooCollector.getSPYVolume() 提供
+   */
   async getSPYVolume(date) {
-    try {
-      const url = `${FMP_BASE}/quote/SPY?apikey=${this.apiKey}`;
-      const data = await this._get(url);
-
-      if (data && data.length > 0 && data[0].volume) {
-        return {
-          current: data[0].volume,
-          price: data[0].price,
-          date: data[0].timestamp ? data[0].timestamp.slice(0, 10) : date,
-          source: 'fmp',
-          fetchedAt: new Date().toISOString()
-        };
-      }
-      return null;
-    } catch (err) {
-      this.logger.warn(`Failed to fetch SPY volume: ${err.message}`);
-      return null;
-    }
+    return null;
   }
 
   /**
-   * 收集 Put/Call Ratio（用於市場情緒評估）
-   * 注意：FMP 免費版可能不支援，需改用 Yahoo Finance 或 Alpha Vantage
-   * @param {string} date - 日期（YYYY-MM-DD）
-   * @returns {Promise<object|null>} { value, date }
+   * @deprecated PUT_CALL_RATIO 已由 YahooCollector (^PCCE) 提供
    */
   async getPutCallRatio(date) {
-    try {
-      // TODO: 確認 FMP 是否支援 Put/Call Ratio
-      // 若不支援，需改用 Yahoo Finance CBOE 資料或 Alpha Vantage
-      // 暫時標記為不可用
-      this.logger.info('Put/Call Ratio collection not yet implemented (需確認資料源)');
-      return null;
-    } catch (err) {
-      this.logger.warn(`Failed to fetch Put/Call Ratio: ${err.message}`);
-      return null;
-    }
+    return null;
   }
 
   /**

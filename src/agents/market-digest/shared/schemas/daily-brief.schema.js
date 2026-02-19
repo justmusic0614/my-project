@@ -23,7 +23,8 @@ const THRESHOLDS = {
   USDTWD: { min: 28.0,  max: 35.0,  maxDailyChangePct: 2  },
   VIX:    { min: 8,     max: 90,    maxDailyChangePct: 50  },
   DXY:    { min: 80,    max: 130,   maxDailyChangePct: 3   },
-  US10Y:  { min: 0.5,   max: 8.0,   maxDailyChangePct: 0.3 } // pp 非百分比
+  US10Y:         { min: 0.5,  max: 8.0,  maxDailyChangePct: 0.3 }, // pp 非百分比
+  PUT_CALL_RATIO: { min: 0.1,  max: 3.0,  maxDailyChangePct: 50  }
 };
 
 // ── 降級標記 ────────────────────────────────────────────────────────────────

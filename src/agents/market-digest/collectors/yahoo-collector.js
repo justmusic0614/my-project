@@ -81,6 +81,31 @@ class YahooCollector extends BaseCollector {
     });
   }
 
+  /**
+   * 取得 SPY ETF 成交量（用於市場情緒評估）
+   * @returns {Promise<object|null>} { current, price, source, fetchedAt }
+   */
+  async getSPYVolume() {
+    try {
+      const data = await this.withRetry(
+        () => this._get(`${YAHOO_BASE}${encodeURIComponent('SPY')}?interval=1d&range=1d`),
+        2, null
+      );
+      const meta = data?.chart?.result?.[0]?.meta;
+      const volume = meta?.regularMarketVolume;
+      if (!volume) return null;
+      return {
+        current:   volume,
+        price:     meta.regularMarketPrice || null,
+        source:    'yahoo',
+        fetchedAt: new Date().toISOString()
+      };
+    } catch (err) {
+      this.logger.warn(`SPY volume fetch failed: ${err.message}`);
+      return null;
+    }
+  }
+
   /** 取得單一 symbol 的最新報價 */
   async _fetchSymbol(symbol) {
     await this.rateLimiter.acquire('yahoo');

@@ -77,16 +77,13 @@ async function runPhase1(config = {}) {
 
   const fredData = fredResult.status === 'fulfilled' ? (fredResult.value || {}) : {};
 
-  // ── 美股情緒資料收集（Put/Call Ratio + SPY Volume）─────────────────────
-  let putCallRatio = null;
+  // ── 美股情緒資料收集（SPY Volume）────────────────────────────────────
+  // PUT_CALL_RATIO 由 yahooResult (^PCCE) 提供，SPY Volume 另外取
   let spyVolume = null;
   try {
-    [putCallRatio, spyVolume] = await Promise.all([
-      fmp.getPutCallRatio(_today()),
-      fmp.getSPYVolume(_today())
-    ]);
+    spyVolume = await yahoo.getSPYVolume();
   } catch (err) {
-    logger.warn(`sentiment data collection failed: ${err.message}`);
+    logger.warn(`SPY volume collection failed: ${err.message}`);
   }
 
   // ── 組裝 marketData 物件（用於歷史資料管理）────────────────────────────
@@ -96,7 +93,7 @@ async function runPhase1(config = {}) {
     DXY:             fmpResult.value?.DXY || yahooResult.value?.DXY || null,
     FED_RATE:        fredData.FED_RATE || null,
     HY_SPREAD:       fredData.HY_SPREAD || null,
-    PUT_CALL_RATIO:  putCallRatio,
+    PUT_CALL_RATIO:  yahooResult.value?.PUT_CALL_RATIO || null,
     SPY_VOLUME:      spyVolume
   };
 
@@ -118,7 +115,7 @@ async function runPhase1(config = {}) {
     yahoo:     yahooResult.status  === 'fulfilled' ? yahooResult.value  : null,
     secEdgar:  secResult.status    === 'fulfilled' ? secResult.value    : null,
     fred:      fredData,
-    sentiment: { putCallRatio, spyVolume },
+    sentiment: { spyVolume },
     marketData,
     marketHistory,
     errors:    _collectErrors({ fmpResult, yahooResult, secResult, fredResult })

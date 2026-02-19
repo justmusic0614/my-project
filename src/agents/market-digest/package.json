@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test test/test-validators.js test/test-collectors.js test/test-processors.js test/test-renderers.js test/test-pipeline.js test/test-commands.js",
+    "test:e2e": "node --test test/test-e2e-pipeline.js",
+    "test:all": "node --test test/test-validators.js test/test-collectors.js test/test-processors.js test/test-renderers.js test/test-pipeline.js test/test-commands.js test/test-e2e-pipeline.js",
     "pipeline": "node index.js pipeline",
     "weekly": "node index.js weekly",
     "dry-run": "node index.js pipeline --dry-run"

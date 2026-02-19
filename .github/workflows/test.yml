@@ -1,0 +1,23 @@
+name: Pipeline Tests
+on:
+  push:
+    branches: [main]
+    paths: ['src/agents/market-digest/**']
+  pull_request:
+    branches: [main]
+    paths: ['src/agents/market-digest/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: cd src/agents/market-digest && npm install
+      - name: Unit tests
+        run: cd src/agents/market-digest && npm test
+      - name: E2E pipeline tests
+        run: cd src/agents/market-digest && npm run test:e2e

@@ -13,6 +13,7 @@
 
 const https = require('https');
 const BaseCollector = require('./base-collector');
+const { getApiKeys } = require('../shared/api-keys');
 
 const PERPLEXITY_BASE = 'https://api.perplexity.ai';
 const CACHE_TTL = 1800000; // 30min
@@ -23,7 +24,11 @@ class PerplexityCollector extends BaseCollector {
     super('perplexity', config);
     this.apiConfig = config.dataSources?.api?.perplexity || {};
     this.queriesConfig = config.perplexityQueries || {};
-    this.apiKey = process.env.PERPLEXITY_API_KEY || '';
+
+    // 統一 API key 管理
+    const apiKeys = getApiKeys();
+    this.apiKey = apiKeys.getPerplexity();
+
     this.model = this.apiConfig.model || 'sonar';
   }
 

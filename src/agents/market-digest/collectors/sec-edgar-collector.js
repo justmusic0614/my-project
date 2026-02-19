@@ -14,6 +14,7 @@
 
 const https = require('https');
 const BaseCollector = require('./base-collector');
+const { getApiKeys } = require('../shared/api-keys');
 
 const EDGAR_SUBMISSIONS = 'https://data.sec.gov/submissions/';
 const EDGAR_EFTS        = 'https://efts.sec.gov/LATEST/search-index';
@@ -52,9 +53,12 @@ class SECEdgarCollector extends BaseCollector {
     super('secEdgar', config);
     this.apiConfig = config.dataSources?.api?.secEdgar || {};
     this.filingTypes = this.apiConfig.filingTypes || ['8-K', '13F', '4'];
-    this.userAgent   = process.env.SEC_EDGAR_USER_AGENT ||
-                       this.apiConfig.userAgent?.replace('${SEC_EDGAR_USER_AGENT}', '') ||
-                       'MarketDigest/2.0 admin@example.com';
+
+    // 統一 API key 管理（SEC EDGAR 使用 User-Agent 而非 API key）
+    const apiKeys = getApiKeys();
+    this.userAgent = apiKeys.getSecEdgar() ||
+                     this.apiConfig.userAgent?.replace('${SEC_EDGAR_USER_AGENT}', '') ||
+                     'MarketDigest/2.0 admin@example.com';
 
     // 初始化 SEC rate limiter（100ms 間隔）
     this.rateLimiter.register('secEdgar', { intervalMs: 100 });

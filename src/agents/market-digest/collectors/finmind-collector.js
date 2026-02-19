@@ -12,6 +12,7 @@
 
 const https = require('https');
 const BaseCollector = require('./base-collector');
+const { getApiKeys } = require('../shared/api-keys');
 
 const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4';
 const CACHE_TTL = 3600000; // 1h
@@ -31,7 +32,11 @@ class FinMindCollector extends BaseCollector {
   constructor(config = {}) {
     super('finmind', config);
     this.apiConfig = config.dataSources?.api?.finmind || {};
-    this.token = process.env.FINMIND_API_TOKEN || '';
+
+    // 統一 API key 管理
+    const apiKeys = getApiKeys();
+    this.token = apiKeys.getFinmind();
+
     this.watchlist = this.apiConfig.watchlist || ['2330', '0050', '0056'];
     this._stockNames = null; // TW50 股票名稱快取（動態查詢 TaiwanStockInfo）
   }

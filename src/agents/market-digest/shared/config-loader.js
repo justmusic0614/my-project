@@ -234,6 +234,49 @@ class ConfigLoader {
     }
     return JSON.parse(JSON.stringify(this.config));
   }
+
+  /**
+   * 獲取 API Keys 配置區塊
+   */
+  getApiKeys() {
+    return this.get('apiKeys', {});
+  }
+
+  /**
+   * 獲取特定 API key
+   * @param {string} provider - 服務商名稱（fmp, perplexity, anthropic 等）
+   * @returns {string|null}
+   */
+  getApiKey(provider) {
+    const keys = this.getApiKeys();
+    return keys[provider] || null;
+  }
+
+  /**
+   * 檢查 API key 是否存在
+   */
+  hasApiKey(provider) {
+    return !!this.getApiKey(provider);
+  }
+
+  /**
+   * 驗證 API keys 配置（可選：只記錄警告，不阻止啟動）
+   */
+  validateApiKeys(strict = false) {
+    const expectedKeys = ['fmp', 'perplexity', 'anthropic', 'finmind', 'telegram', 'secEdgar'];
+    const missing = expectedKeys.filter(k => !this.hasApiKey(k));
+
+    if (missing.length > 0) {
+      const msg = `Missing API keys: ${missing.join(', ')}`;
+      if (strict) {
+        throw new Error(msg);
+      } else {
+        logger.warn(msg + ' (features will be degraded)');
+      }
+    }
+
+    return { valid: missing.length === 0, missing };
+  }
 }
 
 // 單例實例

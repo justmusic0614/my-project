@@ -13,6 +13,7 @@
 
 const https = require('https');
 const BaseCollector = require('./base-collector');
+const { getApiKeys } = require('../shared/api-keys');
 
 const FMP_BASE = 'https://financialmodelingprep.com/stable';
 const CACHE_TTL = 1800000; // 30min
@@ -27,7 +28,11 @@ class FMPCollector extends BaseCollector {
   constructor(config = {}) {
     super('fmp', config);
     this.apiConfig = config.dataSources?.api?.fmp || {};
-    this.apiKey = process.env.FMP_API_KEY || '';
+
+    // 統一 API key 管理
+    const apiKeys = getApiKeys();
+    this.apiKey = apiKeys.getFmp();
+
     this.watchlist = this.apiConfig.watchlist || ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'AVGO', 'TSM', 'AMD', 'QQQ', 'SPY'];
     this.quotaLimit = this.apiConfig.dailyQuotaLimit || 200;
     this.plan = this.apiConfig.fmpPlan || 'basic';

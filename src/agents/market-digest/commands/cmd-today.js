@@ -23,7 +23,7 @@ const renderer = new DailyRenderer();
  * @param {object}   config - 完整 config
  * @returns {Promise<string>}
  */
-async function handle(args, config = {}) {
+async function handle(args, config = {}, context = {}) {
   logger.info('/today executing');
 
   if (!fs.existsSync(STATE_FILE)) {
@@ -42,7 +42,7 @@ async function handle(args, config = {}) {
 
   try {
     const phase3  = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    const watchlist = _loadWatchlist();
+    const watchlist = context.skipWatchlist ? [] : _loadWatchlist();
 
     const briefText = renderer.render({
       date:             phase3.date,

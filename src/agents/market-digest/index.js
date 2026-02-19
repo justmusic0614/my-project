@@ -8,6 +8,10 @@
  *   node index.js pipeline --dry-run   # 不發 Telegram，只本地渲染
  *   node index.js pipeline --weekend   # 週末日報（快取+Perplexity）
  *   node index.js weekly               # 週報 pipeline
+ *   node index.js today                # 推播今日日報到 Telegram（兩段）
+ *   node index.js today --dry-run     # Dry-run 不發 Telegram
+ *   node index.js cmd financial       # 執行 /financial 指令
+ *   node index.js cmd watchlist list  # 執行 /watchlist list 指令
  *   node index.js cost --today         # 今日成本報告
  *   node index.js preview              # 預覽最新日報
  *
@@ -78,6 +82,68 @@ async function main() {
       const pipeline = new WeeklyPipeline(config);
       const result = await pipeline.run();
       _printResult(result);
+      break;
+    }
+
+    // ── today（兩段推播：Daily Brief + 追蹤清單精簡報告）────────────────
+    case 'today': {
+      const cmdToday     = require('./commands/cmd-today');
+      const cmdFinancial = require('./commands/cmd-financial');
+      const TelegramPublisher = require('./publishers/telegram-publisher');
+      const { getApiKeys }    = require('./shared/api-keys');
+
+      // 1. 渲染 Daily Brief（跳過 Watchlist_Focus 避免與第 2 段重複）
+      const briefText = await cmdToday.handle(args, config, { skipWatchlist: true });
+
+      // 2. 無數據→兩段都不發
+      if (briefText.includes('日報尚未生成')) {
+        console.log(briefText);
+        break;
+      }
+
+      // 3. 渲染追蹤清單精簡報告
+      const financialText = await cmdFinancial.handle([], config);
+
+      // 4. 直接推播到 Telegram
+      const tg = getApiKeys().getTelegram();
+      const publisher = new TelegramPublisher({
+        botToken: tg.botToken, chatId: tg.chatId, dryRun: flags.dryRun
+      });
+
+      await publisher.publishDailyBrief(briefText);
+
+      // 兩段之間延遲 2 秒避免 Telegram 限速
+      await new Promise(r => setTimeout(r, 2000));
+
+      const skipFinancial = !financialText
+        || financialText.includes('為空')
+        || financialText.includes('尚未就緒');
+      if (!skipFinancial) {
+        await publisher.publishAlert(financialText);
+      }
+
+      console.log(`[done] /today sent: brief=${briefText.length}chars financial=${financialText.length}chars`);
+      break;
+    }
+
+    // ── cmd（通用指令路由：/financial, /watchlist, /news 等）──────────────
+    case 'cmd': {
+      const CommandRouter = require('./commands/command-router');
+      const router = new CommandRouter(config);
+      const subCmd = args[0];
+
+      // 禁用 cmd today（強制用 node index.js today）
+      if (subCmd === 'today') {
+        console.log('請使用 node index.js today（兩段推播版本）');
+        break;
+      }
+
+      const text = await router.handle('/' + args.join(' '));
+      if (text) {
+        console.log(text);
+      } else {
+        console.log('未知指令。使用 node index.js cmd help 查看可用指令');
+      }
       break;
     }
 
@@ -180,6 +246,10 @@ Usage:
   node index.js pipeline --dry-run    不發 Telegram，只本地渲染
   node index.js pipeline --weekend    週末日報
   node index.js weekly                週報 pipeline
+  node index.js today                 推播日報到 Telegram（兩段）
+  node index.js today --dry-run      Dry-run 不發 Telegram
+  node index.js cmd <command>        執行指令（financial, watchlist, news 等）
+  node index.js cmd help             查看可用指令
   node index.js cost --today          今日成本報告
   node index.js preview               預覽最新日報
   node index.js sync-holidays         同步當年休市日（TWSE）

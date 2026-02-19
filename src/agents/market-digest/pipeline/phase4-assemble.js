@@ -101,14 +101,30 @@ async function runPhase4(config = {}) {
     marketContext:    phase3.marketContext      || config.marketContext || null
   };
 
-  const briefText = renderer.render(briefData);
-  logger.info(`brief rendered: ${briefText.length} chars`);
+  // 渲染完整版（存檔用）
+  const fullBriefText = renderer.render(briefData);
+  // 渲染去除 Watchlist 版（推播用，避免與第二段重複）
+  const briefTextNoWL = renderer.render({ ...briefData, watchlist: [] });
+  logger.info(`brief rendered: full=${fullBriefText.length} noWL=${briefTextNoWL.length} chars`);
 
-  // ── Step 3: 推播到 Telegram ───────────────────────────────────────────────
-  logger.info('[Step 2] Publishing to Telegram...');
+  // ── Step 3: 推播到 Telegram（兩段）────────────────────────────────────────
+  logger.info('[Step 2] Publishing to Telegram (two segments)...');
   let telegramResult = { sent: 0, failed: 0 };
   try {
-    telegramResult = await telegram.publishDailyBrief(briefText);
+    // 第一段：Daily Brief（去除 Watchlist_Focus）
+    telegramResult = await telegram.publishDailyBrief(briefTextNoWL);
+
+    // 第二段：追蹤清單精簡報告（延遲 2 秒避免 Telegram 限速）
+    await new Promise(r => setTimeout(r, 2000));
+    const cmdFinancial = require('../commands/cmd-financial');
+    const financialText = await cmdFinancial.handle([], config);
+    const skipFinancial = !financialText
+      || financialText.includes('為空')
+      || financialText.includes('尚未就緒');
+    if (!skipFinancial) {
+      const finResult = await telegram.publishAlert(financialText);
+      telegramResult.sent += (finResult?.sent || 0);
+    }
   } catch (err) {
     logger.error(`telegram publish failed: ${err.message}`);
     await alerter.pipelineFailed('phase4-telegram', err);
@@ -118,7 +134,7 @@ async function runPhase4(config = {}) {
   logger.info('[Step 3] Archiving...');
   let archiveResult = {};
   try {
-    archiveResult = archiver.archiveDailyBrief(date, briefText, phase3);
+    archiveResult = archiver.archiveDailyBrief(date, fullBriefText, phase3);
     // Git commit（每日一次）
     archiver.gitCommit(`market-digest: daily brief ${date}`);
   } catch (err) {
@@ -159,7 +175,7 @@ async function runPhase4(config = {}) {
     duration,
     telegram: telegramResult,
     archive:  { jsonPath: archiveResult.jsonPath, txtPath: archiveResult.txtPath },
-    briefLength: briefText.length,
+    briefLength: fullBriefText.length,
     cost:        dailyCost.totalCost
   };
 

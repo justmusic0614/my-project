@@ -96,7 +96,8 @@ async function runPhase2(config = {}) {
     phase1Ref: {
       fmp:      phase1Data?.fmp      || null,
       yahoo:    phase1Data?.yahoo    || null,
-      secEdgar: phase1Data?.secEdgar || null
+      secEdgar: phase1Data?.secEdgar || null,
+      fred:     phase1Data?.fred     || null
     },
     // 市場狀態（供 Phase3/4 透傳）
     marketContext: config.marketContext || null,

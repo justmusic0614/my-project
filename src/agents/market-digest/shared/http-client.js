@@ -131,6 +131,83 @@ class HttpClient {
   }
 
   /**
+   * Buffer 專用方法（用於 PDF 等二進位檔案）
+   */
+  async fetchBuffer(url, options = {}) {
+    const mergedHeaders = { ...this.baseHeaders, ...options.headers };
+    const timeout = options.timeout || this.timeout;
+    const retries = options.retries !== undefined ? options.retries : this.retries;
+
+    let lastError;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        if (attempt > 0) {
+          const backoff = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+          this.logger.info(`⏳ 重試 ${attempt}/${retries}，等待 ${backoff}ms...`);
+          await this.sleep(backoff);
+        }
+
+        const buffer = await this._fetchBufferWithTimeout(url, mergedHeaders, timeout);
+        return buffer;
+
+      } catch (error) {
+        lastError = error;
+
+        // 不重試的情況
+        if (error.statusCode === 404 || error.statusCode === 403) {
+          throw error;
+        }
+
+        // 最後一次嘗試
+        if (attempt === retries) {
+          this.logger.error(`❌ Buffer 請求失敗（已重試 ${retries} 次）: ${url}`, error.message);
+          throw error;
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * 帶超時的底層 Buffer fetch
+   */
+  _fetchBufferWithTimeout(url, headers, timeout) {
+    return new Promise((resolve, reject) => {
+      const protocol = url.startsWith('https') ? https : http;
+      const timer = setTimeout(() => {
+        const error = new Error(`Request timeout after ${timeout}ms`);
+        error.type = 'TIMEOUT';
+        reject(error);
+      }, timeout);
+
+      protocol.get(url, { headers }, (res) => {
+        clearTimeout(timer);
+
+        // HTTP 錯誤檢查
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          const error = new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`);
+          error.type = 'HTTP_ERROR';
+          error.statusCode = res.statusCode;
+          reject(error);
+          return;
+        }
+
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          resolve(Buffer.concat(chunks));
+        });
+      }).on('error', (err) => {
+        clearTimeout(timer);
+        err.type = 'NETWORK_ERROR';
+        reject(err);
+      });
+    });
+  }
+
+  /**
    * 延遲工具
    */
   sleep(ms) {
@@ -156,5 +233,6 @@ module.exports = {
   // 便利方法
   fetchJSON: (url, options) => defaultClient.fetchJSON(url, options),
   fetchText: (url, options) => defaultClient.fetchText(url, options),
-  fetchRSS: (url, options) => defaultClient.fetchRSS(url, options)
+  fetchRSS: (url, options) => defaultClient.fetchRSS(url, options),
+  fetchBuffer: (url, options) => defaultClient.fetchBuffer(url, options)
 };

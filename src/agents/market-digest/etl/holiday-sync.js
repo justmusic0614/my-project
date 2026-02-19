@@ -21,6 +21,7 @@ const path = require('path');
 const { createLogger } = require('../shared/logger');
 const { getCalendarGuard } = require('../shared/calendar-guard');
 const { HttpClient } = require('../shared/http-client');
+const PDFParser = require('./pdf-parser');
 
 const logger = createLogger('etl:holiday-sync');
 
@@ -172,13 +173,98 @@ class HolidaySync {
   }
 
   /**
-   * 爬取 NYSE 休市日（HTML table regex）
+   * 爬取 NYSE 休市日（多層降級鏈）
    * @param {number} year
    * @returns {Promise<array>} holidays
    */
   async _fetchXNYS(year) {
+    // 降級策略：PDF（優先）→ HTML（降級）
+    // 未來可擴展：Trading Calendar API → Finnhub API → PDF → HTML
+    const strategies = [
+      { name: 'PDF',  fn: () => this._fetchFromPDF(year) },
+      { name: 'HTML', fn: () => this._fetchFromHTML(year) }
+    ];
+
+    const errors = [];
+
+    for (const strategy of strategies) {
+      try {
+        logger.info(`🔍 Trying ${strategy.name} for NYSE ${year}...`);
+        const result = await strategy.fn();
+
+        // 驗證結果
+        this._validateNYSEHolidays(result, year, strategy.name);
+
+        logger.info(`✅ ${strategy.name}: ${result.length} holidays`);
+        return result;
+
+      } catch (err) {
+        const errMsg = `${strategy.name} failed: ${err.message}`;
+        logger.warn(`⚠️  ${errMsg}`);
+        errors.push(errMsg);
+      }
+    }
+
+    // 所有策略失敗
+    const errorSummary = errors.join('; ');
+    throw new Error(`All XNYS strategies failed: ${errorSummary}`);
+  }
+
+  /**
+   * 從 PDF 爬取 NYSE 休市日
+   * @param {number} year
+   * @returns {Promise<array>} holidays
+   */
+  async _fetchFromPDF(year) {
+    const pdfUrls = this.syncConfig.dataSources?.xnys?.pdfUrls || [
+      `https://www.nyse.com/publicdocs/ICE_NYSE_${year}_Yearly_Trading_Calendar.pdf`,
+      `https://www.nyse.com/publicdocs/nyse/ICE_NYSE_${year}_Yearly_Trading_Calendar.pdf`
+    ];
+
+    // 檢查 pdfjs-dist 是否可用
+    if (!PDFParser.isAvailable()) {
+      throw new Error('pdfjs-dist not installed. Run: npm install pdfjs-dist@2.16.105');
+    }
+
+    const parser = new PDFParser({ timeout: 30000 });
+    let pdfText = null;
+    let successUrl = null;
+
+    // 嘗試所有 PDF URL
+    for (const url of pdfUrls) {
+      try {
+        logger.info(`  Trying PDF: ${url}`);
+        pdfText = await parser.extractText(url, { maxPages: 5 });
+        if (pdfText && pdfText.length > 500) {
+          successUrl = url;
+          break;
+        }
+      } catch (err) {
+        logger.warn(`  PDF URL failed: ${url} - ${err.message}`);
+      }
+    }
+
+    if (!pdfText) {
+      throw new Error('All PDF URLs failed');
+    }
+
+    logger.info(`  Extracted text from ${successUrl} (${pdfText.length} chars)`);
+
+    // Regex 解析日期
+    const holidays = this._parseNYSEPDFText(pdfText, year);
+    logger.info(`  Parsed ${holidays.length} holidays from PDF`);
+
+    return holidays;
+  }
+
+  /**
+   * 從 HTML 爬取 NYSE 休市日（降級方案）
+   * @param {number} year
+   * @returns {Promise<array>} holidays
+   */
+  async _fetchFromHTML(year) {
     // ICE 新聞稿 URL（支援 fallback）
-    const urls = this.syncConfig.dataSources?.xnys?.holidayUrls || [
+    const urls = this.syncConfig.dataSources?.xnys?.htmlUrls || [
       `https://ir.theice.com/press/news-details/${year-1}/NYSE-Group-Announces-${year}-${year+1}-and-${year+2}-Holiday-and-Early-Closings-Calendar/default.aspx`,
       `https://ir.theice.com/press/news-details/${year-2}/NYSE-Group-Announces-${year}-and-${year+1}-Holiday-Calendar/default.aspx`
     ];
@@ -189,26 +275,26 @@ class HolidaySync {
     // 嘗試所有 URL
     for (const url of urls) {
       try {
-        logger.info(`Trying NYSE URL: ${url}`);
+        logger.info(`  Trying HTML: ${url}`);
         html = await this.http.fetchText(url);
         if (html && html.length > 1000) {
           successUrl = url;
           break;
         }
       } catch (err) {
-        logger.warn(`NYSE URL failed: ${url} - ${err.message}`);
+        logger.warn(`  HTML URL failed: ${url} - ${err.message}`);
       }
     }
 
     if (!html) {
-      throw new Error('All NYSE URLs failed');
+      throw new Error('All HTML URLs failed');
     }
 
-    logger.info(`Fetched NYSE HTML from ${successUrl}`);
+    logger.info(`  Fetched HTML from ${successUrl}`);
 
-    // Regex 解析 table（復用 RSS collector 模式）
+    // Regex 解析 table（復用現有邏輯）
     const holidays = this._parseNYSETable(html, year);
-    logger.info(`NYSE: parsed ${holidays.length} holidays for ${year}`);
+    logger.info(`  Parsed ${holidays.length} holidays from HTML`);
 
     return holidays;
   }
@@ -295,6 +381,141 @@ class HolidaySync {
     }
 
     return Array.from(uniqueMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * 解析 NYSE PDF 純文字
+   * @param {string} pdfText
+   * @param {number} year
+   * @returns {array} holidays
+   */
+  _parseNYSEPDFText(pdfText, year) {
+    const holidays = [];
+
+    // 常見的 NYSE 休市日名稱（用於識別）
+    const holidayKeywords = [
+      "New Year's Day",
+      'Martin Luther King',
+      "Presidents'? Day",
+      'Good Friday',
+      'Memorial Day',
+      'Juneteenth',
+      'Independence Day',
+      'Labor Day',
+      'Thanksgiving',
+      'Christmas',
+      'Early Close',
+      'early close'
+    ];
+
+    // 月份對照
+    const monthMap = {
+      January: '01', February: '02', March: '03', April: '04',
+      May: '05', June: '06', July: '07', August: '08',
+      September: '09', October: '10', November: '11', December: '12',
+      Jan: '01', Feb: '02', Mar: '03', Apr: '04',
+      Jun: '06', Jul: '07', Aug: '08', Sep: '09',
+      Oct: '10', Nov: '11', Dec: '12'
+    };
+
+    // Regex 模式：捕捉 "Month Day, Year" 或 "Month Day Year"
+    // 範例：January 1, 2026 / Jan. 1, 2026 / January 1 2026
+    const datePattern = /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+(\d{1,2}),?\s+(\d{4})\b/gi;
+
+    let match;
+    while ((match = datePattern.exec(pdfText)) !== null) {
+      const monthStr = match[1];
+      const day      = parseInt(match[2], 10);
+      const yr       = parseInt(match[3], 10);
+
+      if (yr !== year) continue;
+
+      const month = monthMap[monthStr];
+      if (!month) continue;
+
+      const date = `${yr}-${month}-${day.toString().padStart(2, '0')}`;
+
+      // 嘗試提取前後文字（推測原因）
+      const startPos = Math.max(0, match.index - 100);
+      const endPos   = Math.min(pdfText.length, match.index + 100);
+      const context  = pdfText.substring(startPos, endPos);
+
+      // 判斷是否為休市日（檢查上下文是否包含關鍵字）
+      const isHoliday = holidayKeywords.some(kw => {
+        const regex = new RegExp(kw, 'i');
+        return regex.test(context);
+      });
+
+      if (!isHoliday) continue;
+
+      // 推測原因（從上下文提取）
+      let reason = 'Holiday';
+      for (const kw of holidayKeywords) {
+        const regex = new RegExp(kw, 'i');
+        if (regex.test(context)) {
+          reason = kw.replace(/\?/g, '');  // 移除 regex 特殊字元
+          break;
+        }
+      }
+
+      // 判斷狀態（早收 vs 全天休市）
+      let status = 'CLOSED';
+      if (context.toLowerCase().includes('early close') ||
+          context.toLowerCase().includes('1:00 pm') ||
+          context.toLowerCase().includes('13:00')) {
+        status = 'EARLY_CLOSE';
+      }
+
+      holidays.push({ date, status, reason });
+    }
+
+    // 去重
+    const uniqueMap = new Map();
+    for (const h of holidays) {
+      if (!uniqueMap.has(h.date)) {
+        uniqueMap.set(h.date, h);
+      }
+    }
+
+    return Array.from(uniqueMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * 驗證 NYSE 休市日資料
+   * @param {array} holidays
+   * @param {number} year
+   * @param {string} source - 資料來源（用於錯誤訊息）
+   */
+  _validateNYSEHolidays(holidays, year, source) {
+    // 1. 數量檢查（NYSE 通常 9-12 個全天休市日）
+    if (!holidays || holidays.length < 8) {
+      throw new Error(`${source}: Too few holidays (${holidays?.length || 0}), expected at least 8`);
+    }
+
+    if (holidays.length > 20) {
+      logger.warn(`${source}: Abnormally high holiday count (${holidays.length})`);
+    }
+
+    // 2. 必須包含 New Year's Day（除非是過去年份的特殊情況）
+    const hasNewYear = holidays.some(h => h.date === `${year}-01-01`);
+    if (!hasNewYear && year >= 2020) {
+      logger.warn(`${source}: Missing New Year's Day for ${year}`);
+    }
+
+    // 3. 日期格式驗證
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const invalidDates = holidays.filter(h => !dateRegex.test(h.date));
+    if (invalidDates.length > 0) {
+      throw new Error(`${source}: Invalid date format found: ${invalidDates.map(h => h.date).join(', ')}`);
+    }
+
+    // 4. 必要欄位檢查
+    const missingFields = holidays.filter(h => !h.date || !h.status || !h.reason);
+    if (missingFields.length > 0) {
+      throw new Error(`${source}: Missing required fields (date/status/reason)`);
+    }
+
+    logger.info(`✅ Validation passed: ${holidays.length} holidays for ${year}`);
   }
 
   /**

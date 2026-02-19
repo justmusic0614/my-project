@@ -37,7 +37,7 @@ class Validator {
    * @returns {{ marketData, validationReport, hasErrors }}
    */
   validate(collectedData) {
-    const { twse, fmp, finmind, yahoo } = collectedData;
+    const { twse, fmp, finmind, yahoo, fred } = collectedData;
 
     const marketData = { date: this._today() };
     const report = {
@@ -84,6 +84,12 @@ class Validator {
 
     // US 10Y（主：FMP）
     marketData.US10Y = this._pickBest('US10Y', [fmp?.US10Y], report);
+
+    // Fed Fund Rate（主：FRED）
+    marketData.FED_RATE = this._pickBest('FED_RATE', [fred?.FED_RATE], report);
+
+    // High-Yield Spread（主：FRED）
+    marketData.HY_SPREAD = this._pickBest('HY_SPREAD', [fred?.HY_SPREAD], report);
 
     // 大宗商品（Yahoo）
     for (const key of ['GOLD', 'OIL_WTI', 'COPPER', 'BTC']) {

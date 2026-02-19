@@ -89,10 +89,6 @@ async function runPhase3(config = {}) {
   const analyzer  = new AIAnalyzer(config.anthropic || {});
   const aiResult  = await analyzer.analyze(uniqueNews, marketData);
 
-  // DEBUG: 查看 aiResult 完整內容
-  console.log('[DEBUG Phase3] aiResult keys:', Object.keys(aiResult));
-  console.log('[DEBUG Phase3] aiResult.industryThemes:', JSON.stringify(aiResult.industryThemes, null, 2));
-
   if (aiResult.skipped) {
     logger.warn(`AI analysis skipped: ${aiResult.reason}`);
   } else {

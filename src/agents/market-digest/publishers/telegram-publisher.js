@@ -96,12 +96,16 @@ class TelegramPublisher {
 
   async _sendWithRetry(text) {
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+      // 最後一次嘗試：降級為純文字模式（Markdown fallback）
+      // 若前幾次因 "can't parse entities" 失敗，純文字模式可確保訊息送出
+      const parseMode = attempt < RETRY_DELAYS.length ? 'Markdown' : '';
       try {
-        await this._sendMessage(text);
+        await this._sendMessage(text, parseMode);
+        if (parseMode === '') logger.warn('sent without Markdown formatting (parse fallback)');
         return { ok: true };
       } catch (err) {
         if (attempt < RETRY_DELAYS.length) {
-          logger.warn(`send attempt ${attempt + 1} failed, retrying in ${RETRY_DELAYS[attempt]}ms`);
+          logger.warn(`send attempt ${attempt + 1} failed: ${err.message}, retrying in ${RETRY_DELAYS[attempt]}ms`);
           await this._sleep(RETRY_DELAYS[attempt]);
         } else {
           return { ok: false, error: err.message };
@@ -111,18 +115,16 @@ class TelegramPublisher {
     return { ok: false, error: 'max retries exceeded' };
   }
 
-  async _sendMessage(text) {
+  async _sendMessage(text, parseMode = 'Markdown') {
     if (this.dryRun) {
-      logger.info(`[DRY-RUN] Would send to ${this.chatId} (${text.length} chars):\n${text.slice(0, 200)}...`);
+      logger.info(`[DRY-RUN] Would send (parseMode=${parseMode || 'none'}) to ${this.chatId} (${text.length} chars):\n${text.slice(0, 200)}...`);
       return;
     }
 
     return new Promise((resolve, reject) => {
-      const body = JSON.stringify({
-        chat_id:    this.chatId,
-        text:       text,
-        parse_mode: 'Markdown'
-      });
+      const bodyObj = { chat_id: this.chatId, text };
+      if (parseMode) bodyObj.parse_mode = parseMode;
+      const body = JSON.stringify(bodyObj);
 
       const options = {
         hostname: 'api.telegram.org',

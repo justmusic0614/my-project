@@ -8,9 +8,18 @@
 
 const path = require('path');
 const fs   = require('fs');
-const { DailyRenderer } = require('../renderers/daily-renderer');
-const { createLogger }  = require('../shared/logger');
-const { loadWatchlist } = require('../shared/watchlist-loader');
+const { DailyRenderer }  = require('../renderers/daily-renderer');
+const { createLogger }   = require('../shared/logger');
+const { loadWatchlist }  = require('../shared/watchlist-loader');
+const { analyzeRiskOff } = require('../analyzers/risk-off-analyzer');
+
+// Fix G: 外資買賣超換算為 risk-off-analyzer 期望的「百萬元」單位
+// TWSE API row[4] 解析後可能為「元」單位；除以 1e6 = 百萬元
+// 台股休市時 val = undefined → 返回 0（不貢獻外資分數，正確行為）
+function _toForeignMillions(val) {
+  if (!val) return 0;
+  return val / 1e6;
+}
 
 const logger = createLogger('cmd:today');
 
@@ -48,10 +57,22 @@ async function handle(args, config = {}, context = {}) {
     // Fix F: 日報標題日期使用推播當下的台北時間（UTC+8）
     const taipeiDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 
+    // Fix G: 計算量化 Risk-off Score（台股休市時外資 = 0，僅計算 VIX + 黃金等美股指標）
+    const riskOff = analyzeRiskOff({
+      vix:        phase3.marketData?.VIX?.value              || 15,
+      gold:       { change: phase3.marketData?.GOLD?.changePct        || 0 },
+      usd_jpy:    { change: 0 },   // phase3 無 USD/JPY，設為 0
+      treasury:   { yield_10y_change: phase3.marketData?.US10Y?.changePct || 0 },
+      foreign:    { netBuy: _toForeignMillions(phase3.institutionalData?.foreign) },
+      stockIndex: { change: phase3.marketData?.TAIEX?.changePct       || 0 },
+      volatility: { daily: Math.abs(phase3.marketData?.TAIEX?.changePct || 0) }
+    }, phase3.uniqueNews || []);
+
     const briefText = renderer.render({
       date:              taipeiDate,                        // Fix F: 台北時間今日日期
       marketContext:     phase3.marketContext     || {},    // Fix E: 傳遞台股休市資訊
       marketData:        phase3.marketData        || {},
+      riskOff,                                             // Fix G: 量化 Risk-off Score
       aiResult:          phase3.aiResult          || {},
       rankedNews:        phase3.aiResult?.rankedNews || phase3.uniqueNews || [],
       watchlist,

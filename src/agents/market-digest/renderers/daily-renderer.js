@@ -105,7 +105,10 @@ class DailyRenderer {
     // ── 4. Market Regime ──────────────────────────────────────────────────
     if (aiResult.marketRegime) {
       const regimeEmoji = aiResult.marketRegime === 'Risk-on' ? '🟢' : aiResult.marketRegime === 'Risk-off' ? '🔴' : '🟡';
-      lines.push(`📈 Market_Regime: ${regimeEmoji} ${aiResult.marketRegime}`);
+      // Fix G: 同行加入量化 Risk-off Score（若有）
+      const riskOff = briefData.riskOff;
+      const scoreStr = riskOff ? `  |  Risk-off: ${riskOff.score}/100 ${riskOff.signal}` : '';
+      lines.push(`📈 Market_Regime: ${regimeEmoji} ${aiResult.marketRegime}${scoreStr}`);
       if (aiResult.structuralTheme) {
         lines.push(`  Structural Theme: ${aiResult.structuralTheme}`);
       }
@@ -160,9 +163,9 @@ class DailyRenderer {
     }
 
     // ── 9. Taiwan Market ──────────────────────────────────────────────────
+    // Fix H: 台股休市時頂端已有 🔴 提示，此處略去重複行
     if (mc.twse && !mc.twse.isTradingDay) {
-      lines.push('🇹🇼 今日台股休市');
-      lines.push('');
+      // 休市：不顯示（頂端第 72 行已顯示 🔴 今日台股休市）
     } else {
       const twLines = this._renderTaiwanMarket(marketData, institutionalData);
       if (twLines.length > 0) {

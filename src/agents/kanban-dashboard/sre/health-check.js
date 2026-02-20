@@ -324,11 +324,11 @@ function registerKanbanDashboardChecks(healthCheck) {
     }
   }, { critical: true, timeout: 6000 });
 
-  // 4. 檢查 VPS 系統負載（1 core，load > 0.9 時 health check 本身可能超時）
+  // 4. 檢查 VPS 系統負載（1 core，load > 1.5 時才告警；允許 clawdbot-gateway embedding 短暫突發）
   healthCheck.register('system-load', async () => {
     const os = require('os');
     const [load1, load5, load15] = os.loadavg();
-    if (load1 > 0.9) {
+    if (load1 > 1.5) {
       throw new Error(`High CPU load: ${load1.toFixed(2)} (1-core VPS, may cause spawn ETIMEDOUT)`);
     }
     return { load1: load1.toFixed(2), load5: load5.toFixed(2), load15: load15.toFixed(2) };

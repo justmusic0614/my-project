@@ -41,20 +41,21 @@ CLEAN_CRONTAB=$(crontab -l 2>/dev/null \
 NEW_CRONTAB="${CLEAN_CRONTAB}
 
 # === SRE: Security Patrol (installed $(date +%Y-%m-%d)) ===
-# 每 2 小時資安巡邏（偶數小時整點，有異常才推播）
-# UTC 00,02,...,22 = 台北 08,10,...,06
-0 */2 * * * $WRAPPER patrol >> $SCRIPT_DIR/logs/cron-patrol.log 2>&1
+# 每 2 小時資安巡邏（奇數小時，避開 market-digest 偶數小時排程）
+# UTC 01,03,05,...,23 = 台北 09,11,...,07
+# nice -n 10：降低 CPU 優先級，避免搶占 1-core VPS
+0 1,3,5,7,9,11,13,15,17,19,21,23 * * * nice -n 10 $WRAPPER patrol >> $SCRIPT_DIR/logs/cron-patrol.log 2>&1
 
-# 每天 UTC 00:00 SRE 日報（= 台北 08:00，整合技術債掃描）
-0 0 * * * $WRAPPER report >> $SCRIPT_DIR/logs/cron-report.log 2>&1
+# 每天 UTC 03:00 SRE 日報（= 台北 11:00，避開 00:00 市場任務集中時段）
+0 3 * * * nice -n 10 $WRAPPER report >> $SCRIPT_DIR/logs/cron-report.log 2>&1
 "
 
 # 安裝新 crontab
 echo "$NEW_CRONTAB" | crontab -
 
 echo "✅ Cron Jobs 已安裝："
-echo "   • 資安巡邏：每 2 小時 (0 */2 * * *)，有異常才推播"
-echo "   • SRE 日報：每天 UTC 00:00 台北 08:00 (0 0 * * *)，整合技術債"
+echo "   • 資安巡邏：每 2 小時 (0 1,3,...,23 * * *)，奇數小時，有異常才推播"
+echo "   • SRE 日報：每天 UTC 03:00 台北 11:00 (0 3 * * *)，整合技術債"
 echo ""
 echo "已移除（廢棄排程）："
 echo "   • market-digest/security-patrol.sh"

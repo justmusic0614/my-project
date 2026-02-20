@@ -11,10 +11,10 @@ const HISTORY_DIR = path.join(__dirname, 'data/history');
 // 讀取設定
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
-// 執行系統指令並回傳輸出
-function exec(cmd) {
+// 執行系統指令並回傳輸出（timeout 防止高負載下指令掛住）
+function exec(cmd, timeout = 10000) {
   try {
-    return execSync(cmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }).trim();
+    return execSync(cmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout }).trim();
   } catch (e) {
     return `ERROR: ${e.message}`;
   }
@@ -52,8 +52,8 @@ const monitors = {
   },
   
   updates: () => {
-    const updates = exec('apt list --upgradable 2>/dev/null | grep -v "Listing" | wc -l');
-    const securityList = exec('apt list --upgradable 2>/dev/null | grep -i security | head -5');
+    const updates = exec('apt list --upgradable 2>/dev/null | grep -v "Listing" | wc -l', 8000);
+    const securityList = exec('apt list --upgradable 2>/dev/null | grep -i security | head -5', 8000);
     const securityPackages = securityList
       .split('\n')
       .filter(l => l.trim() && l !== 'Listing...')

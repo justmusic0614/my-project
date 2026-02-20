@@ -10,6 +10,7 @@ const path = require('path');
 const fs   = require('fs');
 const { DailyRenderer } = require('../renderers/daily-renderer');
 const { createLogger }  = require('../shared/logger');
+const { loadWatchlist } = require('../shared/watchlist-loader');
 
 const logger = createLogger('cmd:today');
 
@@ -42,7 +43,7 @@ async function handle(args, config = {}, context = {}) {
 
   try {
     const phase3  = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    const watchlist = context.skipWatchlist ? [] : _loadWatchlist();
+    const watchlist = context.skipWatchlist ? [] : loadWatchlist(WATCHLIST_FILE);
 
     const briefText = renderer.render({
       date:             phase3.date,
@@ -67,14 +68,5 @@ async function handle(args, config = {}, context = {}) {
   }
 }
 
-function _loadWatchlist() {
-  try {
-    if (fs.existsSync(WATCHLIST_FILE)) {
-      const data = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8'));
-      return Array.isArray(data) ? data : (data.watchlist || []);
-    }
-  } catch {}
-  return [];
-}
 
 module.exports = { handle };

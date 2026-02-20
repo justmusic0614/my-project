@@ -8,6 +8,7 @@
 const path = require('path');
 const fs   = require('fs');
 const { createLogger } = require('../shared/logger');
+const { loadWatchlist } = require('../shared/watchlist-loader');
 
 const logger = createLogger('cmd:financial');
 
@@ -17,7 +18,7 @@ const WATCHLIST_FILE = path.join(__dirname, '../data/watchlist.json');
 async function handle(args, config = {}) {
   logger.info('/financial executing');
 
-  const watchlist = _loadWatchlist();
+  const watchlist = loadWatchlist(WATCHLIST_FILE);
   if (watchlist.length === 0) {
     return '📋 Watchlist 為空\n💡 使用 /watchlist add <代號> 新增追蹤股票';
   }
@@ -78,15 +79,6 @@ async function handle(args, config = {}) {
   return lines.join('\n');
 }
 
-function _loadWatchlist() {
-  try {
-    if (fs.existsSync(WATCHLIST_FILE)) {
-      const data = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8'));
-      return Array.isArray(data) ? data : (data.stocks || data.watchlist || []);
-    }
-  } catch {}
-  return [];
-}
 
 function _loadPhase3() {
   try {

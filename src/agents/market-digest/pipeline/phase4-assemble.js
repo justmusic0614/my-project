@@ -22,6 +22,7 @@ const path = require('path');
 const fs   = require('fs');
 const { createLogger } = require('../shared/logger');
 const costLedger = require('../shared/cost-ledger');
+const { loadWatchlist } = require('../shared/watchlist-loader');
 
 const { DailyRenderer }   = require('../renderers/daily-renderer');
 const TelegramPublisher   = require('../publishers/telegram-publisher');
@@ -48,6 +49,16 @@ async function runPhase4(config = {}) {
   const phase3 = _loadPhase3();
   if (!phase3) {
     throw new Error('phase3-result.json not found or invalid');
+  }
+
+  // ── Stale Data 保護（Phase 3→4 間隔正常 < 10 分鐘，超過 2 小時為異常）──
+  const PHASE3_STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 小時
+  const phase3ProcessedAt = phase3.processedAt ? new Date(phase3.processedAt) : null;
+  if (!phase3ProcessedAt || (Date.now() - phase3ProcessedAt.getTime()) > PHASE3_STALE_THRESHOLD_MS) {
+    const ageH = phase3ProcessedAt
+      ? Math.round((Date.now() - phase3ProcessedAt.getTime()) / 3600000)
+      : 'unknown';
+    throw new Error(`phase3 data is stale (${ageH}h old, threshold=2h). Aborting to prevent outdated report push.`);
   }
 
   const date    = phase3.date || _today();
@@ -114,16 +125,21 @@ async function runPhase4(config = {}) {
     // 第一段：Daily Brief（去除 Watchlist_Focus）
     telegramResult = await telegram.publishDailyBrief(briefTextNoWL);
 
-    // 第二段：追蹤清單精簡報告（延遲 2 秒避免 Telegram 限速）
-    await new Promise(r => setTimeout(r, 2000));
-    const cmdFinancial = require('../commands/cmd-financial');
-    const financialText = await cmdFinancial.handle([], config);
-    const skipFinancial = !financialText
-      || financialText.includes('為空')
-      || financialText.includes('尚未就緒');
-    if (!skipFinancial) {
-      const finResult = await telegram.publishAlert(financialText);
-      telegramResult.sent += (finResult?.sent || 0);
+    if (telegramResult.sent === 0 && telegramResult.failed > 0) {
+      // 第一段完全失敗：告警並跳過第二段（不 throw，避免觸發 alerter.pipelineFailed）
+      await telegram.publishAlert('⚠️ 日報第一段推播失敗，請稍後重試 /today');
+    } else {
+      // 第二段：追蹤清單精簡報告（延遲 2 秒避免 Telegram 限速）
+      await new Promise(r => setTimeout(r, 2000));
+      const cmdFinancial = require('../commands/cmd-financial');
+      const financialText = await cmdFinancial.handle([], config);
+      const skipFinancial = !financialText
+        || financialText.includes('為空')
+        || financialText.includes('尚未就緒');
+      if (!skipFinancial) {
+        const finResult = await telegram.publishAlert(financialText);
+        telegramResult.sent += (finResult?.sent || 0);
+      }
     }
   } catch (err) {
     logger.error(`telegram publish failed: ${err.message}`);
@@ -225,13 +241,7 @@ function _isFullyDegraded(phase3) {
 
 function _loadWatchlist(watchlistPath) {
   const p = watchlistPath || path.join(DATA_DIR, 'watchlist.json');
-  try {
-    if (fs.existsSync(p)) {
-      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-      return Array.isArray(data) ? data : (data.stocks || data.watchlist || []);
-    }
-  } catch {}
-  return [];
+  return loadWatchlist(p);
 }
 
 function _loadPhase3() {

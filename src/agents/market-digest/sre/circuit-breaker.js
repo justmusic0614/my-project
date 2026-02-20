@@ -58,11 +58,11 @@ class CircuitBreaker {
         this.stats.totalRejections++;
         console.log(`🚫 [${this.name}] Circuit OPEN - 請求被拒絕`);
         
-        if (fallback) {
+        if (fallback !== null && fallback !== undefined) {
           console.log(`🔄 [${this.name}] 使用 fallback 機制`);
-          return await fallback();
+          return typeof fallback === 'function' ? await fallback() : fallback;
         }
-        
+
         throw new Error(`Circuit breaker is OPEN for ${this.name}`);
       }
       
@@ -78,9 +78,9 @@ class CircuitBreaker {
       this.onFailure(err);
       
       // 如果有 fallback，使用它
-      if (fallback) {
+      if (fallback !== null && fallback !== undefined) {
         console.log(`🔄 [${this.name}] 使用 fallback 機制`);
-        return await fallback();
+        return typeof fallback === 'function' ? await fallback() : fallback;
       }
       
       throw err;

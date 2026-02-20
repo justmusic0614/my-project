@@ -110,7 +110,11 @@ async function main() {
         botToken: tg.botToken, chatId: tg.chatId, dryRun: flags.dryRun
       });
 
-      await publisher.publishDailyBrief(briefText);
+      const briefResult = await publisher.publishDailyBrief(briefText);
+      if (briefResult && briefResult.sent === 0 && briefResult.failed > 0) {
+        await publisher.publishAlert('⚠️ 日報第一段推播失敗，請稍後重試 /today');
+        break;
+      }
 
       // 兩段之間延遲 2 秒避免 Telegram 限速
       await new Promise(r => setTimeout(r, 2000));
@@ -224,16 +228,9 @@ function _printResult(result) {
 }
 
 function _loadWatchlist(watchlistPath) {
-  const path = require('path');
-  const fs   = require('fs');
-  const p    = watchlistPath || path.join(__dirname, 'data/watchlist.json');
-  try {
-    if (fs.existsSync(p)) {
-      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-      return Array.isArray(data) ? data : (data.watchlist || []);
-    }
-  } catch {}
-  return [];
+  const { loadWatchlist } = require('./shared/watchlist-loader');
+  const p = watchlistPath || path.join(__dirname, 'data/watchlist.json');
+  return loadWatchlist(p);
 }
 
 function _printUsage() {

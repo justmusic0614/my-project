@@ -16,6 +16,7 @@
 const path = require('path');
 const fs   = require('fs');
 const { createLogger } = require('../shared/logger');
+const { loadWatchlist } = require('../shared/watchlist-loader');
 
 const logger = createLogger('cmd:watchlist');
 
@@ -112,14 +113,8 @@ function _clear() {
 }
 
 function _load() {
-  try {
-    _ensureDir();
-    if (fs.existsSync(WATCHLIST_FILE)) {
-      const data = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8'));
-      return Array.isArray(data) ? data : (data.watchlist || []);
-    }
-  } catch {}
-  return [];
+  _ensureDir();
+  return loadWatchlist(WATCHLIST_FILE);
 }
 
 function _save(wl) {

@@ -334,7 +334,7 @@ class DailyRenderer {
     const tw50Prices = inst.tw50Prices || {};
 
     for (const item of watchlist.slice(0, 8)) {
-      const symbol = item.symbol || item.stockId;
+      const symbol = item.symbol || item.stockId || item.code;
       const price  = item.price ?? tw50Prices[symbol]?.close;
       const chgPct = item.changePct ?? tw50Prices[symbol]?.changePct;
 

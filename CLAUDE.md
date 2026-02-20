@@ -70,6 +70,35 @@ output/               # 生成的輸出檔案
 - **測試**: 未開始
 - **文件**: 未開始
 
+## Agent 標準化結構
+
+新建 agent 必須遵循 `src/shared/agent-template/` 模板結構：
+
+### 強制檔案
+- `agent.js` — 唯一入口點
+- `config.json` — 運行時配置
+- `README.md` — 唯一說明文件（禁止 *_COMPLETE.md、*_REPORT.md）
+
+### 強制目錄
+- `src/` — 核心業務邏輯
+- `data/runtime/` — 短暫狀態
+
+### 選用目錄
+- `sre/` — health-check、circuit-breaker、cron-wrapper
+- `logs/` — 執行日誌
+- `references/` — 靜態參考資料
+- `deprecated/` — 廢棄代碼暫存（定期清理）
+
+### 生命週期規則
+- 測試腳本（test-*.js/sh）：開發完即刪除，生產監控進 sre/
+- Patch 腳本（patch-*.js）：執行完即刪除
+- Backup 檔案（*.backup）：不進 git
+- 開發報告（*_COMPLETE.md）：不建立，更新 README.md
+
+### 適用範圍
+- 新 agent：必須遵循
+- market-digest：維持 backend/，不遷移
+
 ## 技術債預防
 
 ### 正確做法:

@@ -1,0 +1,26 @@
+{
+  "name": "{AGENT_NAME}",
+  "version": "1.0",
+  "description": "{DESCRIPTION}",
+
+  "paths": {
+    "src": "src",
+    "runtime": "data/runtime",
+    "logs": "logs"
+  },
+
+  "logging": {
+    "level": "info"
+  },
+
+  "sre": {
+    "healthCheck": { "enabled": false },
+    "circuitBreaker": { "enabled": false }
+  },
+
+  "telegram": {
+    "enabled": false,
+    "chatId": "${TELEGRAM_CHAT_ID}",
+    "botToken": "${TELEGRAM_BOT_TOKEN}"
+  }
+}

@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { createHealthCheckSystem } = require('./health-check');
 const { createAlertService } = require('./alert-service');
 
@@ -105,12 +106,14 @@ async function sendAlertsIfNeeded(overallStatus, alertService, consecutiveFailur
   }
 
   // 準備詳細資訊
+  const [load1] = os.loadavg();
   const details = {
     totalChecks: checks.total,
     healthyChecks: checks.healthy,
     failedChecks: checks.unhealthy,
     criticalFailures: checks.criticalUnhealthy,
     consecutiveFailures,
+    systemLoad: load1.toFixed(2),
     failedItems: failedChecks.map(c => {
       const duration = c.duration ? ` (${c.duration}ms)` : '';
       return `${c.name}${duration}: ${c.error}`;

@@ -3,9 +3,24 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { exec } = require('child_process');
+const { promisify } = require('util');
 const http = require('http');
 const https = require('https');
+
+const execAsync = promisify(exec);
+
+/**
+ * 取得 PM2 進程列表（異步，不阻塞事件循環）
+ * 兩個 check（pm2-status / telegram-poller）共用，避免重複 spawn
+ */
+async function getPm2List() {
+  const { stdout } = await execAsync('pm2 jlist', {
+    timeout: 5000,
+    maxBuffer: 2 * 1024 * 1024
+  });
+  return JSON.parse(stdout);
+}
 
 class HealthCheckSystem {
   constructor(options = {}) {
@@ -262,12 +277,7 @@ function registerKanbanDashboardChecks(healthCheck) {
   // 2. 檢查 PM2 進程狀態
   healthCheck.register('pm2-status', async () => {
     try {
-      const output = execSync('pm2 jlist', {
-        encoding: 'utf8',
-        timeout: 5000
-      });
-
-      const processes = JSON.parse(output);
+      const processes = await getPm2List();
       const dashboard = processes.find(p => p.name === 'kanban-dashboard');
 
       if (!dashboard) {
@@ -292,12 +302,7 @@ function registerKanbanDashboardChecks(healthCheck) {
   // 3. 檢查 Telegram Poller 進程（取代原 cloudflare-tunnel + webhook-url 檢查）
   healthCheck.register('telegram-poller', async () => {
     try {
-      const output = execSync('pm2 jlist', {
-        encoding: 'utf8',
-        timeout: 5000
-      });
-
-      const processes = JSON.parse(output);
+      const processes = await getPm2List();
       const poller = processes.find(p => p.name === 'telegram-poller');
 
       if (!poller) {
@@ -318,6 +323,16 @@ function registerKanbanDashboardChecks(healthCheck) {
       throw new Error(`Poller check failed: ${err.message}`);
     }
   }, { critical: true, timeout: 6000 });
+
+  // 4. 檢查 VPS 系統負載（1 core，load > 0.9 時 health check 本身可能超時）
+  healthCheck.register('system-load', async () => {
+    const os = require('os');
+    const [load1, load5, load15] = os.loadavg();
+    if (load1 > 0.9) {
+      throw new Error(`High CPU load: ${load1.toFixed(2)} (1-core VPS, may cause spawn ETIMEDOUT)`);
+    }
+    return { load1: load1.toFixed(2), load5: load5.toFixed(2), load15: load15.toFixed(2) };
+  }, { critical: false, timeout: 500 });
 
   // 5. 檢查記憶體使用
   healthCheck.register('memory', async () => {

@@ -3,7 +3,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+
+const execAsync = promisify(exec);
 
 class DependencyChecker {
   constructor() {
@@ -32,10 +35,10 @@ class DependencyChecker {
       
       // API 端點依賴（可選）
       apis: [
-        { 
+        {
           name: 'Yahoo Finance',
           url: 'https://query1.finance.yahoo.com/v8/finance/chart/^TWII?interval=1d&range=1d',
-          required: true,
+          required: false,
           timeout: 5000
         }
       ]
@@ -56,13 +59,13 @@ class DependencyChecker {
     
     // 1. 檔案系統檢查
     this.checkFiles();
-    
+
     // 2. Node 模組檢查
     this.checkModules();
-    
-    // 3. 外部指令檢查
-    this.checkCommands();
-    
+
+    // 3. 外部指令檢查（異步，不阻塞事件循環）
+    await this.checkCommands();
+
     // 4. API 端點檢查（非同步）
     await this.checkAPIs();
     
@@ -162,23 +165,22 @@ class DependencyChecker {
   }
 
   /**
-   * 檢查外部指令
+   * 檢查外部指令（異步，不阻塞事件循環）
    */
-  checkCommands() {
+  async checkCommands() {
     console.log('⚙️  檢查外部指令...');
-    
+
     for (const cmd of this.dependencies.commands) {
       try {
-        const result = execSync(`${cmd.cmd} ${cmd.args.join(' ')}`, {
-          encoding: 'utf8',
+        const { stdout } = await execAsync(`${cmd.cmd} ${cmd.args.join(' ')}`, {
           timeout: 3000,
-          stdio: 'pipe'
+          maxBuffer: 64 * 1024
         });
-        
+
         this.results.passed.push({
           type: 'command',
           item: cmd.cmd,
-          version: result.trim().split('\n')[0]
+          version: stdout.trim().split('\n')[0]
         });
       } catch (err) {
         if (cmd.required) {

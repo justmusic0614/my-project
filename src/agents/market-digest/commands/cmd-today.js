@@ -45,16 +45,20 @@ async function handle(args, config = {}, context = {}) {
     const phase3  = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
     const watchlist = context.skipWatchlist ? [] : loadWatchlist(WATCHLIST_FILE);
 
+    // Fix F: 日報標題日期使用推播當下的台北時間（UTC+8）
+    const taipeiDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+
     const briefText = renderer.render({
-      date:             phase3.date,
-      marketData:       phase3.marketData       || {},
-      aiResult:         phase3.aiResult         || {},
-      rankedNews:       phase3.aiResult?.rankedNews || phase3.uniqueNews || [],
+      date:              taipeiDate,                        // Fix F: 台北時間今日日期
+      marketContext:     phase3.marketContext     || {},    // Fix E: 傳遞台股休市資訊
+      marketData:        phase3.marketData        || {},
+      aiResult:          phase3.aiResult          || {},
+      rankedNews:        phase3.aiResult?.rankedNews || phase3.uniqueNews || [],
       watchlist,
-      events:           phase3.events           || [],
-      secFilings:       phase3.secFilings        || [],
-      institutionalData: phase3.institutionalData || {},
-      gainersLosers:    phase3.gainersLosers     || {}
+      events:            phase3.events            || [],
+      secFilings:        phase3.secFilings         || [],
+      institutionalData: phase3.institutionalData  || {},
+      gainersLosers:     phase3.gainersLosers      || {}
     });
 
     const ts = new Date(phase3.processedAt || phase3.date).toLocaleString('zh-TW', {

@@ -21,8 +21,9 @@
     "processes"
   ],
   "processes": [
-    "clawdbot-gateway",
-    "node"
+    { "name": "clawdbot-gateway", "type": "systemd", "restartAlertThreshold": 10, "memoryAlertMB": 200 },
+    { "name": "kanban-dashboard", "type": "pm2" },
+    { "name": "node", "type": "ps" }
   ],
   "telegram": {
     "chat_id": "REDACTED_CHAT_ID",

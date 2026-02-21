@@ -156,20 +156,57 @@ const monitors = {
   processes: () => {
     const results = {};
     let hasAlert = false;
-    
-    config.processes.forEach(processName => {
-      const count = exec(`ps aux | grep "${processName}" | grep -v grep | wc -l`);
-      const isRunning = parseInt(count) > 0;
-      results[processName] = {
-        running: isRunning,
-        count: parseInt(count)
-      };
+    const extraAlerts = [];
+
+    config.processes.forEach(proc => {
+      // 相容舊格式（字串）和新格式（物件）
+      const procDef = typeof proc === 'string' ? { name: proc, type: 'ps' } : proc;
+      const { name, type, restartAlertThreshold, memoryAlertMB } = procDef;
+
+      let isRunning = false;
+
+      if (type === 'systemd') {
+        // 用 systemctl is-active 取代 ps grep（不受短暫重啟影響）
+        const active = exec(`systemctl --user is-active ${name} 2>/dev/null`);
+        isRunning = (active === 'active' || active === 'activating');
+        results[name] = { running: isRunning, type: 'systemd' };
+
+        // 重啟迴圈偵測
+        if (restartAlertThreshold != null) {
+          const nRestartsRaw = exec(`systemctl --user show ${name} --property=NRestarts 2>/dev/null`);
+          const nRestarts = parseInt((nRestartsRaw.split('=')[1] || '0').trim());
+          results[name].nRestarts = nRestarts;
+          if (nRestarts > restartAlertThreshold) {
+            extraAlerts.push({ type: 'restart_loop', service: name, count: nRestarts, severity: 'HIGH' });
+          }
+        }
+
+        // 記憶體監控
+        if (memoryAlertMB != null && isRunning) {
+          const pid = exec(`systemctl --user show ${name} --property=MainPID --value 2>/dev/null`);
+          if (pid && pid !== '0') {
+            const vmRss = exec(`cat /proc/${pid}/status 2>/dev/null | grep VmRSS | awk '{print $2}'`);
+            const memMB = Math.round(parseInt(vmRss || '0') / 1024);
+            results[name].memMB = memMB;
+            if (memMB > memoryAlertMB) {
+              extraAlerts.push({ type: 'high_memory', service: name, memMB, threshold: memoryAlertMB, severity: 'HIGH' });
+            }
+          }
+        }
+      } else {
+        // ps grep 方式（適用於 pm2 和一般進程）
+        const count = parseInt(exec(`ps aux | grep "${name}" | grep -v grep | wc -l`));
+        isRunning = count > 0;
+        results[name] = { running: isRunning, count };
+      }
+
       if (!isRunning) hasAlert = true;
     });
-    
+
     return {
       processes: results,
-      alert: hasAlert
+      extraAlerts,
+      alert: hasAlert || extraAlerts.length > 0
     };
   }
 };
@@ -279,6 +316,15 @@ function generateReport(results, mode = 'alert') {
               lines.push(`${icon} Process | ${name} 未執行`);
             }
           });
+          if (alert.data.extraAlerts) {
+            alert.data.extraAlerts.forEach(ea => {
+              if (ea.type === 'restart_loop') {
+                lines.push(`${icon} Process | ${ea.service} 重啟迴圈 (${ea.count} 次)`);
+              } else if (ea.type === 'high_memory') {
+                lines.push(`${icon} Process | ${ea.service} 記憶體高 (${ea.memMB}MB > ${ea.threshold}MB)`);
+              }
+            });
+          }
           break;
         case 'updates':
           lines.push(`${icon} 更新 | ${alert.data.security_updates} 個安全性更新`);

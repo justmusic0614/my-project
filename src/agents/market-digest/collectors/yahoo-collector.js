@@ -18,15 +18,17 @@ const CACHE_TTL = 300000; // 5min（市場數據快速過期）
 
 // symbol → 收集結果 key 的映射
 const SYMBOL_MAP = {
-  '^GSPC':   'SP500',
-  '^IXIC':   'NASDAQ',
-  '^DJI':    'DJI',
-  '^VIX':    'VIX',
+  '^GSPC':    'SP500',
+  '^IXIC':    'NASDAQ',
+  '^DJI':     'DJI',
+  '^VIX':     'VIX',
+  'DX-Y.NYB': 'DXY',    // 美元指數（FMP fallback 用）
+  '^TNX':     'US10Y',  // 美國10年期公債殖利率（FMP fallback 用）
   'USDTWD=X': 'USDTWD',
-  'GC=F':    'GOLD',
-  'CL=F':    'OIL_WTI',
-  'HG=F':    'COPPER',
-  'BTC-USD': 'BTC'
+  'GC=F':     'GOLD',
+  'CL=F':     'OIL_WTI',
+  'HG=F':     'COPPER',
+  'BTC-USD':  'BTC'
 };
 
 class YahooCollector extends BaseCollector {

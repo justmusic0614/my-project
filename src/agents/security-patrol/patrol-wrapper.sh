@@ -300,12 +300,18 @@ mode_report() {
     DEBT_LINES="${DEBT_LINES}✅ 備份檔 ${BAK_COUNT} 個\n"
   fi
 
-  # 項目 3：大型日誌 >50MB
-  LARGE_LOG_COUNT=$(find "$WORKSPACE/agents" "$HOME/.openclaw/logs" -maxdepth 4 \
+  # 項目 3：大型日誌 >50MB（顯示路徑和大小，方便識別後手動決定清理策略）
+  LARGE_LOGS=$(find "$WORKSPACE/agents" "$HOME/.openclaw/logs" -maxdepth 4 \
     \( -name "*.log" -o -name "*.jsonl" \) -size +50M \
-    -not -path "*/node_modules/*" 2>/dev/null | wc -l | tr -d ' ')
+    -not -path "*/node_modules/*" 2>/dev/null)
+  LARGE_LOG_COUNT=$(echo "$LARGE_LOGS" | grep -c . 2>/dev/null || echo "0")
   if [ "${LARGE_LOG_COUNT:-0}" -gt 0 ]; then
-    DEBT_LINES="${DEBT_LINES}⚠️ 大型日誌 (>50MB) ${LARGE_LOG_COUNT} 個\n"
+    DEBT_LINES="${DEBT_LINES}⚠️ 大型日誌 (>50MB) ${LARGE_LOG_COUNT} 個：\n"
+    while IFS= read -r logfile; do
+      [ -z "$logfile" ] && continue
+      size=$(du -sh "$logfile" 2>/dev/null | cut -f1)
+      DEBT_LINES="${DEBT_LINES}   - $(basename "$logfile") (${size})\n"
+    done <<< "$LARGE_LOGS"
     DEBT_ISSUES=$((DEBT_ISSUES + 1))
   else
     DEBT_LINES="${DEBT_LINES}✅ 無大型日誌 (>50MB)\n"

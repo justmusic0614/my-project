@@ -324,14 +324,16 @@ function registerKanbanDashboardChecks(healthCheck) {
     }
   }, { critical: true, timeout: 6000 });
 
-  // 4. 檢查 VPS 系統負載（1 core，load > 2.0 時才告警；1.5-2.0 為正常 pipeline 執行範圍）
+  // 4. 檢查 VPS 系統負載（動態 threshold = CPU 核心數 × 2，自動適應升級）
   healthCheck.register('system-load', async () => {
     const os = require('os');
     const [load1, load5, load15] = os.loadavg();
-    if (load1 > 2.0) {
-      throw new Error(`High CPU load: ${load1.toFixed(2)} (1-core VPS, threshold=2.0)`);
+    const numCPUs = os.cpus().length;
+    const threshold = numCPUs * 2.0;
+    if (load1 > threshold) {
+      throw new Error(`High CPU load: ${load1.toFixed(2)} (${numCPUs}-core VPS, threshold=${threshold.toFixed(1)})`);
     }
-    return { load1: load1.toFixed(2), load5: load5.toFixed(2), load15: load15.toFixed(2) };
+    return { load1: load1.toFixed(2), load5: load5.toFixed(2), load15: load15.toFixed(2), cpus: numCPUs, threshold: threshold.toFixed(1) };
   }, { critical: false, timeout: 500 });
 
   // 5. 檢查記憶體使用

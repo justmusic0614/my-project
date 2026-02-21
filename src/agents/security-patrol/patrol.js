@@ -123,15 +123,17 @@ const monitors = {
   cpu: () => {
     const load = exec('cat /proc/loadavg').split(' ');
     const cores = parseInt(exec('nproc'));
-    const usage = parseFloat(load[0]) / cores * 100;
-    
+    const usage5 = parseFloat(load[1]) / cores * 100;  // 5 分鐘平均（告警用，平滑 cron 尖峰）
+    const usage1 = parseFloat(load[0]) / cores * 100;  // 1 分鐘瞬間（顯示用，供參考）
+
     return {
       load_1min: parseFloat(load[0]),
       load_5min: parseFloat(load[1]),
       load_15min: parseFloat(load[2]),
       cores,
-      usage_percent: Math.round(usage),
-      alert: usage > config.thresholds.cpu_usage_percent
+      usage_percent: Math.round(usage5),         // 告警判斷用 5 分鐘
+      usage_1min_percent: Math.round(usage1),    // 訊息顯示 1 分鐘供參考
+      alert: usage5 > config.thresholds.cpu_usage_percent
     };
   },
   
@@ -265,7 +267,8 @@ function generateReport(results, mode = 'alert') {
           lines.push(`${icon} 磁碟 | ${alert.data.usage_percent}% (${alert.data.available} 可用)`);
           break;
         case 'cpu':
-          lines.push(`${icon} CPU | ${alert.data.usage_percent}% (load ${alert.data.load_1min})`);
+          lines.push(`${icon} CPU | ${alert.data.usage_percent}% (5min avg, 1min: ${alert.data.usage_1min_percent}%)`);
+
           break;
         case 'memory':
           lines.push(`${icon} RAM | ${alert.data.usage_percent}% (${alert.data.available_mb}MB 可用)`);

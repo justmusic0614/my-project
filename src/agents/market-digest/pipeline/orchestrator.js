@@ -184,15 +184,21 @@ class Orchestrator {
     logger.info('Weekend pipeline: running phase3+4 with cached data');
     const results = {};
 
-    for (const phase of ['phase3', 'phase4']) {
-      const cfg = PHASE_CONFIG[phase];
-      try {
-        results[phase] = await this._runWithRetry(phase, cfg);
-      } catch (err) {
-        logger.error(`weekend ${phase} failed: ${err.message}`);
-        results[phase] = { error: err.message, failed: true };
-        if (cfg.required) break;
+    // 告知 phase3/4 使用 weekend 模式（豁免 stale check，允許使用 24-48h 舊快取）
+    this.config.weekendMode = true;
+    try {
+      for (const phase of ['phase3', 'phase4']) {
+        const cfg = PHASE_CONFIG[phase];
+        try {
+          results[phase] = await this._runWithRetry(phase, cfg);
+        } catch (err) {
+          logger.error(`weekend ${phase} failed: ${err.message}`);
+          results[phase] = { error: err.message, failed: true };
+          if (cfg.required) break;
+        }
       }
+    } finally {
+      this.config.weekendMode = false;
     }
 
     return { mode: 'weekend', phases: results, cost: costLedger.getDailySummary() };

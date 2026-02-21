@@ -51,12 +51,18 @@ async function runPhase3(config = {}) {
   }
 
   // ── Stale Data 保護（防止 OOM 後推播舊日報）────────────────────────────
-  const PHASE2_STALE_THRESHOLD_MS = 3 * 60 * 60 * 1000; // 3 小時
+  // weekend mode：週末不執行 Phase 2，快取最多 48h（週五 23:30 → 週日/週一 00:00）
+  // 正常模式：閾值 3h，確保數據當日新鮮
+  const isWeekendMode = !!(config && config.weekendMode);
+  const PHASE2_STALE_THRESHOLD_MS = isWeekendMode
+    ? 48 * 60 * 60 * 1000  // 48 小時
+    : 3  * 60 * 60 * 1000; //  3 小時
   const phase2CollectedAt = phase2.collectedAt ? new Date(phase2.collectedAt) : null;
   if (!phase2CollectedAt || (Date.now() - phase2CollectedAt.getTime()) > PHASE2_STALE_THRESHOLD_MS) {
     const ageH = phase2CollectedAt
       ? Math.round((Date.now() - phase2CollectedAt.getTime()) / 3600000)
       : 'unknown';
+    const thresholdLabel = isWeekendMode ? '48h' : '3h';
     // 主動推播 Telegram 告警，讓用戶知道日報未推播
     try {
       const TelegramPublisher = require('../publishers/telegram-publisher');
@@ -70,7 +76,7 @@ async function runPhase3(config = {}) {
     } catch (alertErr) {
       logger.error(`stale alert send failed: ${alertErr.message}`);
     }
-    throw new Error(`phase2 data is stale (${ageH}h old, threshold=3h). Aborting to prevent outdated report push.`);
+    throw new Error(`phase2 data is stale (${ageH}h old, threshold=${thresholdLabel}). Aborting to prevent outdated report push.`);
   }
 
   // ── Step 1: 市場數據驗證 ────────────────────────────────────────────────

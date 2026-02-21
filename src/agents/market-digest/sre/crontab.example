@@ -4,6 +4,12 @@
 # 安裝方式：crontab -e 後貼入以下配置
 # 路徑前綴：~/clawd/agents/market-digest
 # 時區說明：VPS UTC → 台北 = UTC+8
+#
+# 改版紀錄：
+#   v2.1 (2026-02-21) - Health Check 降頻 + flock 防並發
+#                     - Phase 3+4 拆分為獨立 cron（推播穩定性）
+#                     - 全 Phase 加 nice -n 5 均化資源
+#                     - cron-wrapper.sh 已內建 Resource Guard（自動 SKIP）
 # ============================================================
 
 # ── 環境變數（cron 環境需要明確設定）─────────────────────────────
@@ -16,40 +22,56 @@ HOME=/home/clawbot
 # ── Pipeline v2 多階段排程 ────────────────────────────────────────
 
 # Phase 1 美股（UTC 21:30 = 台北 05:30，週一至五）
-30 21 * * 1-5 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase1 "node index.js pipeline --phase 1"
+# Resource Guard 閾值：≥400MB 可用記憶體，CPU 負載 ≤1.5
+30 21 * * 1-5 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase1 "node index.js pipeline --phase 1"
 
 # Phase 2 台股 + RSS + Perplexity（UTC 23:30 = 台北 07:30，週一至五）
-30 23 * * 1-5 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase2 "node index.js pipeline --phase 2"
+# Resource Guard 閾值：≥500MB 可用記憶體，CPU 負載 ≤1.5（最耗資源 phase）
+30 23 * * 1-5 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase2 "node index.js pipeline --phase 2"
 
-# Phase 3 + 4 分析推播（UTC 00:00 = 台北 08:00，週二至六）
-# 注意：執行週一至五的 UTC 00:00，對應台北隔日 08:00
-0 0 * * 2-6 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase34 "node index.js pipeline --phase 3 && node index.js pipeline --phase 4"
+# Phase 3 分析（UTC 00:00 = 台北 08:00，週二至六）
+# Resource Guard 閾值：≥350MB 可用記憶體，CPU 負載 ≤1.8
+0  0 * * 2-6 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase3 "node index.js pipeline --phase 3"
+
+# Phase 4 推播（UTC 00:10 = 台北 08:10，週二至六）
+# 注意：Phase 4 為推播，Resource Guard 閾值設為 0（永不 SKIP）
+# 與 Phase 3 間距 10 分鐘，確保 Phase 3 完成（最多 6 分鐘含 retry）
+10 0 * * 2-6 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase4 "node index.js pipeline --phase 4"
 
 # 週末日報（台北 08:00，週日+週一 UTC 00:00）
-# 0 = 週日 UTC 00:00（台北週日 08:00）
-# 1 = 週一 UTC 00:00（台北週一 08:00，即週末日報的最後一天）
-0 0 * * 0,1 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh weekend "node index.js pipeline --weekend"
+# 0 = 週日 UTC 00:00（台北週日 08:00，推播週六市場數據）
+# 1 = 週一 UTC 00:00（台北週一 08:00，推播週日市場數據）
+# Resource Guard 閾值：0（永不 SKIP，與 phase4 相同）
+# ⚠️  注意：phase3-process.js 有 3h stale check，週末日報需要 stale 豁免才能正常運作
+0 0 * * 0,1 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh weekend "node index.js pipeline --weekend"
 
 # 週報（UTC 09:30 = 台北 17:30，週五收盤後）
-30 9 * * 5 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh weekly "node index.js weekly"
+# Resource Guard 閾值：≥300MB 可用記憶體（wrapper 自動判斷）
+30 9 * * 5 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh weekly "node index.js weekly"
 
 # ── SRE ────────────────────────────────────────────────────────────
 
-# 健康檢查（每 5 分鐘，偏移 2 分鐘錯開 Security Patrol 整點巡邏）
-2,7,12,17,22,27,32,37,42,47,52,57 * * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh health "node sre/health-check.js" >/dev/null 2>&1
+# 健康檢查（每 10 分鐘，偏移 2 分鐘錯開 Security Patrol 整點巡邏）
+# 改動：
+#   - 降頻：每 5 分鐘 → 每 10 分鐘（減少 Node.js 頻繁啟動壓力）
+#   - flock -n：防止上次 health check 未完成時重複啟動（OOM 防護）
+#   - timeout 60：強制終止 hang 的健康檢查進程
+#   - 日誌寫入 cron-health-*.log（納入 wrapper 的 7 天自動清理）
+2,12,22,32,42,52 * * * * flock -n /tmp/hc-market.lock timeout 60 sh -c 'cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh health "node sre/health-check.js"' >> ~/clawd/agents/market-digest/logs/cron-health-$(date +%Y-%m-%d).log 2>&1
 
 # 每日備份（UTC 18:00 = 台北 02:00）
-0 18 * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh backup "./sre/backup-strategy.sh"
+# Resource Guard 閾值：≥300MB，CPU 負載 ≤1.2（備份為低優先任務）
+0 18 * * * cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh backup "./sre/backup-strategy.sh"
 
 # ── 休市日同步（Calendar Guard ETL）────────────────────────────
 
 # 每月第一天同步（UTC 02:00 = 台北 10:00）
 # 覆蓋：1/1, 2/1, 3/1... 包含季度第一天（1/1, 4/1, 7/1, 10/1）
-0 2 1 * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh calendar-sync-monthly "node index.js sync-holidays"
+0 2 1 * * cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh calendar-sync-monthly "node index.js sync-holidays"
 
 # 11/15 同步並自動預填次年（UTC 02:00 = 台北 10:00）
 # 目的：提前準備次年休市日資料（11 月官方通常已公告次年行事曆）
-0 2 15 11 * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh calendar-sync-annual "node index.js sync-holidays --next-year"
+0 2 15 11 * cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh calendar-sync-annual "node index.js sync-holidays --next-year"
 
 # ============================================================
 # 舊版 cron（停用時在行首加 # 注解掉）
@@ -59,6 +81,9 @@ HOME=/home/clawbot
 # 30 23 * * 1-5 cd ~/clawd/agents/market-digest && node smart-integrator.js push
 # 0 0 * * 1-5   cd ~/clawd/agents/market-digest && node generate-brief-pipeline.js
 
+# 舊版 phase3+4 合併（已拆分為獨立 cron，見上方 Phase 3 和 Phase 4）
+# 0 0 * * 2-6 cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh phase34 "node index.js pipeline --phase 3 && node index.js pipeline --phase 4"
+
 # ============================================================
 # 除錯指令
 # ============================================================
@@ -66,18 +91,19 @@ HOME=/home/clawbot
 # 查看 cron 日誌：
 #   tail -f ~/clawd/agents/market-digest/logs/cron-YYYY-MM-DD.log
 #
+# 查看 Health Check 日誌：
+#   tail -f ~/clawd/agents/market-digest/logs/cron-health-YYYY-MM-DD.log
+#
+# 確認 Resource Guard 狀態：
+#   cat /tmp/market-phase2-skip-count    # 連續 SKIP 次數
+#   ls /tmp/market-*-skip-count          # 所有任務的 SKIP 計數器
+#
 # 手動執行任一 phase：
 #   cd ~/clawd/agents/market-digest
 #   ./sre/cron-wrapper.sh phase1 "node index.js pipeline --phase 1"
 #
 # 手動完整 pipeline（dry-run）：
 #   node index.js pipeline --dry-run
-#
-# 手動同步休市日（dry-run 模式）：
-#   cd ~/clawd/agents/market-digest
-#   node index.js sync-holidays --dry-run
-#   node index.js sync-holidays --year 2027 --dry-run
-#   mv data/calendar/holidays-YYYY.json.new data/calendar/holidays-YYYY.json  # 應用 .new 檔案
 #
 # 確認 crontab 已安裝：
 #   crontab -l

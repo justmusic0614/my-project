@@ -1,0 +1,99 @@
+# ============================================================
+# VPS Master Crontab — 單一真實來源
+#
+# 涵蓋所有 agents 的排程，集中管理，方便審視衝突
+# 部署方式：crontab - < master-crontab.example
+# 時區：UTC（VPS 設定為 UTC）
+# 台北時間 = UTC + 8
+#
+# 各 agent 詳細配置請參閱：
+#   Market Digest:    agents/market-digest/sre/crontab.example
+#   Security Patrol:  agents/security-patrol/setup-cron.sh（廢棄，改由本檔管理）
+#
+# 改版紀錄：
+#   v1.0 (2026-02-21) 初版，整合 Market Digest + Security Patrol + System
+# ============================================================
+
+# ── 環境變數 ────────────────────────────────────────────────────
+SHELL=/bin/bash
+PATH=/home/clawbot/.nvm/versions/node/v22.22.0/bin:/usr/local/bin:/usr/bin:/bin
+HOME=/home/clawbot
+
+# ============================================================
+# 時間軸總覽（UTC）
+# ─────────────────────────────────────────────────────────
+# UTC   台北    任務
+# 00:00  08:00  Market Digest Phase 3 (分析, 週二-六)
+# 00:00  08:00  Market Digest 週末日報 (週日、週一)
+# 00:10  08:10  Market Digest Phase 4 (推播, 週二-六)
+# 01:00  09:00  Security Patrol 巡邏
+# 02:00  10:00  [月第一天] Market Digest Calendar Sync
+# 03:00  11:00  Security Patrol SRE 日報
+# 04:00  12:00  System Auto-archive (>7天 daily log)
+# 05:00  13:00  Security Patrol 巡邏
+# 07:00  15:00  Security Patrol 巡邏
+# 09:00  17:00  Security Patrol 巡邏
+# 09:30  17:30  [週五] Market Digest 週報
+# 11:00  19:00  Security Patrol 巡邏
+# 13:00  21:00  Security Patrol 巡邏
+# 15:00  23:00  Security Patrol 巡邏
+# 17:00  01:00  Security Patrol 巡邏
+# 18:00  02:00  Market Digest 每日備份
+# 19:00  03:00  Security Patrol 巡邏
+# 21:00  05:00  Security Patrol 巡邏
+# 21:30  05:30  Market Digest Phase 1 (美股, 週一-五)
+# 23:00  07:00  Security Patrol 巡邏
+# 23:30  07:30  Market Digest Phase 2 (台股+RSS, 週一-五) ← 最重
+# +每10分  全天  Market Digest Health Check (偏移 2 分鐘)
+# ============================================================
+
+# ── Market Digest ────────────────────────────────────────────────
+
+# Phase 1 美股（UTC 21:30 = 台北 05:30，週一至五）
+30 21 * * 1-5 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase1 "node index.js pipeline --phase 1"
+
+# Phase 2 台股 + RSS + Perplexity（UTC 23:30 = 台北 07:30，週一至五）
+30 23 * * 1-5 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase2 "node index.js pipeline --phase 2"
+
+# Phase 3 分析（UTC 00:00 = 台北 08:00，週二至六）
+0  0 * * 2-6 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase3 "node index.js pipeline --phase 3"
+
+# Phase 4 推播（UTC 00:10 = 台北 08:10，週二至六；永不 SKIP）
+10 0 * * 2-6 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh phase4 "node index.js pipeline --phase 4"
+
+# 週末日報（UTC 週日+週一 00:00 = 台北週日+週一 08:00；永不 SKIP）
+0 0 * * 0,1 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh weekend "node index.js pipeline --weekend"
+
+# 週報（UTC 09:30 = 台北 17:30，週五收盤後）
+30 9 * * 5 cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh weekly "node index.js weekly"
+
+# Health Check（每 10 分鐘，flock 防並發，timeout 60s，日誌納入自動清理）
+2,12,22,32,42,52 * * * * flock -n /tmp/hc-market.lock timeout 60 sh -c 'cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh health "node sre/health-check.js"' >> ~/clawd/agents/market-digest/logs/cron-health-$(date +%Y-%m-%d).log 2>&1
+
+# 每日備份（UTC 18:00 = 台北 02:00）
+0 18 * * * cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh backup "./sre/backup-strategy.sh"
+
+# Calendar Sync — 月度（每月第一天 UTC 02:00）
+0 2 1 * * cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh calendar-sync-monthly "node index.js sync-holidays"
+
+# Calendar Sync — 年度（11/15 UTC 02:00，預填次年）
+0 2 15 11 * cd ~/clawd/agents/market-digest && nice -n 5 ./sre/cron-wrapper.sh calendar-sync-annual "node index.js sync-holidays --next-year"
+
+# ── Security Patrol ───────────────────────────────────────────────
+
+# 資安巡邏（奇數小時，nice -n 10，有異常才 Telegram 推播）
+# UTC 01,03,05,...,23 = 台北 09,11,...,07
+0 1,3,5,7,9,11,13,15,17,19,21,23 * * * nice -n 10 ~/clawd/agents/security-patrol/sre/patrol-wrapper.sh patrol >> ~/clawd/agents/security-patrol/logs/cron-patrol.log 2>&1
+
+# SRE 日報（UTC 03:00 = 台北 11:00，整合技術債報告）
+0 3 * * * nice -n 10 ~/clawd/agents/security-patrol/sre/patrol-wrapper.sh report >> ~/clawd/agents/security-patrol/logs/cron-report.log 2>&1
+
+# ── System ────────────────────────────────────────────────────────
+
+# Auto-archive（UTC 04:00 = 台北 12:00，歸檔 >7天 daily log）
+0 4 * * * ~/clawd/sre/archive-logs.sh >> ~/clawd/logs/archive.log 2>&1
+
+# ============================================================
+# 未來可用的空閒時段（UTC 04:00-18:00，14 小時空載）
+# 建議排入：知識庫更新、冷備份、資料預處理等低優先任務
+# ============================================================

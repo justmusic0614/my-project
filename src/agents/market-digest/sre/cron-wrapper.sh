@@ -17,7 +17,8 @@ case "${1:-}" in
     echo "Examples (v2 pipeline):"
     echo "  ./sre/cron-wrapper.sh phase1  'node index.js pipeline --phase 1'"
     echo "  ./sre/cron-wrapper.sh phase2  'node index.js pipeline --phase 2'"
-    echo "  ./sre/cron-wrapper.sh phase34 'node index.js pipeline --phase 3 && node index.js pipeline --phase 4'"
+    echo "  ./sre/cron-wrapper.sh phase3  'node index.js pipeline --phase 3'
+  ./sre/cron-wrapper.sh phase4  'node index.js pipeline --phase 4'"
     echo "  ./sre/cron-wrapper.sh weekend 'node index.js pipeline --weekend'"
     echo "  ./sre/cron-wrapper.sh weekly  'node index.js weekly'"
     echo "  ./sre/cron-wrapper.sh health  'node sre/health-check.js'"
@@ -97,6 +98,68 @@ const { createHealthCheckSystem } = require('./sre/health-check');
         log_error "健康檢查失敗 - 系統處於 CRITICAL 狀態"
         return 1
     fi
+}
+
+# 任務預設資源閾值（記憶體 MB；CPU 1 分鐘平均負載，0 表示不限制）
+get_resource_thresholds() {
+    case "$1" in
+        health)          echo "200 1.8" ;;
+        phase1)          echo "400 1.5" ;;
+        phase2)          echo "500 1.5" ;;
+        phase3)          echo "350 1.8" ;;
+        phase4|weekend)  echo "0 0"     ;;  # 推播相關，永不 SKIP
+        weekly)          echo "300 1.8" ;;
+        backup)          echo "300 1.2" ;;
+        *)               echo "0 0"     ;;  # 未知任務：不檢查
+    esac
+}
+
+# 資源檢查（Resource Guard）
+# 可透過環境變數 RESOURCE_MEM_MIN_MB / RESOURCE_CPU_MAX 覆蓋預設閾值
+check_resources() {
+    local DEFAULT_MEM DEFAULT_CPU
+    read -r DEFAULT_MEM DEFAULT_CPU <<< "$(get_resource_thresholds "$TASK_NAME")"
+
+    local MEM_MIN_MB="${RESOURCE_MEM_MIN_MB:-$DEFAULT_MEM}"
+    local CPU_MAX="${RESOURCE_CPU_MAX:-$DEFAULT_CPU}"
+
+    # 兩者皆為 0：跳過資源檢查（永不 SKIP）
+    if [ "$MEM_MIN_MB" = "0" ] && [ "$CPU_MAX" = "0" ]; then
+        return 0
+    fi
+
+    local MEM_AVAIL CPU_LOAD SKIP_REASON
+    MEM_AVAIL=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "9999")
+    CPU_LOAD=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "0")
+    SKIP_REASON=""
+
+    # 記憶體檢查
+    if [ "$MEM_MIN_MB" != "0" ] && [ "$MEM_AVAIL" -lt "$MEM_MIN_MB" ]; then
+        SKIP_REASON="MemAvailable=${MEM_AVAIL}MB < threshold=${MEM_MIN_MB}MB"
+    # CPU 負載檢查（用 awk 做浮點比較）
+    elif [ "$CPU_MAX" != "0" ] && awk -v l="$CPU_LOAD" -v m="$CPU_MAX" 'BEGIN{exit !(l+0 > m+0)}' 2>/dev/null; then
+        SKIP_REASON="CPU load=${CPU_LOAD} > threshold=${CPU_MAX}"
+    fi
+
+    if [ -n "$SKIP_REASON" ]; then
+        log "⏭️  Resource Guard SKIP: $SKIP_REASON"
+
+        # 連續 SKIP 計數器：超過 3 次發 Telegram 告警
+        local SKIP_FILE="/tmp/market-${TASK_NAME}-skip-count"
+        local SKIP_COUNT
+        SKIP_COUNT=$(cat "$SKIP_FILE" 2>/dev/null || echo "0")
+        SKIP_COUNT=$((SKIP_COUNT + 1))
+        echo "$SKIP_COUNT" > "$SKIP_FILE"
+
+        if [ "$SKIP_COUNT" -ge 3 ]; then
+            send_alert "WARNING" "Resource Guard: ${TASK_NAME} 已連續 SKIP ${SKIP_COUNT} 次 (${SKIP_REASON})"
+        fi
+
+        exit 0
+    fi
+
+    # 資源充裕：清除計數器
+    rm -f "/tmp/market-${TASK_NAME}-skip-count" 2>/dev/null || true
 }
 
 # 執行主要任務
@@ -236,6 +299,9 @@ main() {
 
     # 3. 清理舊日誌
     cleanup_old_logs
+
+    # 3.5. 資源檢查（記憶體/CPU 不足時 SKIP，避免 OOM）
+    check_resources
 
     # 4. 執行主要任務
     if [ $# -eq 0 ]; then

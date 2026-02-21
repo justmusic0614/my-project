@@ -11,7 +11,12 @@ module.exports = {
         HOST: '127.0.0.1',
         KANBAN_ENV: 'vps'
       },
-      max_memory_restart: '150M',
+      max_memory_restart: '256M',       // 150M → 256M，緩解高峰期 OOM
+      autorestart: true,
+      max_restarts: 5,                  // 降低上限防快速循環（預設 15）
+      restart_delay: 5000,              // 每次重啟等 5s，給 CPU 恢復空間
+      exp_backoff_restart_delay: 100,   // 指數退避，越重啟等越久
+      min_uptime: '30s',                // 30s 內崩潰才算失敗次數
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       error_file: 'data/logs/error.log',
       out_file: 'data/logs/out.log',

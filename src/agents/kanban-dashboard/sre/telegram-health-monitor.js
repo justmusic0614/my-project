@@ -67,6 +67,30 @@ function saveResults(overallStatus, consecutiveFailures) {
 }
 
 /**
+ * 自動自癒：偵測到 PM2 errored 時自動重啟
+ * 只在 errored（已耗盡 max_restarts）時介入，stopping/stopped 不處理
+ */
+async function autoHealIfNeeded(overallStatus) {
+  const pm2Failed = overallStatus.results.find(
+    r => r.name === 'pm2-status' && r.status === 'UNHEALTHY'
+  );
+  if (!pm2Failed || !pm2Failed.error || !pm2Failed.error.includes('errored')) {
+    return false;
+  }
+
+  console.log('\n🔄 Auto-heal: PM2 errored detected, issuing restart...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('pm2 restart kanban-dashboard', { timeout: 30000 });
+    console.log('✅ pm2 restart kanban-dashboard issued');
+    return true;
+  } catch (err) {
+    console.error(`❌ Auto-heal failed: ${err.message}`);
+    return false;
+  }
+}
+
+/**
  * 發送告警（含連續失敗門檻過濾）
  */
 async function sendAlertsIfNeeded(overallStatus, alertService, consecutiveFailures) {
@@ -170,6 +194,9 @@ async function main() {
 
     // 發送告警（含門檻過濾）
     await sendAlertsIfNeeded(overallStatus, alertService, consecutiveFailures);
+
+    // 自動自癒：PM2 errored 時不等人工，直接 restart
+    await autoHealIfNeeded(overallStatus);
 
     // 回傳 exit code
     if (overallStatus.status === 'CRITICAL') {

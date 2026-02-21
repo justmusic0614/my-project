@@ -264,7 +264,7 @@ function registerKanbanDashboardChecks(healthCheck) {
 
       req.on('error', (err) => {
         req.destroy();
-        reject(err);
+        reject(new Error(err.message || err.code || 'Connection failed to localhost:3001'));
       });
       req.on('timeout', () => {
         req.destroy();

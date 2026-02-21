@@ -35,8 +35,8 @@ HOME=/home/clawbot
 
 # ── SRE ────────────────────────────────────────────────────────────
 
-# 健康檢查（每 5 分鐘）
-*/5 * * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh health "node sre/health-check.js" >/dev/null 2>&1
+# 健康檢查（每 5 分鐘，偏移 2 分鐘錯開 Security Patrol 整點巡邏）
+2,7,12,17,22,27,32,37,42,47,52,57 * * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh health "node sre/health-check.js" >/dev/null 2>&1
 
 # 每日備份（UTC 18:00 = 台北 02:00）
 0 18 * * * cd ~/clawd/agents/market-digest && ./sre/cron-wrapper.sh backup "./sre/backup-strategy.sh"

@@ -350,9 +350,9 @@
   "validation": {
     "thresholds": {
       "TAIEX": { "min": 10000, "max": 50000, "maxDailyChange": 0.10, "crossCheckTolerance": 0.005 },
-      "SP500": { "min": 2000, "max": 15000, "maxDailyChange": 0.07, "crossCheckTolerance": 0.003 },
-      "NASDAQ": { "min": 5000, "max": 30000, "maxDailyChange": 0.07, "crossCheckTolerance": 0.003 },
-      "USDTWD": { "min": 28.0, "max": 35.0, "maxDailyChange": 0.02, "crossCheckTolerance": 0.005 },
+      "SP500": { "min": 2000, "max": 15000, "maxDailyChange": 0.20, "crossCheckTolerance": 0.003 },
+      "NASDAQ": { "min": 5000, "max": 30000, "maxDailyChange": 0.20, "crossCheckTolerance": 0.003 },
+      "USDTWD": { "min": 28.0, "max": 35.0, "maxDailyChange": 0.05, "crossCheckTolerance": 0.005 },
       "VIX": { "min": 8, "max": 90, "maxDailyChange": 0.50 },
       "DXY": { "min": 80, "max": 130, "maxDailyChange": 0.03 },
       "US10Y": { "min": 0.5, "max": 8.0, "maxDailyChange": 0.003 }

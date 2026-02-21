@@ -24,7 +24,9 @@ const CROSS_CHECK_TOLERANCE = {
   TAIEX:  0.005,  // TWSE vs FinMind 0.5%
   SP500:  0.003,  // FMP vs Yahoo 0.3%
   NASDAQ: 0.003,
-  USDTWD: 0.005
+  USDTWD: 0.005,
+  VIX:    0.10,   // VIX 波動大且 FRED 為 T+1，允許 10% 差異
+  US10Y:  0.05    // 5 個基點容差（5% of value）
 };
 
 class Validator {
@@ -76,14 +78,20 @@ class Validator {
       yahoo?.USDTWD
     ], CROSS_CHECK_TOLERANCE.USDTWD, report);
 
-    // VIX（主：FMP）
-    marketData.VIX = this._pickBest('VIX', [fmp?.VIX, yahoo?.VIX], report);
+    // VIX（主：FMP/Yahoo，交叉：FRED VIXCLS T+1）
+    marketData.VIX = this._mergeDataPoint('VIX', [
+      fmp?.VIX || yahoo?.VIX,
+      fred?.VIX_FRED
+    ], CROSS_CHECK_TOLERANCE.VIX, report);
 
-    // DXY（主：FMP）
-    marketData.DXY = this._pickBest('DXY', [fmp?.DXY], report);
+    // DXY（主：FMP/Yahoo，FRED 無對應數據）
+    marketData.DXY = this._pickBest('DXY', [fmp?.DXY, yahoo?.DXY], report);
 
-    // US 10Y（主：FMP）
-    marketData.US10Y = this._pickBest('US10Y', [fmp?.US10Y], report);
+    // US 10Y（主：Yahoo/FMP，交叉：FRED DGS10 T+1）
+    marketData.US10Y = this._mergeDataPoint('US10Y', [
+      yahoo?.US10Y || fmp?.US10Y,
+      fred?.US10Y_FRED
+    ], CROSS_CHECK_TOLERANCE.US10Y, report);
 
     // Fed Fund Rate（主：FRED）
     marketData.FED_RATE = this._pickBest('FED_RATE', [fred?.FED_RATE], report);

@@ -31,7 +31,9 @@ const STALE_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;  // 7 天（stale fallback）
 
 const SERIES = {
   FED_RATE:   'FEDFUNDS',
-  HY_SPREAD:  'BAMLH0A0HYM2'
+  HY_SPREAD:  'BAMLH0A0HYM2',
+  VIX_FRED:   'VIXCLS',    // CBOE VIX 收盤值（T+1，免費）
+  US10Y_FRED: 'DGS10'      // 10年期美債殖利率（T+1，免費）
 };
 
 class FredCollector extends BaseCollector {

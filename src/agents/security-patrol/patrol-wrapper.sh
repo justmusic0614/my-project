@@ -16,6 +16,10 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 export PATH="/usr/local/bin:/usr/bin:/bin:/home/clawbot/.nvm/versions/node/v22.22.0/bin:$PATH"
 
+# systemd --user 需要 XDG_RUNTIME_DIR 連接 D-Bus session（cron 環境無此變數）
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+
 # 從 ~/clawd/.env 載入環境變數（統一來源，與 market-digest 一致）
 ENV_FILE="$HOME/clawd/.env"
 if [ -f "$ENV_FILE" ]; then

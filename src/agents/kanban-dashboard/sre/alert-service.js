@@ -18,7 +18,7 @@ const BACKOFF_THRESHOLDS = [
 class AlertService {
   constructor(options = {}) {
     this.botToken = options.botToken || process.env.TELEGRAM_BOT_TOKEN;
-    this.chatId = options.chatId || process.env.TELEGRAM_ALERT_CHAT_ID;
+    this.chatId = options.chatId || process.env.TELEGRAM_ALERT_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
     this.baseCooldownMs = options.cooldownMs || 15 * 60 * 1000; // 15 分鐘基礎冷卻
     this.recentAlerts = new Map();
     this.consecutiveAlerts = {}; // { alertKey: count } 連續告警計數

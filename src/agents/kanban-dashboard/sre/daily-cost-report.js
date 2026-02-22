@@ -6,8 +6,10 @@
 const path = require('path');
 const fs = require('fs');
 
-// 載入 kanban .env（含 TELEGRAM_BOT_TOKEN + TELEGRAM_ALERT_CHAT_ID）
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+// 載入 .env（集中式 ~/clawd/.env 優先，fallback 本地）
+const centralEnv = path.join(process.env.HOME || '', 'clawd', '.env');
+const localEnv = path.join(__dirname, '../.env');
+require('dotenv').config({ path: fs.existsSync(centralEnv) ? centralEnv : localEnv });
 
 const { sendTelegramReply } = require('../server/lib/telegram-utils');
 const apiUsageService = require('../server/services/api-usage-service');
@@ -15,13 +17,13 @@ const marketCostService = require('../server/services/market-cost-service');
 
 // 報告日期：UTC 01:30 跑時對應台北昨日
 const reportDate = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-const chatId = process.env.TELEGRAM_ALERT_CHAT_ID;
+const chatId = process.env.TELEGRAM_ALERT_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
 
 async function main() {
   console.log(`[daily-cost-report] 開始生成 ${reportDate} 成本日報`);
 
   if (!chatId) {
-    console.error('[daily-cost-report] TELEGRAM_ALERT_CHAT_ID 未設定');
+    console.error('[daily-cost-report] TELEGRAM_ALERT_CHAT_ID 和 TELEGRAM_CHAT_ID 均未設定');
     process.exit(1);
   }
 

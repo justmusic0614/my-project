@@ -5,7 +5,7 @@ description: |
   輸出 6 個區塊的結構化改進報告，並生成可直接套用的 Patch。
   每週一呼叫一次。
 tools: Read, Glob, Grep, Bash
-user-invokable: true
+user-invocable: true
 ---
 
 # Weekly Interaction Optimizer

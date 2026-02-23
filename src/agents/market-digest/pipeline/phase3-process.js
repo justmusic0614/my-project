@@ -32,6 +32,9 @@ const OUTPUT_FILE = path.join(STATE_DIR, 'phase3-result.json');
 
 const deduplicator = new NewsDeduplicator();
 
+// 模組級旗標：避免 retry 時重複推播 stale data 告警
+let _staleAlertSent = false;
+
 /**
  * 執行 Phase 3 資料處理
  * @param {object} config
@@ -51,11 +54,11 @@ async function runPhase3(config = {}) {
   }
 
   // ── Stale Data 保護（防止 OOM 後推播舊日報）────────────────────────────
-  // weekend mode：週末不執行 Phase 2，快取最多 48h（週五 23:30 → 週日/週一 00:00）
+  // weekend mode：週末不執行 Phase 2，快取最多 50h（週五 23:30 → 週一 00:00 = 48.5h，預留 1.5h buffer）
   // 正常模式：閾值 3h，確保數據當日新鮮
   const isWeekendMode = !!(config && config.weekendMode);
   const PHASE2_STALE_THRESHOLD_MS = isWeekendMode
-    ? 48 * 60 * 60 * 1000  // 48 小時
+    ? 50 * 60 * 60 * 1000  // 50 小時
     : 3  * 60 * 60 * 1000; //  3 小時
   const phase2CollectedAt = phase2.collectedAt ? new Date(phase2.collectedAt) : null;
   if (!phase2CollectedAt || (Date.now() - phase2CollectedAt.getTime()) > PHASE2_STALE_THRESHOLD_MS) {
@@ -63,18 +66,21 @@ async function runPhase3(config = {}) {
       ? Math.round((Date.now() - phase2CollectedAt.getTime()) / 3600000)
       : 'unknown';
     const thresholdLabel = isWeekendMode ? '48h' : '3h';
-    // 主動推播 Telegram 告警，讓用戶知道日報未推播
-    try {
-      const TelegramPublisher = require('../publishers/telegram-publisher');
-      const { getApiKeys } = require('../shared/api-keys');
-      const tg = getApiKeys().getTelegram();
-      const pub = new TelegramPublisher({ botToken: tg.botToken, chatId: tg.chatId });
-      await pub.publishAlert(
-        `⚠️ 今日數據過期（${ageH}h 前收集），日報未推播。\n` +
-        `請確認 Phase 2 已正常完成後，手動執行 /today 重試。`
-      );
-    } catch (alertErr) {
-      logger.error(`stale alert send failed: ${alertErr.message}`);
+    // 主動推播 Telegram 告警（同一進程內只推播一次，避免 retry 重複告警）
+    if (!_staleAlertSent) {
+      _staleAlertSent = true;
+      try {
+        const TelegramPublisher = require('../publishers/telegram-publisher');
+        const { getApiKeys } = require('../shared/api-keys');
+        const tg = getApiKeys().getTelegram();
+        const pub = new TelegramPublisher({ botToken: tg.botToken, chatId: tg.chatId });
+        await pub.publishAlert(
+          `⚠️ 今日數據過期（${ageH}h 前收集），日報未推播。\n` +
+          `請確認 Phase 2 已正常完成後，手動執行 /today 重試。`
+        );
+      } catch (alertErr) {
+        logger.error(`stale alert send failed: ${alertErr.message}`);
+      }
     }
     throw new Error(`phase2 data is stale (${ageH}h old, threshold=${thresholdLabel}). Aborting to prevent outdated report push.`);
   }

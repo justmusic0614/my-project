@@ -64,6 +64,16 @@ export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 ```
 
+## 常見問題速查
+
+| 症狀 | 原因 | 解法 |
+| --- | --- | --- |
+| `systemctl --user` 失敗 / unknown | cron 無 XDG_RUNTIME_DIR | cron job 前加 `export XDG_RUNTIME_DIR="/run/user/$(id -u)"` |
+| `node`/`npm` not found | cron 無 NVM 環境 | cron job 前加 `source $HOME/.nvm/nvm.sh` |
+| .env 變數未載入 | cron 不繼承 SSH session 環境 | 腳本中自行 `require('dotenv').config({ path: '/abs/path/.env' })` |
+| systemd --user 服務無法啟動 | loginctl session 未持久化 | `sudo loginctl enable-linger clawbot`（一次性設定）|
+| cron job 路徑錯誤 | 相對路徑在 cron 中無效 | 所有路徑改用絕對路徑 `/home/clawbot/clawd/...` |
+
 ## 路徑對照
 
 | 用途 | Local (my-project) | VPS (clawd) |

@@ -10,7 +10,10 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 
 1. **分析根因** — 不要盲目加 debug log
 2. **追蹤資料流** — 從輸入 → 處理 → 輸出，找出哪裡斷了
-3. **確認修復** — 清除所有 debug log 再 commit
+3. **確認修復** — 在所有相關環境驗證，清除 debug log 再 commit
+   - [ ] local 執行正常
+   - [ ] VPS 手動執行正常（若涉及 VPS）
+   - [ ] VPS cron 執行正常（若涉及 cron）
 4. **一次修好** — 不要分成 debug commit + fix commit
 
 ## Bug 報告資訊收集

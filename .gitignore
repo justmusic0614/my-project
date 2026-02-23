@@ -38,3 +38,7 @@ src/agents/kanban-dashboard/data/uploads/
 src/agents/kanban-dashboard/data/*.lock
 src/agents/kanban-dashboard/data/
 .env.save
+
+# Claude Code local files
+CLAUDE.local.md
+_backup_before_refactor/

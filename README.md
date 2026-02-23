@@ -6,9 +6,20 @@
 
 | 文件 | 用途 | 適合對象 |
 |------|------|----------|
-| **[CLAUDE.md](CLAUDE.md)** | Claude Code AI 工作規範、開發規範、技術債預防 | Claude Code AI、開發者 |
-| **[DEPLOYMENT_WORKFLOW.md](DEPLOYMENT_WORKFLOW.md)** | VPS 部署完整流程、環境架構說明、疑難排解 | 開發者、運維人員 |
+| **[CLAUDE.md](CLAUDE.md)** | Claude Code 編碼規範、專案結構 | Claude Code AI、開發者 |
+| **[docs/deployment-workflow-archive.md](docs/deployment-workflow-archive.md)** | VPS 部署流程（人類參考） | 開發者、運維人員 |
 | **[scripts/README_VPS_SYNC.md](scripts/README_VPS_SYNC.md)** | VPS 同步機制詳細說明 | 進階開發者 |
+
+### Claude Code 配置 (.claude/)
+
+| 位置 | 用途 |
+|------|------|
+| `.claude/settings.json` | 團隊共享權限 + SessionStart hook |
+| `.claude/skills/task-planning/` | 複雜任務前置規劃（Claude 自動套用） |
+| `.claude/skills/vps-deploy/` | VPS 部署操作（`/vps-deploy` 觸發） |
+| `.claude/skills/bug-fix/` | Bug 修復流程（雙向觸發） |
+| `.claude/skills/agent-scaffold/` | Agent 建立模板（`/agent-scaffold` 觸發） |
+| `.claude/agents/vps-operator.md` | VPS 操作 subagent |
 
 ## 快速開始
 
@@ -38,6 +49,10 @@ my-project/
 │   └── test/              # 測試程式碼
 │       ├── unit/          # 單元測試
 │       └── integration/   # 整合測試
+├── .claude/
+│   ├── settings.json      # 團隊權限 + hooks
+│   ├── skills/            # Claude Code skills（按需載入）
+│   └── agents/            # Claude Code subagents
 ├── docs/                  # 文件
 ├── tools/                 # 開發工具和腳本
 ├── examples/              # 使用範例

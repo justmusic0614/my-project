@@ -1,4 +1,7 @@
-# 部署工作流程
+# 部署工作流程（歸檔）
+
+> **注意：** 此文件已歸檔。Claude Code 的 VPS 部署操作以 `.claude/skills/vps-deploy/SKILL.md` 為準。
+> 此文件保留供人類參考。
 
 ## 🎯 專案架構說明
 

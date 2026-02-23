@@ -58,5 +58,5 @@ tools/                # 開發工具
 node src/main/js/index.js    # 執行 CLI
 npm test                      # 測試
 git push origin main          # 備份到 GitHub
-./scripts/sync-to-vps.sh     # 同步到 VPS
+./tools/deploy.sh <agent>    # 部署到 VPS
 ```

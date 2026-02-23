@@ -44,9 +44,11 @@ disable-model-invocation: true
 ## 部署流程
 
 1. 本地開發 → `git commit` → `git push origin main`
-2. 執行 `./scripts/sync-to-vps.sh` 同步到 VPS
-3. 如修改了 server 程式碼，重啟服務
-4. 驗證：健康檢查 + 日誌確認
+2. 執行 `./tools/deploy.sh <agent>` 同步並部署
+   - 流程：audit（偵測 VPS 未同步修改）→ rsync → PM2 重啟
+   - 支援 `--dry-run`、`--skip-audit`、`--skip-restart`
+   - 可用 agents：`kanban-dashboard`, `market-digest`, `security-patrol`, `knowledge-digest`, `deploy-monitor`, `shared`, `all`
+3. 驗證：健康檢查 + 日誌確認
 
 ## 參考資料
 

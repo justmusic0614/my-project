@@ -100,6 +100,8 @@ ssh clawbot@159.65.136.0 "tail -100 /home/clawbot/clawd/agents/AGENT_NAME/logs/a
 # 查看 crontab
 ssh clawbot@159.65.136.0 "crontab -l"
 
-# 同步腳本
-./scripts/sync-to-vps.sh
+# 部署（audit → rsync → PM2 重啟）
+./tools/deploy.sh <agent>       # 部署單個 agent
+./tools/deploy.sh all           # 部署全部
+./tools/deploy.sh --dry-run all # 模擬模式
 ```

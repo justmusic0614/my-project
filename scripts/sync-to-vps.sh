@@ -4,6 +4,12 @@
 
 set -e
 
+# 廢棄警告
+echo "[DEPRECATED] scripts/sync-to-vps.sh 已過時，請改用：" >&2
+echo "  ./tools/deploy.sh <agent>  (audit → rsync → PM2 重啟)" >&2
+echo "  ./tools/deploy.sh --help   (查看說明)" >&2
+exit 1
+
 VPS_HOST="clawbot@159.65.136.0"
 VPS_BASE="/home/clawbot/clawd"
 LOCAL_BASE="/Users/suweicheng/projects/my-project"

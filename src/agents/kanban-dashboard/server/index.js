@@ -1,3 +1,13 @@
+process.on('uncaughtException', (err) => {
+  console.error(`[${new Date().toISOString()}] FATAL uncaughtException:`, err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error(`[${new Date().toISOString()}] FATAL unhandledRejection:`, reason);
+  process.exit(1);
+});
+
 // Load environment variables: 優先集中式 ~/clawd/.env，fallback 本地 .env
 const path = require('path');
 const fs = require('fs');

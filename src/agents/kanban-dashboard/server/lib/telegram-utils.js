@@ -29,7 +29,8 @@ function sendTelegramReply(chatId, text) {
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data, 'utf8')
-      }
+      },
+      timeout: 15000
     };
 
     const req = https.request(options, (res) => {
@@ -49,6 +50,10 @@ function sendTelegramReply(chatId, text) {
     req.on('error', (err) => {
       console.error('[Telegram] Request error:', err.message);
       resolve(false);
+    });
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Telegram API request timed out after 15s'));
     });
 
     req.write(data);

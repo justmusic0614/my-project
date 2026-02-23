@@ -5,6 +5,7 @@ module.exports = {
       name: 'kanban-dashboard',
       script: 'server/index.js',
       cwd: __dirname,
+      node_args: '--max-old-space-size=128',
       env: {
         NODE_ENV: 'production',
         PORT: 3001,

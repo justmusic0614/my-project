@@ -50,6 +50,9 @@ done
 
 echo "🎉 同步完成！"
 echo ""
+echo "🔍 驗證 JS 語法..."
+ssh "$VPS_HOST" "node --check $VPS_BASE/agents/kanban-dashboard/server/services/market-cost-service.js && echo '  ✅ syntax OK'" || echo "  ❌ 語法錯誤！請立即查看"
+echo ""
 echo "📊 VPS 狀態："
 ssh "$VPS_HOST" "cd $VPS_BASE && ls -lh agents/shared/ 2>/dev/null || echo '  ⚠️  agents/shared 尚未建立'"
 

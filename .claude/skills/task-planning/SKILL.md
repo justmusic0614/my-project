@@ -21,6 +21,7 @@ user-invocable: false
    - API 端點版本必須確認（FMP 用 `/stable/` 非 `/api/v3/`；Yahoo Finance 端點隨時可能調整）
    - 獨立工具/腳本需自行 `require('dotenv').config()`（不繼承主程序環境）
 4. **驗收條件** — 怎樣算完成、怎麼測試
+   - [ ] 無硬編碼 API keys / secrets / tokens（所有敏感值透過 `process.env.XXX` 讀取）
 5. **已知地雷** — 過去踩過的坑
 
 若有缺漏，主動向用戶詢問。

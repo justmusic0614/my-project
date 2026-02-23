@@ -16,6 +16,10 @@ tools: Read, Grep, Glob, Edit, Write, Bash
    - [ ] VPS cron 執行正常（若涉及 cron）
 4. **一次修好** — 不要分成 debug commit + fix commit
 
+> ⚠️ **嚴禁提交 `debug:` 前綴的 commits**
+> debug 代碼只在 working directory 中存在，分析完立即刪除。
+> 若你已提交 debug commits，說明你跳過了根因分析步驟，請回到 Step 1。
+
 ## Bug 報告資訊收集
 
 修復前確認用戶提供：
@@ -45,6 +49,24 @@ tools: Read, Grep, Glob, Edit, Write, Bash
   分析：Phase 2 有資料，Phase 3 沒有 → 問題在 Phase 2→3 之間
   追蹤：ai-analyzer.js analyze() → Stage 2 fallback 路徑
   修復：一次修好，無殘留 log
+```
+
+### FRED + industryThemes 重演案例（2026-02-20，7 commits → 本可 1）
+
+```
+❌ 實際發生：
+  debug: 加入 FRED API 請求詳細 logging
+  debug: 加入 Phase3 aiResult logging
+  debug: 改用 console.log 查看 industryThemes
+  debug: 加入 Stage 2 industryThemes 原始值 logging
+  fix(fred): 改用 curl 執行 API 請求
+  fix(ai-analyzer): Stage 2 fallback 補上 industryThemes 欄位
+  chore: 移除 debug logging（產業熱點已修復）
+
+✅ 正確流程：
+  分析：FRED 請求 → 確認是 HTTP 超時問題（非格式問題）
+  分析：industryThemes 缺失 → 確認 analyze() 返回值遺漏欄位（非 Stage 2 問題）
+  修復：一次修好兩個獨立問題，無 debug commits，無 chore 清除
 ```
 
 ### 根因分析思路

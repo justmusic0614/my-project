@@ -143,20 +143,52 @@ class FMPCollector extends BaseCollector {
     return result;
   }
 
-  /** 指數報價（^GSPC / ^IXIC / ^DJI / ^VIX / DXY / US10Y） */
+  /** 指數報價（^GSPC / ^IXIC / ^DJI / ^VIX / DXY / US10Y）
+   * equity indices 用 EOD historical 取官方收盤（close）；^VIX + 宏觀繼續用 quote
+   */
   async _fetchIndexQuotes() {
-    const symbols = [...INDEX_SYMBOLS, ...Object.values(MACRO_SYMBOLS)];
-    const results = await Promise.allSettled(
-      symbols.map(s => this._get(`${FMP_BASE}/quote?symbol=${encodeURIComponent(s)}&apikey=${this.apiKey}`))
-    );
+    // ^GSPC / ^IXIC / ^DJI → EOD historical（官方收盤，無盤後誤差）
+    const eqSymbols = INDEX_SYMBOLS.filter(s => s !== '^VIX');
+    // ^VIX + DXY + US10Y → quote（即時）
+    const rtSymbols = ['^VIX', ...Object.values(MACRO_SYMBOLS)];
+
+    const from = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const today = this._todayStr();
+
+    const [eodResults, rtResults] = await Promise.all([
+      Promise.allSettled(
+        eqSymbols.map(s => this._get(
+          `${FMP_BASE}/historical-price-eod/full?symbol=${encodeURIComponent(s)}&from=${from}&to=${today}&apikey=${this.apiKey}`
+        ))
+      ),
+      Promise.allSettled(
+        rtSymbols.map(s => this._get(`${FMP_BASE}/quote?symbol=${encodeURIComponent(s)}&apikey=${this.apiKey}`))
+      )
+    ]);
 
     const result = {};
-    for (const r of results) {
+
+    // EOD 官方收盤（^GSPC / ^IXIC / ^DJI）
+    for (const r of eodResults) {
+      if (r.status !== 'fulfilled') continue;
+      const data = r.value;
+      if (!data?.historical?.length || !data.symbol) continue;
+      const latest = data.historical[0];
+      result[data.symbol] = {
+        symbol:           data.symbol,
+        price:            latest.close,
+        changePercentage: latest.changePercent
+      };
+    }
+
+    // 即時報價（^VIX / DXY / US10Y）
+    for (const r of rtResults) {
       if (r.status !== 'fulfilled') continue;
       const arr = r.value;
       if (!Array.isArray(arr) || arr.length === 0) continue;
       result[arr[0].symbol] = arr[0];
     }
+
     return result;
   }
 

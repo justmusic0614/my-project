@@ -127,7 +127,7 @@ class TWSECollector extends BaseCollector {
     let foreign = 0, trust = 0, dealer = 0;
     for (const row of rows) {
       const name = row[0];
-      const net = parseInt((row[4] || '0').replace(/,/g, ''), 10);
+      const net = parseInt((row[3] || '0').replace(/,/g, ''), 10);
       if (name.includes('外資') || name.includes('Foreign')) foreign += net;
       else if (name.includes('投信') || name.includes('Investment')) trust += net;
       else if (name.includes('自營') || name.includes('Dealer')) dealer += net;

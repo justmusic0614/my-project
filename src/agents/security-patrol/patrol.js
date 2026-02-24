@@ -372,14 +372,39 @@ function generateReport(results, mode = 'alert') {
   return lines.join('\n');
 }
 
+// LLM 分析（report mode 用，失敗不影響日報）
+async function generateAiInsight(results) {
+  try {
+    const llmClient = require('../kanban-dashboard/server/services/llm-client');
+    const summary = {
+      alerts: results.alerts.length,
+      ssh_failed: results.checks.ssh?.failed_logins || 0,
+      disk: results.checks.disk?.usage_percent || 0,
+      cpu: results.checks.cpu?.usage_percent || 0,
+      memory: results.checks.memory?.usage_percent || 0,
+      alertDetails: results.alerts.map(a => `${a.type}(${a.severity})`).join(', ') || '無'
+    };
+    const prompt = `VPS 資安巡邏摘要：SSH 失敗登入 ${summary.ssh_failed} 次，磁碟 ${summary.disk}%，CPU ${summary.cpu}%，RAM ${summary.memory}%，異常 ${summary.alerts} 項（${summary.alertDetails}）。請用繁體中文給出 1-2 句安全評估（50字以內）。`;
+    const result = await llmClient.callLLM(prompt, {
+      agentId: 'security-patrol',
+      maxTokens: 150,
+      source: 'security-patrol'
+    });
+    return result.text;
+  } catch (err) {
+    return null;
+  }
+}
+
 // 主程式
 if (require.main === module) {
   const args = process.argv.slice(2);
   const mode = args[0] || 'patrol';
-  
+
+  (async () => {
   if (mode === 'patrol') {
     const results = patrol();
-    
+
     // 推播由 patrol-wrapper.sh 負責（讀取 latest.json 中的 alerts）
     if (results.alerts.length > 0) {
       console.log(`⚠️  ${results.alerts.length} 個異常（見 data/runtime/latest.json）`);
@@ -387,7 +412,12 @@ if (require.main === module) {
   } else if (mode === 'report') {
     const results = JSON.parse(fs.readFileSync(RUNTIME_PATH, 'utf8'));
     const report = generateReport(results, 'daily');
-    console.log(report);
+    const aiInsight = await generateAiInsight(results);
+    if (aiInsight) {
+      console.log(report + '\n\n🤖 AI 評估：' + aiInsight);
+    } else {
+      console.log(report);
+    }
   } else if (mode === 'status') {
     if (fs.existsSync(RUNTIME_PATH)) {
       const results = JSON.parse(fs.readFileSync(RUNTIME_PATH, 'utf8'));
@@ -404,6 +434,7 @@ if (require.main === module) {
       console.log('尚未執行巡邏');
     }
   }
+  })();
 }
 
 module.exports = { patrol, generateReport };

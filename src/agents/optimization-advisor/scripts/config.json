@@ -1,0 +1,68 @@
+{
+  "scan": {
+    "interval_hours": 2,
+    "daily_report_time": "21:00"
+  },
+  "suggestion_types": {
+    "feature-expansion": {
+      "enabled": true,
+      "weight": 50,
+      "description": "新功能建议、整合机会、自动化改进"
+    },
+    "best-practice": {
+      "enabled": true,
+      "weight": 30,
+      "description": "代码结构、配置规范、安全实践"
+    },
+    "technical-optimization": {
+      "enabled": true,
+      "weight": 20,
+      "description": "性能优化、资源管理、错误修复"
+    }
+  },
+  "rules": {
+    "log_size_mb": 100,
+    "disk_growth_percent_daily": 10,
+    "error_threshold_per_hour": 5,
+    "memory_trend_threshold_percent": 10,
+    "cpu_sustained_threshold_percent": 80,
+    "backup_max_age_days": 7
+  },
+  "llm": {
+    "enabled": true,
+    "daily_analysis": true,
+    "model": "anthropic/claude-haiku-4",
+    "max_tokens": 500
+  },
+  "notifications": {
+    "instant": true,
+    "daily_summary": true,
+    "min_priority": "medium",
+    "telegram_chat_id": "1377531222"
+  },
+  "github": {
+    "enabled": true,
+    "repo": "justmusic0614/clawdbot-test",
+    "min_priority": "medium",
+    "auto_create": true
+  },
+  "scan_targets": {
+    "agents": [
+      "market-digest",
+      "knowledge-digest",
+      "security-patrol",
+      "deploy-monitor",
+      "optimization-advisor"
+    ],
+    "services": [
+      "clawdbot-gateway"
+    ],
+    "system": {
+      "logs": true,
+      "cron": true,
+      "disk": true,
+      "memory": true,
+      "backups": true
+    }
+  }
+}

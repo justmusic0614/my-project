@@ -123,7 +123,7 @@
       },
       "finmind": {
         "baseUrl": "https://api.finmindtrade.com/api/v4",
-        "watchlist": ["2330","0050","0056"],
+        "watchlist": ["2330","0050","0056","2454","2408"],
         "tw50Filter": true,
         "cacheTtl": 3600000,
         "enabled": true

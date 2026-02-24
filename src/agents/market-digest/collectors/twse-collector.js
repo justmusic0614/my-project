@@ -104,24 +104,45 @@ class TWSECollector extends BaseCollector {
     return { close, change, changePct: close ? (change / (close - change)) * 100 : 0, volume };
   }
 
-  /** 三大法人買賣超（BFI82U） */
+  /** 三大法人買賣超（BFI82U）
+   * 若今日數據尚未公布（收盤前 API 返回空），自動 fallback 到前一個交易日
+   */
   async _fetchInstitutional(date) {
     const dateStr = date.replace(/-/g, '');
-    const url = `${TWSE_FUND}/BFI82U?dayDate=${dateStr}&type=day`;
-    const data = await this._get(url);
+    const data = await this._get(`${TWSE_FUND}/BFI82U?dayDate=${dateStr}&type=day`);
 
-    if (!data || !data.data) return null;
+    if (data?.data?.length > 0) {
+      return this._parseInstitutional(data.data);
+    }
 
+    // 今日法人尚未公布（收盤前），fallback 到前一個交易日
+    this.logger.info('institutional data not yet published, falling back to previous trading day');
+    const prevDate = this._prevTradingDay(date);
+    const prevData = await this._get(`${TWSE_FUND}/BFI82U?dayDate=${prevDate.replace(/-/g, '')}&type=day`);
+    if (!prevData?.data?.length) return null;
+    return this._parseInstitutional(prevData.data);
+  }
+
+  _parseInstitutional(rows) {
     let foreign = 0, trust = 0, dealer = 0;
-    for (const row of data.data) {
+    for (const row of rows) {
       const name = row[0];
       const net = parseInt((row[4] || '0').replace(/,/g, ''), 10);
       if (name.includes('外資') || name.includes('Foreign')) foreign += net;
       else if (name.includes('投信') || name.includes('Investment')) trust += net;
       else if (name.includes('自營') || name.includes('Dealer')) dealer += net;
     }
-
     return { foreign, trust, dealer };
+  }
+
+  /** 前一個交易日（跳過週末；台灣假日由 API 空數據自然處理） */
+  _prevTradingDay(date) {
+    const d = new Date(date + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6) {
+      d.setUTCDate(d.getUTCDate() - 1);
+    }
+    return d.toISOString().slice(0, 10);
   }
 
   /** 融資融券（MI_MARGN） */

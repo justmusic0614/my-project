@@ -169,6 +169,7 @@ async function runPhase3(config = {}) {
 
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(result, null, 2), 'utf8');
 
+  costLedger.flush();
   const summary = costLedger.getDailySummary();
   logger.info('=== Phase 3 complete ===', {
     duration: `${Math.round(result.duration / 1000)}s`,

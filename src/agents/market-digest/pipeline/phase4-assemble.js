@@ -187,6 +187,7 @@ async function runPhase4(config = {}) {
   }
 
   // 成本告警
+  costLedger.flush();
   const dailyCost = costLedger.getDailySummary();
   if (dailyCost.totalCost > 0) {
     const budget = dailyCost.dailyBudgetUsd || 2.0;

@@ -124,6 +124,7 @@ async function runPhase1(config = {}) {
   // 寫入 pipeline-state
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(result, null, 2), 'utf8');
 
+  costLedger.flush();
   const summary = costLedger.getDailySummary();
   logger.info('=== Phase 1 complete ===', {
     duration: `${Math.round(result.duration / 1000)}s`,

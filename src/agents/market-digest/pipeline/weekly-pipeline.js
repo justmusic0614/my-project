@@ -107,6 +107,7 @@ class WeeklyPipeline {
       logger.warn(`weekly archive failed: ${err.message}`);
     }
 
+    costLedger.flush();
     const summary = costLedger.getDailySummary();
     const duration = Date.now() - startTime;
 

@@ -61,8 +61,16 @@ async function runPhase4(config = {}) {
     throw new Error(`phase3 data is stale (${ageH}h old, threshold=2h). Aborting to prevent outdated report push.`);
   }
 
-  const date    = phase3.date || _today();
+  const archiveDate = phase3.date || _today(); // 數據日期（存檔/lineage 用）
+  const reportDate  = _today();                 // 顯示日期（Brief 標題用）
   const telegramConfig = config.telegram || {};
+
+  // Publish Guard：防止同日重複推播（orchestrator retry 時觸發）
+  const PUBLISH_LOCK     = path.join(STATE_DIR, `phase4-published-${reportDate}.lock`);
+  const alreadyPublished = !config.dryRun && fs.existsSync(PUBLISH_LOCK);
+  if (alreadyPublished) {
+    logger.warn(`[PublishGuard] already published today (${reportDate}), Telegram push will be skipped`);
+  }
 
   // 初始化推播器
   const telegram = new TelegramPublisher({
@@ -87,8 +95,8 @@ async function runPhase4(config = {}) {
   const isFullyDegraded = _isFullyDegraded(phase3);
   if (isFullyDegraded) {
     logger.error('CRITICAL: all data sources failed, sending degradation alert');
-    await alerter.criticalNoData(date);
-    const result = { phase: 'phase4', date, status: 'critical-degraded', duration: Date.now() - startTime };
+    await alerter.criticalNoData(archiveDate);
+    const result = { phase: 'phase4', date: archiveDate, status: 'critical-degraded', duration: Date.now() - startTime };
     _saveResult(result);
     return result;
   }
@@ -100,7 +108,7 @@ async function runPhase4(config = {}) {
   logger.info('[Step 1] Rendering Daily Brief...');
   const renderer = new DailyRenderer();
   const briefData = {
-    date,
+    date:             reportDate,
     marketData:       phase3.marketData       || {},
     aiResult:         phase3.aiResult         || {},
     rankedNews:       phase3.aiResult?.rankedNews || phase3.uniqueNews || [],
@@ -109,7 +117,7 @@ async function runPhase4(config = {}) {
     secFilings:       phase3.secFilings        || [],
     institutionalData: phase3.institutionalData || {},
     gainersLosers:    phase3.gainersLosers     || {},
-    marketContext:    phase3.marketContext || _getMarketContext(date)
+    marketContext:    phase3.marketContext || _getMarketContext(archiveDate)
   };
 
   // 渲染完整版（存檔用）
@@ -121,38 +129,52 @@ async function runPhase4(config = {}) {
   // ── Step 3: 推播到 Telegram（兩段）────────────────────────────────────────
   logger.info('[Step 2] Publishing to Telegram (two segments)...');
   let telegramResult = { sent: 0, failed: 0 };
-  try {
-    // 第一段：Daily Brief（去除 Watchlist_Focus）
-    telegramResult = await telegram.publishDailyBrief(briefTextNoWL);
+  if (alreadyPublished) {
+    logger.info('[PublishGuard] Telegram push skipped (already published today)');
+  } else {
+    try {
+      // 第一段：Daily Brief（去除 Watchlist_Focus）
+      telegramResult = await telegram.publishDailyBrief(briefTextNoWL);
 
-    if (telegramResult.sent === 0 && telegramResult.failed > 0) {
-      // 第一段完全失敗：告警並跳過第二段（不 throw，避免觸發 alerter.pipelineFailed）
-      await telegram.publishAlert('⚠️ 日報第一段推播失敗，請稍後重試 /today');
-    } else {
-      // 第二段：追蹤清單精簡報告（延遲 2 秒避免 Telegram 限速）
-      await new Promise(r => setTimeout(r, 2000));
-      const cmdFinancial = require('../commands/cmd-financial');
-      const financialText = await cmdFinancial.handle([], config);
-      const skipFinancial = !financialText
-        || financialText.includes('為空')
-        || financialText.includes('尚未就緒');
-      if (!skipFinancial) {
-        const finResult = await telegram.publishAlert(financialText);
-        telegramResult.sent += (finResult?.sent || 0);
+      if (telegramResult.sent === 0 && telegramResult.failed > 0) {
+        // 第一段完全失敗：告警並跳過第二段（不 throw，避免觸發 alerter.pipelineFailed）
+        await telegram.publishAlert('⚠️ 日報第一段推播失敗，請稍後重試 /today');
+      } else {
+        // 第二段：追蹤清單精簡報告（延遲 2 秒避免 Telegram 限速）
+        await new Promise(r => setTimeout(r, 2000));
+        const cmdFinancial = require('../commands/cmd-financial');
+        const financialText = await cmdFinancial.handle([], config);
+        const skipFinancial = !financialText
+          || financialText.includes('為空')
+          || financialText.includes('尚未就緒');
+        if (!skipFinancial) {
+          const finResult = await telegram.publishAlert(financialText);
+          telegramResult.sent += (finResult?.sent || 0);
+        }
       }
+
+      // 推播成功後寫入 lock file（防止 retry 重複推播）
+      if (telegramResult.sent > 0) {
+        try {
+          fs.writeFileSync(PUBLISH_LOCK, new Date().toISOString(), 'utf8');
+          logger.info(`[PublishGuard] lock created: ${PUBLISH_LOCK}`);
+        } catch (lockErr) {
+          logger.warn(`[PublishGuard] failed to write lock: ${lockErr.message}`);
+        }
+      }
+    } catch (err) {
+      logger.error(`telegram publish failed: ${err.message}`);
+      await alerter.pipelineFailed('phase4-telegram', err);
     }
-  } catch (err) {
-    logger.error(`telegram publish failed: ${err.message}`);
-    await alerter.pipelineFailed('phase4-telegram', err);
   }
 
   // ── Step 4: 本地存檔 ──────────────────────────────────────────────────────
   logger.info('[Step 3] Archiving...');
   let archiveResult = {};
   try {
-    archiveResult = archiver.archiveDailyBrief(date, fullBriefText, phase3);
+    archiveResult = archiver.archiveDailyBrief(archiveDate, fullBriefText, phase3);
     // Git commit（每日一次）
-    archiver.gitCommit(`market-digest: daily brief ${date}`);
+    archiver.gitCommit(`market-digest: daily brief ${archiveDate}`);
   } catch (err) {
     logger.warn(`archive failed: ${err.message}`);
   }
@@ -168,7 +190,7 @@ async function runPhase4(config = {}) {
 
   // SRE: Lineage 異常告警
   try {
-    const lineagePath = path.join(STATE_DIR, `lineage-${date}.json`);
+    const lineagePath = path.join(STATE_DIR, `lineage-${archiveDate}.json`);
     if (fs.existsSync(lineagePath)) {
       const lineageData = JSON.parse(fs.readFileSync(lineagePath, 'utf8'));
       if (lineageData.anomalyCount > 0) {
@@ -199,7 +221,7 @@ async function runPhase4(config = {}) {
   // ── Step 6: Pipeline 成功通知 ─────────────────────────────────────────────
   const duration = Date.now() - startTime;
   await alerter.pipelineSuccess({
-    date,
+    date: archiveDate,
     duration,
     cost:     dailyCost.totalCost,
     degraded: degradedFields.length
@@ -207,7 +229,7 @@ async function runPhase4(config = {}) {
 
   const result = {
     phase:    'phase4',
-    date,
+    date:     archiveDate,
     status:   telegramResult.failed === 0 ? 'ok' : 'partial',
     duration,
     telegram: telegramResult,

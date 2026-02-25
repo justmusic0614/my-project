@@ -42,7 +42,7 @@ const PHASE_CONFIG = {
   phase1: { fn: runPhase1, timeout: 120000, retries: 3, required: false },
   phase2: { fn: runPhase2, timeout: 180000, retries: 3, required: false },
   phase3: { fn: runPhase3, timeout: 120000, retries: 2, required: true  }, // 驗證+AI 必須成功
-  phase4: { fn: runPhase4, timeout:  60000, retries: 2, required: true  }  // 推播必須成功
+  phase4: { fn: runPhase4, timeout: 120000, retries: 2, required: true  }  // 推播必須成功
 };
 
 class Orchestrator {

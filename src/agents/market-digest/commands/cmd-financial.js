@@ -29,8 +29,7 @@ async function handle(args, config = {}) {
   }
 
   const lines = [];
-  const date  = phase3.date || _today();
-  lines.push(`💹 Watchlist 財務聚焦 ${date}`);
+  lines.push(`💹 Watchlist 財務聚焦 ${_today()}`);
   lines.push('');
 
   const prices  = phase3.institutionalData?.tw50Prices || {};

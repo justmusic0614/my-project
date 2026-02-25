@@ -496,9 +496,9 @@ class DailyRenderer {
 
   _fmtInst(net) {
     if (net == null) return '';
-    const lots   = Math.round(Math.abs(net) / 1000);
-    const action = net >= 0 ? '買超' : '賣超';
-    return `${action} ${lots.toLocaleString()}張`;
+    const billion = Math.round(Math.abs(net) / 1e8);
+    const action  = net >= 0 ? '買超' : '賣超';
+    return `${action} ${billion.toLocaleString()} 億`;
   }
 
   _degradeLabel(dataPoint) {

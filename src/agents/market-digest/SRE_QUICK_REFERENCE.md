@@ -70,6 +70,104 @@ data/
 
 ---
 
+## 📊 歷史數據工具
+
+### 查詢歷史數據（query-history.js）
+
+```bash
+cd ~/clawd/agents/market-digest
+
+# 查詢最近 N 天（period: 30d / 90d / 180d / 1y / all）
+node tools/query-history.js SP500 30d
+node tools/query-history.js VIX 90d
+node tools/query-history.js TAIEX 1y
+
+# 指定日期範圍
+node tools/query-history.js SP500 --from 2025-01-01 --to 2025-12-31
+
+# 統計摘要（count / mean / min / max / stddev）
+node tools/query-history.js VIX 90d --stats
+
+# JSON 格式輸出（預設 CSV）
+node tools/query-history.js SP500 90d --format json
+
+# 查詢全部歷史數據
+node tools/query-history.js GOLD all
+
+# 列出所有可用指標
+node tools/query-history.js --list
+# → SP500, NASDAQ, TAIEX, VIX, DXY, US10Y, GOLD, OIL_WTI, COPPER, BTC, USDTWD, FED_RATE, HY_SPREAD
+```
+
+### 批次匯入歷史數據（import-history.js）
+
+> 用於一次性補入過去數年數據，或定期補齊缺口。
+> 配額估算（4 年）：FMP ~8 calls、Yahoo ~2 calls、FRED ~2 calls、FinMind ~1 call
+
+```bash
+cd ~/clawd/agents/market-digest
+
+# 標準匯入（from 指定日期 ~ 今天）
+node tools/import-history.js --from 2022-01-01
+
+# 指定起訖範圍
+node tools/import-history.js --from 2022-01-01 --to 2026-02-26
+
+# Dry-run：只顯示統計，不寫入 DB
+node tools/import-history.js --from 2025-01-01 --dry-run
+```
+
+### 直接查詢 SQLite
+
+```bash
+cd ~/clawd/agents/market-digest
+
+# 查看最新 5 筆
+node -e "
+const db = require('better-sqlite3')('./data/market-history.db');
+const rows = db.prepare('SELECT date, sp500, taiex, vix, gold FROM market_snapshots ORDER BY date DESC LIMIT 5').all();
+console.table(rows);
+db.close();
+"
+
+# 資料庫統計（筆數、日期範圍、品質分布）
+node -e "
+const db = require('better-sqlite3')('./data/market-history.db');
+const s = db.prepare('SELECT COUNT(*) t, MIN(date) f, MAX(date) to_, SUM(CASE WHEN source_quality=\"full\" THEN 1 END) full_cnt FROM market_snapshots').get();
+console.log(\`共 \${s.t} 筆  |  \${s.f} ~ \${s.to_}  |  full: \${s.full_cnt}\`);
+db.close();
+"
+
+# SP500 20日移動平均（最近 10 筆）
+node -e "
+const db = require('better-sqlite3')('./data/market-history.db');
+const rows = db.prepare(\`
+  SELECT date, sp500,
+    ROUND(AVG(sp500) OVER (ORDER BY date ROWS 19 PRECEDING), 2) AS ma20
+  FROM market_snapshots ORDER BY date DESC LIMIT 10
+\`).all();
+console.table(rows);
+db.close();
+"
+
+# VIX > 25 的所有日期（高波動行情）
+node -e "
+const db = require('better-sqlite3')('./data/market-history.db');
+const rows = db.prepare('SELECT date, vix, sp500_chg FROM market_snapshots WHERE vix > 25 ORDER BY date DESC').all();
+console.table(rows);
+db.close();
+"
+```
+
+### 數據庫位置
+
+```text
+data/market-history.db   # SQLite，永久保留
+                          # 每日由 archive-publisher 自動寫入（Phase 4 後）
+```
+
+---
+
 ## 🔍 故障排除
 
 ### 問題：Cron job 未執行

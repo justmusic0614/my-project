@@ -165,7 +165,7 @@ function _ensureDir(dir) {
 }
 
 function _today() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 module.exports = { runPhase1, OUTPUT_FILE };

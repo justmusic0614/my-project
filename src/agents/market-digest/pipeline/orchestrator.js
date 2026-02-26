@@ -88,7 +88,7 @@ class Orchestrator {
   async _runDaily() {
     // 查詢市場狀態，注入到 config 供各 phase 使用
     const guard = getCalendarGuard();
-    const today = process.env.MARKET_DIGEST_DATE || new Date().toISOString().slice(0, 10);
+    const today = process.env.MARKET_DIGEST_DATE || new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
     const marketContext = guard.getMarketContext(today);
     this.config.marketContext = marketContext;
 

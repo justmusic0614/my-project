@@ -433,6 +433,7 @@ ${newsList}
       dailySnapshot:   '',
       marketRegime:    'Neutral',
       structuralTheme: '',
+      industryThemes:  [],
       keyInsights:     [],
       ...extra
     };

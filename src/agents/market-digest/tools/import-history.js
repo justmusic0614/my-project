@@ -166,24 +166,23 @@ function fetchFredHistorical(seriesId, from, to) {
 }
 
 // ── FinMind TAIEX ─────────────────────────────────────────────────────────────
-// dataset=TaiwanStockPrice, data_id=Y9999（加權指數），欄位：close（string）, spread（漲跌點）
+// dataset=TaiwanStockTotalReturnIndex, data_id=TAIEX，欄位：price（float）
 async function fetchFinMindTaiex(from, to) {
   if (!FINMIND_KEY) { console.warn('[FinMind] FINMIND_API_TOKEN 未設定，跳過 TAIEX'); return {}; }
-  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=Y9999&start_date=${from}&end_date=${to}&token=${FINMIND_KEY}`;
+  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockTotalReturnIndex&data_id=TAIEX&start_date=${from}&end_date=${to}&token=${FINMIND_KEY}`;
   try {
     const json = await httpGet(url);
     if (json.status !== 200) throw new Error(json.msg || 'FinMind error');
     const result = {};
-    for (const r of (json.data || [])) {
+    const rows = json.data || [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
       const date = r.date?.slice(0, 10);
-      if (!date) continue;
-      const close  = parseFloat(r.close);
-      const spread = parseFloat(r.spread || '0'); // 漲跌點數 = close - prevClose
-      if (isNaN(close)) continue;
-      const prevClose = close - spread;
+      if (!date || r.price == null) continue;
+      const prev = i > 0 ? rows[i - 1].price : null;
       result[date] = {
-        close,
-        changePct: prevClose > 0 ? (spread / prevClose) * 100 : null
+        close:    r.price,
+        changePct: prev ? ((r.price - prev) / prev) * 100 : null
       };
     }
     console.log(`[FinMind] TAIEX: ${Object.keys(result).length} 筆`);

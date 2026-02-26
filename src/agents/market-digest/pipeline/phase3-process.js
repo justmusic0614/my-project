@@ -36,6 +36,27 @@ const deduplicator = new NewsDeduplicator();
 // 模組級旗標：避免 retry 時重複推播 stale data 告警
 let _staleAlertSent = false;
 
+// ── fail-soft helpers（Step 6c-6e）───────────────────────────────────────
+const safe = async (name, fn) => {
+  try { return await fn(); }
+  catch (e) {
+    const msg = e?.stack || e?.message || String(e);
+    const _warn = (typeof logger?.warn === 'function') ? logger.warn.bind(logger) : console.warn;
+    _warn(`[phase3][${name}] fail-soft: ${msg}`);
+    return null;
+  }
+};
+const lastNum = (row) => {
+  const x = row?.value ?? row?.close ?? row?.v ?? null;
+  const n = (x == null) ? null : Number(x);
+  return Number.isFinite(n) ? n : null;
+};
+const maxOrNull = (arr) => {
+  const xs = arr.filter(v => v != null);
+  return xs.length ? Math.max(...xs) : null;
+};
+const { evaluate: _evaluateTriggers } = require('../analyzers/trigger-engine');
+
 /**
  * 執行 Phase 3 資料處理
  * @param {object} config
@@ -148,6 +169,9 @@ async function runPhase3(config = {}) {
 
   // ── Step 6: SQLite + Phase Engine ───────────────────────────────────────
   let phaseEngineResult = null;
+  let keyLevels = null;
+  let triggers = null;
+  let contradictions = null;
   try {
     const histMgr = new MarketHistoryManager();
 
@@ -216,6 +240,50 @@ async function runPhase3(config = {}) {
     phaseEngine.saveState(statePath, phaseEngineResult.newState);
     logger.info(`Phase Engine: ${phaseEngineResult.phase} (confidence=${phaseEngineResult.confidence})`);
 
+    // Step 6c: Key Levels
+    logger.info('[Step 6c] Key Levels...');
+    keyLevels = await safe('keyLevels', () =>
+      new (require('../analyzers/key-levels-engine').KeyLevelsEngine)()
+        .calculate(histMgr.getHistory('sp500', 60), histMgr.getHistory('taiex', 60))
+    );
+
+    // Step 6d: Triggers
+    logger.info('[Step 6d] Triggers...');
+    triggers = await safe('triggers', () =>
+      _evaluateTriggers(indicators, phaseEngineResult.newState)
+    );
+
+    // Step 6e: Contradictions
+    logger.info('[Step 6e] Contradictions...');
+    const spxCloses25 = (histMgr.getHistory('sp500', 25) || []).map(r => {
+      const n = Number(r?.close);
+      return Number.isFinite(n) ? n : null;
+    });
+    const dxySeries   = histMgr.getSeriesHistory('dxy') || [];
+    const goldHistory = histMgr.getHistory('gold', 20) || [];
+
+    const _a = spxCloses25.at(-1);
+    const _b = spxCloses25.at(-6);
+    const spx5dDiff = (_a != null && _b != null) ? _a - _b : null;
+
+    const dxyLast = lastNum(dxySeries.at(-1));
+    const dxy6th  = lastNum(dxySeries.at(-6));
+
+    const indicatorsForContra = {
+      ...indicators,
+      spx20dHigh:     spxCloses25.length >= 20 ? maxOrNull(spxCloses25.slice(-20)) : null,
+      spx5dChange:    spx5dDiff,
+      spx5dChangePct: (spx5dDiff != null && _b != null && _b !== 0) ? spx5dDiff / _b : null,
+      dxy5dChange:    (dxySeries.length >= 6 && dxyLast != null && dxy6th != null)
+                        ? dxyLast - dxy6th : null,
+      goldClose:      goldHistory.length > 0 ? lastNum(goldHistory.at(-1)) : null,
+      gold20dHigh:    goldHistory.length >= 20 ? maxOrNull(goldHistory.map(lastNum)) : null,
+    };
+
+    contradictions = await safe('contradictions', () =>
+      require('../shared/contradiction-detector').detect(indicatorsForContra)
+    );
+
     histMgr.closeDb();
   } catch (err) {
     logger.warn(`Step 6 (Phase Engine) failed: ${err.message}`);
@@ -251,7 +319,10 @@ async function runPhase3(config = {}) {
     gainersLosers:     _extractGainersLosers(phase2),
 
     // Phase Engine 結果
-    phaseEngine: phaseEngineResult,
+    phaseEngine:    phaseEngineResult,
+    keyLevels,
+    triggers,
+    contradictions,
 
     // 市場狀態（透傳到 Phase 4 / Renderer）
     marketContext: phase2.marketContext || config.marketContext || null

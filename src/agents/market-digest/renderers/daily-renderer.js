@@ -71,7 +71,9 @@ class DailyRenderer {
 
     // ── Market Phase 狀態行 ──────────────────────────────────────────────
     if (phaseEngine && phaseEngine.phase) {
-      const phaseLine = `Market Phase: ${phaseEngine.phase}（連續 ${phaseEngine.newState?.phaseDays || '?'} 日）  信心：${phaseEngine.confidence || 'N/A'}`;
+      const breadthState = phaseEngine?.indicators?.breadthState;
+      const breadthPart  = breadthState ? ` | Breadth: ${breadthState}` : '';
+      const phaseLine = `Market Phase: ${phaseEngine.phase}（連續 ${phaseEngine.newState?.phaseDays || '?'} 日）  信心：${phaseEngine.confidence || 'N/A'}${breadthPart}`;
       lines.push(phaseLine);
       if (phaseEngine.degraded) {
         const reasons = phaseEngine.degradedReasons?.join(', ') || 'SQLite 歷史不足或 DB 未初始化';
@@ -129,6 +131,18 @@ class DailyRenderer {
       }
       lines.push('');
     }
+
+    // ── 4b. Key Levels ────────────────────────────────────────────────────
+    const keyLevelsBlock = this._renderKeyLevels(briefData.keyLevels, briefData);
+    if (keyLevelsBlock) { lines.push(keyLevelsBlock); lines.push(''); }
+
+    // ── 4c. Risk Triggers ─────────────────────────────────────────────────
+    const triggersBlock = this._renderTriggers(briefData.triggers, briefData);
+    if (triggersBlock) { lines.push(triggersBlock); lines.push(''); }
+
+    // ── 4d. Contradictions ────────────────────────────────────────────────
+    const contraBlock = this._renderContradictions(briefData.contradictions, briefData);
+    if (contraBlock) { lines.push(contraBlock); lines.push(''); }
 
     // ── 5. Geopolitics（有 P0 地緣事件才顯示）────────────────────────────
     // 改用 AI 分類的 category 欄位（Stage 1 Haiku 判斷）
@@ -500,7 +514,100 @@ class DailyRenderer {
     return lines;
   }
 
+  _renderKeyLevels(keyLevels, data) {
+    if (!keyLevels) return '';
+    const spx   = keyLevels.spx   || keyLevels.sp500 || keyLevels.SP500 || null;
+    const taiex = keyLevels.taiex || keyLevels.TAIEX  || null;
+    if (!spx && !taiex) return '';
+
+    const lines = ['📊 Key_Levels'];
+    if (spx) {
+      const s1 = this._pickFirst(this._asArray(spx.support));
+      const r1 = this._pickFirst(this._asArray(spx.resistance));
+      const parts = [];
+      if (s1) parts.push(`支撐 ${s1.label} @ ${this._fmtNum(s1.value)}`);
+      if (r1) parts.push(`阻力 ${r1.label} @ ${this._fmtNum(r1.value)}`);
+      if (parts.length > 0) lines.push(`  SPX: ${parts.join(' | ')}`);
+    }
+    if (taiex) {
+      const s2 = this._pickFirst(this._asArray(taiex.support));
+      const r2 = this._pickFirst(this._asArray(taiex.resistance));
+      const parts = [];
+      if (s2) parts.push(`支撐 ${s2.label} @ ${this._fmtNum(s2.value)}`);
+      if (r2) parts.push(`阻力 ${r2.label} @ ${this._fmtNum(r2.value)}`);
+      if (parts.length > 0) lines.push(`  TAIEX: ${parts.join(' | ')}`);
+    }
+    if (lines.length <= 1) return '';
+    const dbg = this._debugLine(data);
+    if (dbg) lines.push(dbg);
+    return lines.join('\n');
+  }
+
+  _renderTriggers(triggers, data) {
+    const fired     = Array.isArray(triggers?.fired)  ? triggers.fired  : null;
+    const fromItems = Array.isArray(triggers?.items)  ? triggers.items.filter(t => t?.triggered) : null;
+    const items = fired ?? fromItems ?? (Array.isArray(triggers) ? triggers : []);
+    if (!items || items.length === 0) return '';
+
+    const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+    const getLvl = t => (t.impact || t.level || t.severity || '').toUpperCase();
+    const sorted = [...items].sort((a, b) => (rank[getLvl(a)] ?? 99) - (rank[getLvl(b)] ?? 99));
+
+    const lines = ['⚠️ Risk_Triggers'];
+    let shown = 0;
+    for (const t of sorted) {
+      if (shown >= 3) break;
+      const lvl     = getLvl(t);
+      const message = t.detail || t.message || t.title || t.reason || t.desc || '';
+      if (!message) continue;
+      const action  = t.action || t.recommendation || t.playbook || '';
+      const lvlTag  = lvl ? `${lvl}: ` : '';
+      const actPart = action ? ` — ${action}` : '';
+      lines.push(`  ${lvlTag}${message}${actPart}`);
+      shown++;
+    }
+    if (lines.length <= 1) return '';
+    const extra = items.length - shown;
+    if (extra > 0) lines.push(`  （另 +${extra} 項）`);
+    const dbg = this._debugLine(data);
+    if (dbg) lines.push(dbg);
+    return lines.join('\n');
+  }
+
+  _renderContradictions(contradictions, data) {
+    const items = this._asArray(contradictions);
+    if (items.length === 0) return '';
+
+    const lines = ['🔍 Contradictions'];
+    for (const c of items.slice(0, 3)) {
+      const msg = c.description || c.message || '';
+      if (!msg) continue;
+      const impl = c.implication ? ` → ${c.implication}` : '';
+      lines.push(`  • ${msg}${impl}`);
+    }
+    if (lines.length <= 1) return '';
+    const dbg = this._debugLine(data);
+    if (dbg) lines.push(dbg);
+    return lines.join('\n');
+  }
+
   // ── 格式化輔助 ────────────────────────────────────────────────────────────
+
+  _asArray(x) { return Array.isArray(x) ? x : []; }
+
+  _pickFirst(arr) {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    if (arr.every(x => x && Number.isFinite(Number(x.priority)))) {
+      return [...arr].sort((a, b) => Number(a.priority) - Number(b.priority))[0];
+    }
+    return arr[0];
+  }
+
+  _debugLine(data) {
+    if (process.env.BRIEF_DEBUG !== '1') return '';
+    const at = data?.processedAt || new Date().toISOString();
+    return `[debug: source=phase3, at=${at}]`;
+  }
 
   _fmtNum(n) {
     if (n == null) return 'N/A';

@@ -117,7 +117,12 @@ async function runPhase4(config = {}) {
     secFilings:       phase3.secFilings        || [],
     institutionalData: phase3.institutionalData || {},
     gainersLosers:    phase3.gainersLosers     || {},
-    marketContext:    phase3.marketContext || _getMarketContext(archiveDate)
+    marketContext:    phase3.marketContext || _getMarketContext(archiveDate),
+    processedAt:      phase3.processedAt      || null,
+    phaseEngine:      phase3.phaseEngine      || null,
+    keyLevels:        phase3.keyLevels        || null,
+    triggers:         phase3.triggers         || null,
+    contradictions:   phase3.contradictions   || null
   };
 
   // 渲染完整版（存檔用）

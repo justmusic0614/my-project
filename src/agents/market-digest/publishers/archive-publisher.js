@@ -23,7 +23,8 @@ const { createLogger } = require('../shared/logger');
 
 const logger = createLogger('publisher:archive');
 
-const RETENTION_DAYS = 30; // 保留 30 天
+const RETENTION_DAYS = 30; // daily-brief 保留 30 天（SQLite 永久保留）
+const DB_FILE = 'market-history.db'; // 相對於 data/ 目錄
 
 class ArchivePublisher {
   constructor(config = {}) {
@@ -69,6 +70,9 @@ class ArchivePublisher {
 
     // 自動清理舊檔
     this._purgeOldFiles(this.dailyPath, this.retentionDays);
+
+    // 永久歸檔到 SQLite（回測用）
+    this._archiveToDb(date, briefData.marketData || {});
 
     return { jsonPath, txtPath };
   }
@@ -162,6 +166,83 @@ class ArchivePublisher {
         fs.mkdirSync(dir, { recursive: true });
       }
     });
+  }
+
+  /**
+   * 將當日 marketData 寫入 SQLite（永久保留，供回測使用）
+   * 使用 better-sqlite3（同步 API，不影響 async 流程）
+   */
+  _archiveToDb(date, md) {
+    let Database;
+    try {
+      Database = require('better-sqlite3');
+    } catch {
+      logger.warn('better-sqlite3 not available, skipping DB archive');
+      return;
+    }
+
+    const dbPath = path.join(this.basePath, DB_FILE);
+    let db;
+    try {
+      db = new Database(dbPath);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS market_snapshots (
+          date       TEXT PRIMARY KEY,
+          sp500      REAL, nasdaq    REAL, taiex    REAL,
+          vix        REAL, dxy       REAL, us10y    REAL,
+          gold       REAL, oil_wti   REAL, copper   REAL,
+          btc        REAL, usdtwd    REAL,
+          fed_rate   REAL, hy_spread REAL,
+          sp500_chg  REAL, nasdaq_chg REAL, taiex_chg REAL, vix_chg REAL,
+          source_quality TEXT,
+          created_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_date ON market_snapshots(date);
+      `);
+
+      const stmt = db.prepare(`
+        INSERT OR REPLACE INTO market_snapshots
+          (date, sp500, nasdaq, taiex, vix, dxy, us10y,
+           gold, oil_wti, copper, btc, usdtwd, fed_rate, hy_spread,
+           sp500_chg, nasdaq_chg, taiex_chg, vix_chg,
+           source_quality, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(
+        date,
+        md.SP500?.value,   md.NASDAQ?.value,  md.TAIEX?.value,
+        md.VIX?.value,     md.DXY?.value,     md.US10Y?.value,
+        md.GOLD?.value,    md.OIL_WTI?.value, md.COPPER?.value,
+        md.BTC?.value,     md.USDTWD?.value,
+        md.FED_RATE?.value, md.HY_SPREAD?.value,
+        md.SP500?.changePct,  md.NASDAQ?.changePct,
+        md.TAIEX?.changePct,  md.VIX?.changePct,
+        this._sourceQuality(md),
+        new Date().toISOString()
+      );
+
+      logger.info(`market-history.db: archived ${date} (${this._sourceQuality(md)})`);
+    } catch (err) {
+      logger.warn(`DB archive failed for ${date}: ${err.message}`);
+    } finally {
+      if (db) db.close();
+    }
+  }
+
+  /**
+   * 評估數據品質標籤
+   * 'full' = 主要指標全部有效
+   * 'partial' = 1 個主要指標缺失/降級
+   * 'degraded' = 2+ 個主要指標缺失/降級
+   */
+  _sourceQuality(md) {
+    const degraded = [md.SP500, md.NASDAQ, md.TAIEX, md.VIX]
+      .filter(v => !v || v.degraded === 'NA' || v.degraded === 'UNVERIFIED').length;
+    if (degraded === 0) return 'full';
+    if (degraded <= 1) return 'partial';
+    return 'degraded';
   }
 }
 

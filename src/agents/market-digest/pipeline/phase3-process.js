@@ -23,6 +23,7 @@ const validator      = require('../processors/validator');
 const { NewsDeduplicator } = require('../processors/deduplicator');
 const importanceScorer     = require('../processors/importance-scorer');
 const { AIAnalyzer }       = require('../processors/ai-analyzer');
+const { MarketHistoryManager } = require('../processors/market-history-manager');
 
 const logger = createLogger('pipeline:phase3');
 
@@ -105,6 +106,16 @@ async function runPhase3(config = {}) {
     crossCheckWarns: validationReport.crossCheckWarnings.length
   });
 
+  // ── Step 1.5: 更新市場歷史（365 天滾動，供 AI 分析移動平均） ───────────
+  let marketHistory = null;
+  try {
+    const histMgr = new MarketHistoryManager();
+    marketHistory = await histMgr.updateHistory(phase2.date || _today(), marketData);
+    logger.info(`market history updated: ${Object.keys(marketHistory).length} series`);
+  } catch (err) {
+    logger.warn(`market history update failed: ${err.message}`);
+  }
+
   // ── Step 2: 新聞彙整 ────────────────────────────────────────────────────
   logger.info('[Step 2] Collecting news items...');
   const allNews = _mergeNewsItems(phase2);
@@ -144,6 +155,7 @@ async function runPhase3(config = {}) {
 
     // 驗證後市場數據
     marketData,
+    marketHistory,
     validationReport,
     hasErrors,
 

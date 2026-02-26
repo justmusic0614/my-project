@@ -41,11 +41,18 @@ class MarketHistoryManager {
    */
   async updateHistory(date, marketData) {
     const history = {
-      vix: await this._updateSeries('vix', date, marketData.VIX?.value),
-      us10y: await this._updateSeries('us10y', date, marketData.US10Y?.value),
-      dxy: await this._updateSeries('dxy', date, marketData.DXY?.value),
+      vix:          await this._updateSeries('vix',          date, marketData.VIX?.value),
+      us10y:        await this._updateSeries('us10y',        date, marketData.US10Y?.value),
+      dxy:          await this._updateSeries('dxy',          date, marketData.DXY?.value),
+      sp500:        await this._updateSeries('sp500',        date, marketData.SP500?.value),
+      nasdaq:       await this._updateSeries('nasdaq',       date, marketData.NASDAQ?.value),
+      taiex:        await this._updateSeries('taiex',        date, marketData.TAIEX?.value),
+      gold:         await this._updateSeries('gold',         date, marketData.GOLD?.value),
+      btc:          await this._updateSeries('btc',          date, marketData.BTC?.value),
+      fedRate:      await this._updateSeries('fed-rate',     date, marketData.FED_RATE?.value),
+      hySpread:     await this._updateSeries('hy-spread',    date, marketData.HY_SPREAD?.value),
       putCallRatio: await this._updateSeries('put-call-ratio', date, marketData.PUT_CALL_RATIO?.value),
-      spyVolume: await this._updateSeries('spy-volume', date, marketData.SPY_VOLUME?.current)
+      spyVolume:    await this._updateSeries('spy-volume',   date, marketData.SPY_VOLUME?.current)
     };
 
     return this._calculateMovingAverages(history);
@@ -85,9 +92,9 @@ class MarketHistoryManager {
       logger.info(`added ${seriesName} for ${date}: ${value}`);
     }
 
-    // 保留最近 30 天
-    if (data.length > 30) {
-      data = data.slice(-30);
+    // 保留最近 365 天
+    if (data.length > 365) {
+      data = data.slice(-365);
     }
 
     // 寫回檔案
@@ -109,16 +116,16 @@ class MarketHistoryManager {
     const result = {};
 
     // VIX：當前值 + 5日/10日均線
-    if (history.vix && history.vix.length > 0) {
+    if (history.vix?.length > 0) {
       result.vix = {
-        current: history.vix[history.vix.length - 1].value,
-        avg5Day: this._calculateMA(history.vix, 5),
+        current:  history.vix[history.vix.length - 1].value,
+        avg5Day:  this._calculateMA(history.vix, 5),
         avg10Day: this._calculateMA(history.vix, 10)
       };
     }
 
     // US10Y：當前值 + 5日均線
-    if (history.us10y && history.us10y.length > 0) {
+    if (history.us10y?.length > 0) {
       result.us10y = {
         current: history.us10y[history.us10y.length - 1].value,
         avg5Day: this._calculateMA(history.us10y, 5)
@@ -126,25 +133,76 @@ class MarketHistoryManager {
     }
 
     // DXY：當前值 + 5日均線
-    if (history.dxy && history.dxy.length > 0) {
+    if (history.dxy?.length > 0) {
       result.dxy = {
         current: history.dxy[history.dxy.length - 1].value,
         avg5Day: this._calculateMA(history.dxy, 5)
       };
     }
 
+    // SP500：當前值 + 5日/20日均線
+    if (history.sp500?.length > 0) {
+      result.sp500 = {
+        current:  history.sp500[history.sp500.length - 1].value,
+        avg5Day:  this._calculateMA(history.sp500, 5),
+        avg20Day: this._calculateMA(history.sp500, 20)
+      };
+    }
+
+    // NASDAQ：當前值 + 5日/20日均線
+    if (history.nasdaq?.length > 0) {
+      result.nasdaq = {
+        current:  history.nasdaq[history.nasdaq.length - 1].value,
+        avg5Day:  this._calculateMA(history.nasdaq, 5),
+        avg20Day: this._calculateMA(history.nasdaq, 20)
+      };
+    }
+
+    // TAIEX：當前值 + 5日均線
+    if (history.taiex?.length > 0) {
+      result.taiex = {
+        current: history.taiex[history.taiex.length - 1].value,
+        avg5Day: this._calculateMA(history.taiex, 5)
+      };
+    }
+
+    // GOLD：當前值 + 5日/20日均線
+    if (history.gold?.length > 0) {
+      result.gold = {
+        current:  history.gold[history.gold.length - 1].value,
+        avg5Day:  this._calculateMA(history.gold, 5),
+        avg20Day: this._calculateMA(history.gold, 20)
+      };
+    }
+
+    // BTC：當前值 + 7日均線
+    if (history.btc?.length > 0) {
+      result.btc = {
+        current: history.btc[history.btc.length - 1].value,
+        avg7Day: this._calculateMA(history.btc, 7)
+      };
+    }
+
+    // Fed Rate / HY Spread：只記當前值（不計均線）
+    if (history.fedRate?.length > 0) {
+      result.fedRate = { current: history.fedRate[history.fedRate.length - 1].value };
+    }
+    if (history.hySpread?.length > 0) {
+      result.hySpread = { current: history.hySpread[history.hySpread.length - 1].value };
+    }
+
     // Put/Call Ratio：當前值 + 10日均線
-    if (history.putCallRatio && history.putCallRatio.length > 0) {
+    if (history.putCallRatio?.length > 0) {
       result.putCallRatio = {
-        current: history.putCallRatio[history.putCallRatio.length - 1].value,
+        current:  history.putCallRatio[history.putCallRatio.length - 1].value,
         avg10Day: this._calculateMA(history.putCallRatio, 10)
       };
     }
 
     // SPY Volume：當前值 + 20日均線
-    if (history.spyVolume && history.spyVolume.length > 0) {
+    if (history.spyVolume?.length > 0) {
       result.spyVolume = {
-        current: history.spyVolume[history.spyVolume.length - 1].value,
+        current:  history.spyVolume[history.spyVolume.length - 1].value,
         avg20Day: this._calculateMA(history.spyVolume, 20)
       };
     }

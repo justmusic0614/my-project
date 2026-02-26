@@ -26,7 +26,6 @@ const FMPCollector      = require('../collectors/fmp-collector');
 const YahooCollector    = require('../collectors/yahoo-collector');
 const SecEdgarCollector = require('../collectors/sec-edgar-collector');
 const { FredCollector } = require('../collectors/fred-collector');
-const { MarketHistoryManager } = require('../processors/market-history-manager');
 
 const logger = createLogger('pipeline:phase1');
 
@@ -52,7 +51,6 @@ async function runPhase1(config = {}) {
   const yahoo    = new YahooCollector(config);
   const secEdgar = new SecEdgarCollector(config);
   const fred     = new FredCollector(config);
-  const historyManager = new MarketHistoryManager();
 
   let fmpResult, yahooResult, secResult, fredResult;
 
@@ -86,26 +84,6 @@ async function runPhase1(config = {}) {
     logger.warn(`SPY volume collection failed: ${err.message}`);
   }
 
-  // ── 組裝 marketData 物件（用於歷史資料管理）────────────────────────────
-  const marketData = {
-    VIX:             fmpResult.value?.VIX || yahooResult.value?.VIX || null,
-    US10Y:           fmpResult.value?.US10Y || yahooResult.value?.US10Y || null,
-    DXY:             fmpResult.value?.DXY || yahooResult.value?.DXY || null,
-    FED_RATE:        fredData.FED_RATE || null,
-    HY_SPREAD:       fredData.HY_SPREAD || null,
-    PUT_CALL_RATIO:  yahooResult.value?.PUT_CALL_RATIO || null,
-    SPY_VOLUME:      spyVolume
-  };
-
-  // ── 更新歷史資料並計算移動平均 ─────────────────────────────────────────
-  let marketHistory = null;
-  try {
-    marketHistory = await historyManager.updateHistory(_today(), marketData);
-    logger.info(`market history updated: ${Object.keys(marketHistory).length} series`);
-  } catch (err) {
-    logger.warn(`market history update failed: ${err.message}`);
-  }
-
   const result = {
     phase:     'phase1',
     date:      _today(),
@@ -116,8 +94,6 @@ async function runPhase1(config = {}) {
     secEdgar:  secResult.status    === 'fulfilled' ? secResult.value    : null,
     fred:      fredData,
     sentiment: { spyVolume },
-    marketData,
-    marketHistory,
     errors:    _collectErrors({ fmpResult, yahooResult, secResult, fredResult })
   };
 

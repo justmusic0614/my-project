@@ -325,9 +325,15 @@
         "retries": 2
       },
       "weekend": {
-        "cronUtc": "0 0 * * 0,6",
-        "description": "週末日報（快取+Perplexity）",
+        "cronUtc": "0 0 * * 6",
+        "description": "週六日報（快取+Perplexity）",
         "timeout": 180000,
+        "retries": 2
+      },
+      "sundayTactical": {
+        "cronUtc": "0 2 * * 0",
+        "description": "週日戰術報告（UTC 02:00 = 台北 10:00）",
+        "timeout": 300000,
         "retries": 2
       },
       "weekly": {
@@ -378,6 +384,24 @@
       "triggerKeywords": ["戰爭", "制裁", "關稅", "地震", "海峽", "war", "sanction", "tariff"],
       "query": "最新地緣政治風險事件對金融市場的影響"
     }
+  },
+
+  "phaseEngine": {
+    "stateFile": "data/pipeline-state/phase-engine-state.json",
+    "minHistoryBars": 60,
+    "phases": [
+      "CRISIS", "RISK_OFF_STRESS", "RISK_OFF_CORRECTION",
+      "CHOPPY_NEUTRAL", "RISK_ON_EARLY", "RISK_ON_MATURE", "RISK_ON_LATE",
+      "UNKNOWN"
+    ],
+    "hardGates": {
+      "crisisVix": 35,
+      "crisisStreakDays": 2,
+      "stressVix": 28,
+      "stressStreakDays": 2,
+      "correctionVix": 20
+    },
+    "breadthWatchlist": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "AVGO"]
   },
 
   "sre": {

@@ -73,6 +73,8 @@ class Orchestrator {
           return await this._runSinglePhase('phase4');
         case 'weekend':
           return await this._runWeekend();
+        case 'sunday-tactical':
+          return await this._runSundayTactical();
         default:
           throw new Error(`Unknown mode: ${mode}`);
       }
@@ -202,6 +204,17 @@ class Orchestrator {
     }
 
     return { mode: 'weekend', phases: results, cost: costLedger.getDailySummary() };
+  }
+
+  /**
+   * 週日戰術報告
+   */
+  async _runSundayTactical() {
+    logger.info('Sunday Tactical pipeline starting');
+    const { SundayTacticalPipeline } = require('./sunday-tactical-pipeline');
+    const pipeline = new SundayTacticalPipeline(this.config);
+    const result = await pipeline.run();
+    return { mode: 'sunday-tactical', ...result, cost: costLedger.getDailySummary() };
   }
 
   /**

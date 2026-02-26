@@ -7,6 +7,8 @@
  *   node index.js pipeline --phase 1   # 只跑 phase1
  *   node index.js pipeline --dry-run   # 不發 Telegram，只本地渲染
  *   node index.js pipeline --weekend   # 週末日報（快取+Perplexity）
+ *   node index.js sunday-tactical       # 週日戰術報告
+ *   node index.js sunday-tactical --dry-run  # 不推播
  *   node index.js weekly               # 週報 pipeline
  *   node index.js today                # 推播今日日報到 Telegram（兩段）
  *   node index.js today --dry-run     # Dry-run 不發 Telegram
@@ -72,6 +74,15 @@ async function main() {
       if (flags.weekend) mode = 'weekend';
 
       const result = await orchestrator.run(mode);
+      _printResult(result);
+      break;
+    }
+
+    // ── sunday-tactical ──────────────────────────────────────────────────
+    case 'sunday-tactical': {
+      const Orchestrator = require('./pipeline/orchestrator');
+      const orchestrator = new Orchestrator(config);
+      const result = await orchestrator.run('sunday-tactical');
       _printResult(result);
       break;
     }
@@ -242,6 +253,8 @@ Usage:
   node index.js pipeline --phase N    只跑第 N 個 phase（1-4）
   node index.js pipeline --dry-run    不發 Telegram，只本地渲染
   node index.js pipeline --weekend    週末日報
+  node index.js sunday-tactical       週日戰術報告（Weekly Tactical Setup）
+  node index.js sunday-tactical --dry-run  不推播
   node index.js weekly                週報 pipeline
   node index.js today                 推播日報到 Telegram（兩段）
   node index.js today --dry-run      Dry-run 不發 Telegram

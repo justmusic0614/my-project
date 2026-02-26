@@ -64,8 +64,20 @@ class DailyRenderer {
     const mc = marketContext || {};
     const lines = [];
 
+    const phaseEngine = briefData.phaseEngine || null;
+
     // ── Header ───────────────────────────────────────────────────────────
     lines.push(`=== Daily Market Brief ${reportDate} ===`);
+
+    // ── Market Phase 狀態行 ──────────────────────────────────────────────
+    if (phaseEngine && phaseEngine.phase) {
+      const phaseLine = `Market Phase: ${phaseEngine.phase}（連續 ${phaseEngine.newState?.phaseDays || '?'} 日）  信心：${phaseEngine.confidence || 'N/A'}`;
+      lines.push(phaseLine);
+      if (phaseEngine.degraded) {
+        const reasons = phaseEngine.degradedReasons?.join(', ') || 'SQLite 歷史不足或 DB 未初始化';
+        lines.push(`⚠️ Phase Engine 資料不足（${reasons}）`);
+      }
+    }
 
     // ── 休市提示行 ───────────────────────────────────────────────────────
     if (mc.twse && !mc.twse.isTradingDay) {

@@ -146,6 +146,81 @@ async function runPhase3(config = {}) {
     });
   }
 
+  // ── Step 6: SQLite + Phase Engine ───────────────────────────────────────
+  let phaseEngineResult = null;
+  try {
+    const histMgr = new MarketHistoryManager();
+
+    // Step 6a: SQLite 每日寫入
+    logger.info('[Step 6a] SQLite daily snapshot...');
+    histMgr.appendDailySnapshot(phase2.date || _today(), marketData);
+
+    // Step 6b: Phase Engine
+    logger.info('[Step 6b] Phase Engine...');
+    const { PhaseEngine } = require('../analyzers/phase-engine');
+    const { BreadthCalculator } = require('../analyzers/breadth-calculator');
+    const { safeReadJsonOrNull } = require('../shared/safe-read');
+
+    const phaseEngine = new PhaseEngine();
+    const breadthCalc = new BreadthCalculator();
+    const statePath = path.join(STATE_DIR, 'phase-engine-state.json');
+
+    // 載入 state
+    let phaseState = phaseEngine.loadState(statePath);
+    if (!phaseState) {
+      const spxHist = histMgr.getHistory('sp500', 250);
+      phaseState = phaseEngine.initStateFromHistory(spxHist);
+    }
+
+    // 計算 indicators
+    const spxHistory = histMgr.getHistory('sp500', 250);
+    const qqqHistory = histMgr.getHistory('qqq', 250);
+    const spxCloses = spxHistory.map(r => r.close);
+    const qqqCloses = qqqHistory.map(r => r.close);
+    const spxMAs = MarketHistoryManager.getMovingAverages(spxCloses);
+    const qqqMAs = MarketHistoryManager.getMovingAverages(qqqCloses);
+
+    // Breadth (secondary — 每日只用 watchlist)
+    const watchlistPath = path.join(__dirname, '../data/market-history/watchlist-close.json');
+    const watchlistCache = safeReadJsonOrNull(watchlistPath);
+    const breadth = breadthCalc.calculateSecondary(watchlistCache);
+
+    // HY spread 5d change
+    const hySpreadSeries = histMgr.getSeriesHistory('hy-spread');
+    let hySpread5dChange = null;
+    if (hySpreadSeries.length >= 6) {
+      hySpread5dChange = hySpreadSeries[hySpreadSeries.length - 1].value -
+        hySpreadSeries[hySpreadSeries.length - 6].value;
+    }
+
+    const indicators = {
+      spxClose: marketData.SP500?.value || spxCloses[spxCloses.length - 1] || null,
+      spxMa20: spxMAs.ma20,
+      spxMa50: spxMAs.ma50,
+      spxMa200: spxMAs.ma200,
+      qqqClose: marketData.NASDAQ?.value || qqqCloses[qqqCloses.length - 1] || null,
+      qqqMa50: qqqMAs.ma50,
+      vix: marketData.VIX?.value || null,
+      dxy: marketData.DXY?.value || null,
+      us10y: marketData.US10Y?.value || null,
+      hySpread: marketData.HY_SPREAD?.value || null,
+      hySpread5dChange,
+      breadthState: breadth.state,
+      breadthMode: breadth.mode,
+      asOf: phase2.date || _today()
+    };
+
+    phaseEngineResult = phaseEngine.evaluate(indicators, phaseState);
+
+    // 儲存 state（SSOT）
+    phaseEngine.saveState(statePath, phaseEngineResult.newState);
+    logger.info(`Phase Engine: ${phaseEngineResult.phase} (confidence=${phaseEngineResult.confidence})`);
+
+    histMgr.closeDb();
+  } catch (err) {
+    logger.warn(`Step 6 (Phase Engine) failed: ${err.message}`);
+  }
+
   // ── 輸出 ─────────────────────────────────────────────────────────────────
   const result = {
     phase:       'phase3',
@@ -174,6 +249,9 @@ async function runPhase3(config = {}) {
     events:            _extractEvents(phase2),
     secFilings:        phase2.phase1Ref?.secEdgar?.filings || [],
     gainersLosers:     _extractGainersLosers(phase2),
+
+    // Phase Engine 結果
+    phaseEngine: phaseEngineResult,
 
     // 市場狀態（透傳到 Phase 4 / Renderer）
     marketContext: phase2.marketContext || config.marketContext || null

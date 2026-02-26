@@ -9,15 +9,17 @@
  *   node tools/import-history.js --from 2022-01-01 --to 2026-02-21
  *   node tools/import-history.js --from 2022-01-01           # to 預設今天
  *   node tools/import-history.js --dry-run --from 2025-01-01 # 只顯示，不寫入
+ *   node tools/import-history.js --etf-only --from 2022-01-01 # 只補 SPY/RSP/QQQ
+ *   node tools/import-history.js --backfill-series            # 從 SQLite 補 series JSON
  *
  * 資料來源（優先順序）：
  *   FMP (付費)    → SP500, NASDAQ, VIX, DXY, US10Y, GOLD, OIL_WTI, COPPER
- *   Yahoo (免費)  → USDTWD, BTC；FMP 失敗時 fallback
+ *   Yahoo (免費)  → SPY, RSP, QQQ, USDTWD, BTC；FMP 失敗時 fallback
  *   FRED (免費)   → FED_RATE, HY_SPREAD
  *   FinMind (付費) → TAIEX
  *
  * 配額估算（4 年歷史）：
- *   FMP: ~8 calls, Yahoo: ~2 calls, FRED: 2 calls, FinMind: 1 call（合計 ~13 calls）
+ *   FMP: ~8 calls, Yahoo: ~5 calls, FRED: 2 calls, FinMind: 1 call（合計 ~16 calls）
  */
 
 'use strict';
@@ -39,17 +41,24 @@ const FINMIND_KEY = process.env.FINMIND_API_TOKEN;
 function parseArgs() {
   const args = process.argv.slice(2);
   const opts = {
-    from:   null,
-    to:     new Date().toISOString().slice(0, 10),
-    dryRun: false
+    from:           null,
+    to:             new Date().toISOString().slice(0, 10),
+    dryRun:         false,
+    etfOnly:        false,  // 只補 SPY/RSP/QQQ（不跑 FMP/FRED/FinMind）
+    backfillSeries: false   // 從 SQLite 補 dxy/vix/hy_spread/us10y series JSON
   };
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--from')    { opts.from   = args[++i]; continue; }
-    if (args[i] === '--to')      { opts.to     = args[++i]; continue; }
-    if (args[i] === '--dry-run') { opts.dryRun = true;      continue; }
+    if (args[i] === '--from')             { opts.from           = args[++i]; continue; }
+    if (args[i] === '--to')               { opts.to             = args[++i]; continue; }
+    if (args[i] === '--dry-run')          { opts.dryRun         = true;      continue; }
+    if (args[i] === '--etf-only')         { opts.etfOnly        = true;      continue; }
+    if (args[i] === '--backfill-series')  { opts.backfillSeries = true;      continue; }
   }
-  if (!opts.from) {
+  // --backfill-series 不需要 --from
+  if (!opts.from && !opts.backfillSeries) {
     console.error('用法：node tools/import-history.js --from YYYY-MM-DD [--to YYYY-MM-DD] [--dry-run]');
+    console.error('      node tools/import-history.js --etf-only --from YYYY-MM-DD');
+    console.error('      node tools/import-history.js --backfill-series');
     process.exit(1);
   }
   return opts;
@@ -222,14 +231,114 @@ function calcQuality(row) {
   return 'degraded';
 }
 
+// ── Series JSON 補足（從 SQLite 反推） ────────────────────────────────────────
+/**
+ * 從 SQLite market_snapshots 提取指定欄位，寫入 data/market-history/<name>.json
+ * 僅補入現有 JSON 中缺少的日期，不覆寫已有數據。
+ * @param {string} dbCol  - SQLite 欄位名（如 'dxy', 'hy_spread'）
+ * @param {string} name   - series 檔案名（如 'dxy', 'hy-spread'）
+ * @param {boolean} dryRun
+ */
+function backfillOneSeries(db, dataDir, dbCol, name, dryRun) {
+  const fs = require('fs');
+  const filePath = require('path').join(dataDir, `${name}.json`);
+
+  // 讀取現有 series JSON
+  let existing = [];
+  if (fs.existsSync(filePath)) {
+    try { existing = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { existing = []; }
+  }
+  const existingDates = new Set(existing.map(e => e.date));
+
+  // 從 SQLite 取最近 365 筆有值的記錄
+  const rows = db.prepare(
+    `SELECT date, ${dbCol} AS value FROM market_snapshots WHERE ${dbCol} IS NOT NULL ORDER BY date ASC`
+  ).all();
+
+  let added = 0;
+  for (const row of rows) {
+    if (!existingDates.has(row.date)) {
+      existing.push({ date: row.date, value: row.value });
+      added++;
+    }
+  }
+
+  // 按日期排序，保留最近 365 筆
+  existing.sort((a, b) => a.date.localeCompare(b.date));
+  if (existing.length > 365) existing = existing.slice(-365);
+
+  console.log(`[series] ${name}: SQLite 有 ${rows.length} 筆，補入 ${added} 筆，合計 ${existing.length} 筆`);
+
+  if (!dryRun) {
+    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), 'utf8');
+  }
+}
+
+function backfillSeriesFromDb(dataDir, dryRun) {
+  const Database = require('better-sqlite3');
+  const db = new Database(DB_PATH, { readonly: true });
+
+  // SQLite欄位 → series JSON 檔名
+  const seriesMap = [
+    { dbCol: 'dxy',       name: 'dxy'       },
+    { dbCol: 'vix',       name: 'vix'       },
+    { dbCol: 'us10y',     name: 'us10y'     },
+    { dbCol: 'hy_spread', name: 'hy-spread' }
+  ];
+
+  for (const { dbCol, name } of seriesMap) {
+    backfillOneSeries(db, dataDir, dbCol, name, dryRun);
+  }
+
+  db.close();
+}
+
 // ── 主程式 ────────────────────────────────────────────────────────────────────
 async function main() {
   const opts = parseArgs();
-  console.log(`\n=== 歷史數據匯入 ${opts.from} ~ ${opts.to} ===`);
-  if (opts.dryRun) console.log('[DRY RUN] 只顯示，不寫入 DB\n');
+  const DATA_DIR = require('path').join(__dirname, '../data/market-history');
 
+  // ── 模式 A：只補 series JSON（從 SQLite）────────────────────────────────────
+  if (opts.backfillSeries) {
+    console.log('\n=== Series JSON 補足模式（從 SQLite）===');
+    if (opts.dryRun) console.log('[DRY RUN] 只顯示，不寫入\n');
+    backfillSeriesFromDb(DATA_DIR, opts.dryRun);
+    console.log('\n完成。');
+    return;
+  }
+
+  console.log(`\n=== 歷史數據匯入 ${opts.from} ~ ${opts.to} ===`);
+  if (opts.dryRun)    console.log('[DRY RUN] 只顯示，不寫入 DB\n');
+  if (opts.etfOnly)   console.log('[ETF ONLY] 只抓 SPY/RSP/QQQ\n');
+
+  // ── 模式 B：只補 ETF（SPY/RSP/QQQ）─────────────────────────────────────────
+  if (opts.etfOnly) {
+    console.log('\n[ETF] Yahoo Finance（SPY, RSP, QQQ）...');
+    const yahoiSpy = await fetchYahooHistorical('SPY', opts.from, opts.to); await sleep(500);
+    const yahooRsp = await fetchYahooHistorical('RSP', opts.from, opts.to); await sleep(500);
+    const yahooQqq = await fetchYahooHistorical('QQQ', opts.from, opts.to); await sleep(500);
+
+    if (!opts.dryRun) {
+      const { MarketHistoryManager } = require('../processors/market-history-manager');
+      const mgr = new MarketHistoryManager();
+      const toOhlcv = (dataMap) => Object.entries(dataMap).map(([date, v]) => ({ date, close: v.close }));
+      mgr.batchInsertColumn('spy', toOhlcv(yahoiSpy));
+      mgr.batchInsertColumn('rsp', toOhlcv(yahooRsp));
+      mgr.batchInsertColumn('qqq', toOhlcv(yahooQqq));
+      mgr.closeDb();
+    } else {
+      const spyCount = Object.keys(yahoiSpy).length;
+      const rspCount = Object.keys(yahooRsp).length;
+      const qqqCount = Object.keys(yahooQqq).length;
+      console.log(`[DRY RUN] SPY: ${spyCount}, RSP: ${rspCount}, QQQ: ${qqqCount} 筆（不寫入）`);
+    }
+    console.log('\n完成。');
+    return;
+  }
+
+  // ── 模式 C：完整匯入（原有邏輯）────────────────────────────────────────────
   // 1. 抓取各來源（逐一，避免並發觸發 rate limit）
-  console.log('\n[1/5] FMP 美股指數...');
+  console.log('\n[1/6] FMP 美股指數...');
   const fmpSp500  = await fetchFmpHistorical('^GSPC',    opts.from, opts.to); await sleep(300);
   const fmpNasdaq = await fetchFmpHistorical('^IXIC',    opts.from, opts.to); await sleep(300);
   const fmpVix    = await fetchFmpHistorical('^VIX',     opts.from, opts.to); await sleep(300);
@@ -239,7 +348,10 @@ async function main() {
   const fmpOil    = await fetchFmpHistorical('CLUSD',    opts.from, opts.to); await sleep(300);
   const fmpCopper = await fetchFmpHistorical('HGUSD',    opts.from, opts.to); await sleep(300);
 
-  console.log('\n[2/5] Yahoo Finance（USDTWD, BTC + FMP fallback）...');
+  console.log('\n[2/6] Yahoo Finance（SPY, RSP, QQQ + USDTWD, BTC + FMP fallback）...');
+  const yahoiSpy = await fetchYahooHistorical('SPY', opts.from, opts.to); await sleep(500);
+  const yahooRsp = await fetchYahooHistorical('RSP', opts.from, opts.to); await sleep(500);
+  const yahooQqq = await fetchYahooHistorical('QQQ', opts.from, opts.to); await sleep(500);
   const yahooBtc    = await fetchYahooHistorical('BTC-USD',   opts.from, opts.to); await sleep(500);
   const yahooUsdtwd = await fetchYahooHistorical('USDTWD=X',  opts.from, opts.to); await sleep(500);
   // Fallback：若 FMP 空或筆數明顯不足（< 200），用 Yahoo 補齊
@@ -253,15 +365,15 @@ async function main() {
   const yahooOil    = Object.keys(fmpOil).length    < 200 ? await fetchYahooHistorical('CL=F', opts.from, opts.to) : {}; await sleep(300);
   const yahooCopper = Object.keys(fmpCopper).length < 200 ? await fetchYahooHistorical('HG=F', opts.from, opts.to) : {}; await sleep(300);
 
-  console.log('\n[3/5] FRED 利率數據...');
+  console.log('\n[3/6] FRED 利率數據...');
   const fredFedRate  = fetchFredHistorical('FEDFUNDS',     opts.from, opts.to); await sleep(300);
   const fredHySpread = fetchFredHistorical('BAMLH0A0HYM2', opts.from, opts.to); await sleep(300);
 
-  console.log('\n[4/5] FinMind TAIEX...');
+  console.log('\n[4/6] FinMind TAIEX...');
   const finmindTaiex = await fetchFinMindTaiex(opts.from, opts.to);
 
   // 2. 合併：以 FMP SP500 日期集合為美股交易日基準
-  console.log('\n[5/5] 合併並寫入 SQLite...');
+  console.log('\n[5/6] 合併並寫入 SQLite...');
   const sp500Dates  = new Set(Object.keys(fmpSp500).length  ? Object.keys(fmpSp500)  : Object.keys(yahooSp500));
   const taiexDates  = new Set(Object.keys(finmindTaiex));
   const allDates    = new Set([...sp500Dates, ...taiexDates]);
@@ -348,9 +460,20 @@ async function main() {
   db.close();
 
   const fullCount = rows.filter(r => calcQuality(r) === 'full').length;
-  console.log(`\n✅ 匯入完成：${rows.length} 筆（full: ${fullCount}, partial/degraded: ${rows.length - fullCount}）`);
+  console.log(`\n  匯入完成：${rows.length} 筆（full: ${fullCount}, partial/degraded: ${rows.length - fullCount}）`);
   console.log(`   日期範圍：${rows[0].date} ~ ${rows[rows.length - 1].date}`);
   console.log(`   數據庫：${DB_PATH}`);
+
+  // 6. SPY/RSP/QQQ 用 batchInsertColumn 補入（UPDATE NULL，不覆寫已有值）
+  console.log('\n[6/6] SPY/RSP/QQQ batchInsertColumn...');
+  const { MarketHistoryManager } = require('../processors/market-history-manager');
+  const mgr = new MarketHistoryManager();
+  const toOhlcv = (dataMap) => Object.entries(dataMap).map(([date, v]) => ({ date, close: v.close }));
+  mgr.batchInsertColumn('spy', toOhlcv(yahoiSpy));
+  mgr.batchInsertColumn('rsp', toOhlcv(yahooRsp));
+  mgr.batchInsertColumn('qqq', toOhlcv(yahooQqq));
+  mgr.closeDb();
+  console.log('\n✅ 全部完成。');
 }
 
 main().catch(err => {

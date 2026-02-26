@@ -166,22 +166,24 @@ function fetchFredHistorical(seriesId, from, to) {
 }
 
 // ── FinMind TAIEX ─────────────────────────────────────────────────────────────
+// dataset=TaiwanStockPrice, data_id=Y9999（加權指數），欄位：close（string）, spread（漲跌點）
 async function fetchFinMindTaiex(from, to) {
   if (!FINMIND_KEY) { console.warn('[FinMind] FINMIND_API_TOKEN 未設定，跳過 TAIEX'); return {}; }
-  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockTotalReturnIndex&data_id=IR0001&start_date=${from}&end_date=${to}&token=${FINMIND_KEY}`;
+  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=Y9999&start_date=${from}&end_date=${to}&token=${FINMIND_KEY}`;
   try {
     const json = await httpGet(url);
     if (json.status !== 200) throw new Error(json.msg || 'FinMind error');
     const result = {};
-    const rows = json.data || [];
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
+    for (const r of (json.data || [])) {
       const date = r.date?.slice(0, 10);
-      if (!date || r.price == null) continue;
-      const prev = i > 0 ? rows[i - 1].price : null;
+      if (!date) continue;
+      const close  = parseFloat(r.close);
+      const spread = parseFloat(r.spread || '0'); // 漲跌點數 = close - prevClose
+      if (isNaN(close)) continue;
+      const prevClose = close - spread;
       result[date] = {
-        close:    r.price,
-        changePct: prev ? ((r.price - prev) / prev) * 100 : null
+        close,
+        changePct: prevClose > 0 ? (spread / prevClose) * 100 : null
       };
     }
     console.log(`[FinMind] TAIEX: ${Object.keys(result).length} 筆`);
@@ -241,12 +243,16 @@ async function main() {
   console.log('\n[2/5] Yahoo Finance（USDTWD, BTC + FMP fallback）...');
   const yahooBtc    = await fetchYahooHistorical('BTC-USD',   opts.from, opts.to); await sleep(500);
   const yahooUsdtwd = await fetchYahooHistorical('USDTWD=X',  opts.from, opts.to); await sleep(500);
-  // Fallback：若 FMP 空，用 Yahoo
-  const yahooSp500  = Object.keys(fmpSp500).length  === 0 ? await fetchYahooHistorical('^GSPC',    opts.from, opts.to) : {};
-  const yahooNasdaq = Object.keys(fmpNasdaq).length === 0 ? await fetchYahooHistorical('^IXIC',    opts.from, opts.to) : {};
-  const yahooVix    = Object.keys(fmpVix).length    === 0 ? await fetchYahooHistorical('^VIX',     opts.from, opts.to) : {};
-  const yahooDxy    = Object.keys(fmpDxy).length    === 0 ? await fetchYahooHistorical('DX-Y.NYB', opts.from, opts.to) : {};
-  const yahooUs10y  = Object.keys(fmpUs10y).length  === 0 ? await fetchYahooHistorical('^TNX',     opts.from, opts.to) : {};
+  // Fallback：若 FMP 空或筆數明顯不足（< 200），用 Yahoo 補齊
+  const yahooSp500  = Object.keys(fmpSp500).length   === 0 ? await fetchYahooHistorical('^GSPC',    opts.from, opts.to) : {};
+  const yahooNasdaq = Object.keys(fmpNasdaq).length  === 0 ? await fetchYahooHistorical('^IXIC',    opts.from, opts.to) : {};
+  const yahooVix    = Object.keys(fmpVix).length     === 0 ? await fetchYahooHistorical('^VIX',     opts.from, opts.to) : {};
+  const yahooDxy    = Object.keys(fmpDxy).length     === 0 ? await fetchYahooHistorical('DX-Y.NYB', opts.from, opts.to) : {};
+  const yahooUs10y  = Object.keys(fmpUs10y).length   === 0 ? await fetchYahooHistorical('^TNX',     opts.from, opts.to) : {};
+  // Gold/Oil/Copper：FMP starter 方案期貨歷史有限，不足 200 筆則用 Yahoo 補齊
+  const yahooGold   = Object.keys(fmpGold).length   < 200 ? await fetchYahooHistorical('GC=F', opts.from, opts.to) : {}; await sleep(300);
+  const yahooOil    = Object.keys(fmpOil).length    < 200 ? await fetchYahooHistorical('CL=F', opts.from, opts.to) : {}; await sleep(300);
+  const yahooCopper = Object.keys(fmpCopper).length < 200 ? await fetchYahooHistorical('HG=F', opts.from, opts.to) : {}; await sleep(300);
 
   console.log('\n[3/5] FRED 利率數據...');
   const fredFedRate  = fetchFredHistorical('FEDFUNDS',     opts.from, opts.to); await sleep(300);
@@ -273,9 +279,9 @@ async function main() {
     const vix     = fmpVix[date]    || yahooVix[date]    || null;
     const dxy     = fmpDxy[date]    || yahooDxy[date]    || null;
     const us10y   = fmpUs10y[date]  || yahooUs10y[date]  || null;
-    const gold    = fmpGold[date]   || null;
-    const oilWti  = fmpOil[date]    || null;
-    const copper  = fmpCopper[date] || null;
+    const gold    = fmpGold[date]   || yahooGold[date]   || null;
+    const oilWti  = fmpOil[date]    || yahooOil[date]    || null;
+    const copper  = fmpCopper[date] || yahooCopper[date] || null;
     const btc     = yahooBtc[date]  || null;
     const usdtwd  = yahooUsdtwd[date] || null;
     const taiex   = finmindTaiex[date] || null;

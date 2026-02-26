@@ -56,9 +56,13 @@ function parseArgs() {
 }
 
 // ── HTTP 工具 ─────────────────────────────────────────────────────────────────
-function httpGet(url) {
+function httpGet(url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: 30000 }, res => {
+    const opts = {
+      timeout: 30000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MarketDigest/2.0)', ...headers }
+    };
+    const req = https.get(url, opts, res => {
       let body = '';
       res.on('data', c => body += c);
       res.on('end', () => {
@@ -71,17 +75,27 @@ function httpGet(url) {
   });
 }
 
+// FRED 專用：VPS 環境 Node.js https 無法連線 FRED，改用 curl
+function curlGet(url) {
+  try {
+    const raw = execSync(`curl -s -m 30 "${url}"`, { encoding: 'utf8', maxBuffer: 2 * 1024 * 1024 });
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`curl failed: ${err.message}`);
+  }
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── FMP 歷史數據 ─────────────────────────────────────────────────────────────
-// /stable/historical-price-full 回傳 { historical: [{date, close, changePercent, ...}] }
+// /stable/historical-price-eod/full 回傳直接陣列 [{symbol, date, close, changePercent, ...}]
 async function fetchFmpHistorical(symbol, from, to) {
   if (!FMP_KEY) { console.warn(`[FMP] FMP_API_KEY 未設定，跳過 ${symbol}`); return {}; }
-  const url = `https://financialmodelingprep.com/stable/historical-price-full?symbol=${encodeURIComponent(symbol)}&from=${from}&to=${to}&apikey=${FMP_KEY}`;
+  const url = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&from=${from}&to=${to}&apikey=${FMP_KEY}`;
   try {
     const json = await httpGet(url);
-    const rows = json.historical || [];
-    // 轉為 { 'YYYY-MM-DD': { close, changePct } }
+    // 直接陣列格式（非 {historical:[...]}），fields: date, close, changePercent
+    const rows = Array.isArray(json) ? json : (json.historical || []);
     const result = {};
     for (const r of rows) {
       if (r.date && r.close != null) {
@@ -101,9 +115,10 @@ async function fetchFmpHistorical(symbol, from, to) {
 async function fetchYahooHistorical(symbol, from, to) {
   const period1 = Math.floor(new Date(from + 'T00:00:00Z').getTime() / 1000);
   const period2 = Math.floor(new Date(to   + 'T23:59:59Z').getTime() / 1000);
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=history&crumb=`;
+  // 使用 query1（比 query2 穩定），移除 crumb 空值（避免 400），加 Accept header
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=history`;
   try {
-    const json = await httpGet(url);
+    const json = await httpGet(url, { 'Accept': 'application/json' });
     const chart = json?.chart?.result?.[0];
     if (!chart) throw new Error('no chart result');
     const timestamps = chart.timestamp || [];
@@ -130,11 +145,12 @@ async function fetchYahooHistorical(symbol, from, to) {
 }
 
 // ── FRED 歷史數據 ─────────────────────────────────────────────────────────────
-async function fetchFredHistorical(seriesId, from, to) {
+// 注意：VPS 環境 Node.js https 無法連線 FRED，固定使用 curl
+function fetchFredHistorical(seriesId, from, to) {
   if (!FRED_KEY) { console.warn(`[FRED] FRED_API_KEY 未設定，跳過 ${seriesId}`); return {}; }
   const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&observation_start=${from}&observation_end=${to}&api_key=${FRED_KEY}&file_type=json&limit=2000&sort_order=asc`;
   try {
-    const json = await httpGet(url);
+    const json = curlGet(url);
     if (json.error_code) throw new Error(json.error_message);
     const result = {};
     for (const obs of (json.observations || [])) {
@@ -217,7 +233,7 @@ async function main() {
   const fmpNasdaq = await fetchFmpHistorical('^IXIC',    opts.from, opts.to); await sleep(300);
   const fmpVix    = await fetchFmpHistorical('^VIX',     opts.from, opts.to); await sleep(300);
   const fmpDxy    = await fetchFmpHistorical('DX-Y.NYB', opts.from, opts.to); await sleep(300);
-  const fmpUs10y  = await fetchFmpHistorical('^TNX',     opts.from, opts.to); await sleep(300);
+  const fmpUs10y  = await fetchFmpHistorical('TNX',      opts.from, opts.to); await sleep(300); // FMP 無 ^ 前綴
   const fmpGold   = await fetchFmpHistorical('GC=F',     opts.from, opts.to); await sleep(300);
   const fmpOil    = await fetchFmpHistorical('CL=F',     opts.from, opts.to); await sleep(300);
   const fmpCopper = await fetchFmpHistorical('HG=F',     opts.from, opts.to); await sleep(300);
@@ -233,8 +249,8 @@ async function main() {
   const yahooUs10y  = Object.keys(fmpUs10y).length  === 0 ? await fetchYahooHistorical('^TNX',     opts.from, opts.to) : {};
 
   console.log('\n[3/5] FRED 利率數據...');
-  const fredFedRate  = await fetchFredHistorical('FEDFUNDS',     opts.from, opts.to); await sleep(300);
-  const fredHySpread = await fetchFredHistorical('BAMLH0A0HYM2', opts.from, opts.to); await sleep(300);
+  const fredFedRate  = fetchFredHistorical('FEDFUNDS',     opts.from, opts.to); await sleep(300);
+  const fredHySpread = fetchFredHistorical('BAMLH0A0HYM2', opts.from, opts.to); await sleep(300);
 
   console.log('\n[4/5] FinMind TAIEX...');
   const finmindTaiex = await fetchFinMindTaiex(opts.from, opts.to);

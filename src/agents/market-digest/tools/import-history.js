@@ -235,9 +235,9 @@ async function main() {
   const fmpVix    = await fetchFmpHistorical('^VIX',     opts.from, opts.to); await sleep(300);
   const fmpDxy    = await fetchFmpHistorical('DX-Y.NYB', opts.from, opts.to); await sleep(300);
   const fmpUs10y  = await fetchFmpHistorical('TNX',      opts.from, opts.to); await sleep(300); // FMP 無 ^ 前綴
-  const fmpGold   = await fetchFmpHistorical('GC=F',     opts.from, opts.to); await sleep(300);
-  const fmpOil    = await fetchFmpHistorical('CL=F',     opts.from, opts.to); await sleep(300);
-  const fmpCopper = await fetchFmpHistorical('HG=F',     opts.from, opts.to); await sleep(300);
+  const fmpGold   = await fetchFmpHistorical('GCUSD',    opts.from, opts.to); await sleep(300); // FMP 正確符號
+  const fmpOil    = await fetchFmpHistorical('CLUSD',    opts.from, opts.to); await sleep(300);
+  const fmpCopper = await fetchFmpHistorical('HGUSD',    opts.from, opts.to); await sleep(300);
 
   console.log('\n[2/5] Yahoo Finance（USDTWD, BTC + FMP fallback）...');
   const yahooBtc    = await fetchYahooHistorical('BTC-USD',   opts.from, opts.to); await sleep(500);

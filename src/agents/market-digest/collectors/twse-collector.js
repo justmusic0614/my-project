@@ -161,6 +161,32 @@ class TWSECollector extends BaseCollector {
     };
   }
 
+  /**
+   * 取得 TAIFEX Put/Call Ratio
+   * @returns {Promise<{value:number, asOf:string, fetchedAt:string, source:string}|null>}
+   */
+  async fetchPutCallRatio() {
+    try {
+      const data = await this._get('https://openapi.taifex.com.tw/v1/PutCallRatio');
+      if (!Array.isArray(data) || data.length === 0) return null;
+
+      // API 回傳最新的一筆
+      const latest = data[0];
+      const pcRatio = parseFloat(latest.PutVolume) / parseFloat(latest.CallVolume);
+      if (isNaN(pcRatio)) return null;
+
+      return {
+        value: pcRatio,
+        asOf: latest.Date || this._todayStr(),
+        fetchedAt: new Date().toISOString(),
+        source: 'taifex'
+      };
+    } catch (err) {
+      this.logger.warn(`Put/Call Ratio fetch failed: ${err.message}`);
+      return null;
+    }
+  }
+
   /** HTTP GET 輔助函數（簡單版，無需 axios） */
   _get(url) {
     return new Promise((resolve, reject) => {

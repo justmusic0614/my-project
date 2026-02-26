@@ -30,7 +30,8 @@ const logger = createLogger('processor:ai-analyzer');
 // Claude 模型 ID（與 config.json anthropic 區塊對齊）
 const MODELS = {
   haiku:  'claude-haiku-4-5-20251001',
-  sonnet: 'claude-sonnet-4-5-20250929'
+  sonnet: 'claude-sonnet-4-5-20250929',
+  sonnet46: 'claude-sonnet-4-6-20250514'
 };
 
 // 產業白名單（美股+台股重點產業，AI 提取時需至少匹配 1 個關鍵字）
@@ -423,6 +424,64 @@ ${newsList}
       costLedger.recordApiCall('anthropic', 1);
     }
     logger.debug(`${model} usage: in=${usage.input_tokens} out=${usage.output_tokens} news=${newsCount}`);
+  }
+
+  /**
+   * Sunday Tactical AI 分析
+   * @param {object} phaseResult - PhaseEngine.evaluate() 結果
+   * @param {object} weeklyContext - { keyLevels, triggers, contradictions, breadth, vix3m }
+   * @returns {Promise<{mainThesis:string, playbook:string, crossAssetNarrative:string, skipped:boolean}>}
+   */
+  async analyzeSundayTactical(phaseResult, weeklyContext) {
+    if (!this.apiKey) {
+      logger.warn('Sunday Tactical: no API key, skipping AI analysis');
+      return { mainThesis: '', playbook: '', crossAssetNarrative: '', skipped: true };
+    }
+
+    const prompt = `你是一位專業的市場策略師。根據以下量化數據，為交易者撰寫下週作戰框架。
+
+## Market Phase
+${JSON.stringify(phaseResult, null, 2)}
+
+## Weekly Context
+${JSON.stringify(weeklyContext, null, 2)}
+
+請以 JSON 格式回覆，包含以下三個欄位：
+{
+  "mainThesis": "下週主軸方向（1-2 句，明確方向性判斷）",
+  "playbook": "操作建議（3-5 條，條列式，含具體位階和條件）",
+  "crossAssetNarrative": "跨資產敘事（1-2 句，連結股/債/匯/商品的邏輯）"
+}
+
+要求：
+- mainThesis 必須有明確方向判斷（偏多/偏空/中性觀望）
+- playbook 每條必須是 "如果 A → 則 B" 格式
+- 使用繁體中文`;
+
+    try {
+      const client = new Anthropic({ apiKey: this.apiKey });
+      const response = await client.messages.create({
+        model: MODELS.sonnet46,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const text = response.content?.[0]?.text || '';
+      this._recordUsage(MODELS.sonnet46, response.usage, 0);
+
+      const jsonStr = this._extractJSON(text);
+      const parsed = JSON.parse(jsonStr);
+
+      return {
+        mainThesis: parsed.mainThesis || '',
+        playbook: parsed.playbook || '',
+        crossAssetNarrative: parsed.crossAssetNarrative || '',
+        skipped: false
+      };
+    } catch (err) {
+      logger.error(`Sunday Tactical AI failed: ${err.message}`);
+      return { mainThesis: '', playbook: '', crossAssetNarrative: '', skipped: true };
+    }
   }
 
   _buildSkippedResult(reason, extra = {}) {

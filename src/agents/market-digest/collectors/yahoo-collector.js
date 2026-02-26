@@ -129,6 +129,88 @@ class YahooCollector extends BaseCollector {
     return { symbol, close, change, changePct };
   }
 
+  /**
+   * 取得歷史日線資料（週日 pipeline 用）
+   * @param {string} symbol - Yahoo symbol（如 'SPY', '^GSPC', 'RSP'）
+   * @param {number} days - 需要的天數（預設 250）
+   * @returns {Promise<Array<{date:string, open:number|null, high:number|null, low:number|null, close:number, volume:number|null}>>}
+   *          升冪排序，取最近 days 筆；bars 不足不 throw
+   */
+  async fetchHistoricalPrices(symbol, days = 250) {
+    const range = days <= 252 ? '1y' : '2y';
+    const encoded = encodeURIComponent(symbol);
+    const url = `${YAHOO_BASE}${encoded}?interval=1d&range=${range}`;
+
+    let raw;
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        raw = await this._get(url);
+        break;
+      } catch (err) {
+        lastErr = err;
+        const msg = err.message;
+        // 404 或解析失敗 → 不 retry
+        if (msg.includes('404') || msg.includes('JSON parse')) throw err;
+        // 429/5xx → retry with backoff
+        if (attempt < 2) {
+          const wait = attempt === 0 ? 1000 : 3000;
+          await new Promise(r => setTimeout(r, wait));
+        }
+      }
+    }
+    if (!raw) throw lastErr || new Error(`fetchHistoricalPrices failed for ${symbol}`);
+
+    const result = raw?.chart?.result?.[0];
+    if (!result) throw new Error(`No chart data for ${symbol}`);
+
+    const timestamps = result.timestamp || [];
+    const quotes = result.indicators?.quote?.[0] || {};
+    const opens  = quotes.open   || [];
+    const highs  = quotes.high   || [];
+    const lows   = quotes.low    || [];
+    const closes = quotes.close  || [];
+    const vols   = quotes.volume || [];
+
+    const bars = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const close = closes[i];
+      // 只保留 close 為 number 的 bar
+      if (typeof close !== 'number' || isNaN(close)) continue;
+
+      const d = new Date(timestamps[i] * 1000);
+      const dateStr = d.toISOString().slice(0, 10);
+      bars.push({
+        date:   dateStr,
+        open:   typeof opens[i] === 'number' ? opens[i] : null,
+        high:   typeof highs[i] === 'number' ? highs[i] : null,
+        low:    typeof lows[i]  === 'number' ? lows[i]  : null,
+        close,
+        volume: typeof vols[i]  === 'number' ? vols[i]  : null
+      });
+    }
+
+    // 升冪排序，取最近 days 筆
+    bars.sort((a, b) => a.date.localeCompare(b.date));
+    return bars.slice(-days);
+  }
+
+  /**
+   * 取得 VIX3M 最新收盤（選用指標）
+   * @returns {Promise<number|null>} 收盤價；失敗 → null
+   */
+  async fetchVIX3M() {
+    try {
+      const encoded = encodeURIComponent('^VIX3M');
+      const raw = await this._get(`${YAHOO_BASE}${encoded}?interval=1d&range=1d`);
+      const close = raw?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      return typeof close === 'number' ? close : null;
+    } catch (err) {
+      this.logger.warn(`VIX3M fetch failed: ${err.message}`);
+      return null;
+    }
+  }
+
   _get(url) {
     return new Promise((resolve, reject) => {
       const req = https.get(url, {

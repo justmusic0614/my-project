@@ -195,6 +195,19 @@ class DailyRenderer {
       lines.push('');
     }
 
+    // ── AI skip 告警（若 AI 分析未執行，在 footer 前提示原因）────────────
+    if (aiResult.skipped) {
+      const reasonMap = {
+        no_api_key:  'ANTHROPIC_API_KEY 未設定',
+        over_budget: '今日預算已用盡',
+        no_news:     '無新聞輸入',
+        error:       'API 配額限制或服務異常',
+      };
+      const reasonText = reasonMap[aiResult.reason] || aiResult.reason;
+      lines.push(`⚠️ AI 分析未執行：${reasonText}`);
+      lines.push('');
+    }
+
     // ── Footer ────────────────────────────────────────────────────────────
     lines.push('━━━━━━━━━━━━━━━━━━');
     lines.push('免責聲明：本報告僅供資訊參考，不構成投資建議');

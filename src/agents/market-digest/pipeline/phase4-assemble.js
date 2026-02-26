@@ -133,6 +133,18 @@ async function runPhase4(config = {}) {
     logger.info('[PublishGuard] Telegram push skipped (already published today)');
   } else {
     try {
+      // AI skip 告警（先於日報推播，讓 admin 即時知曉）
+      if (phase3.aiResult?.skipped) {
+        const reasonMap = {
+          no_api_key:  'ANTHROPIC_API_KEY 未設定',
+          over_budget: '今日預算已用盡',
+          no_news:     '無新聞輸入',
+          error:       'API 配額限制或服務異常',
+        };
+        const reasonText = reasonMap[phase3.aiResult.reason] || phase3.aiResult.reason;
+        await telegram.publishAlert(`🚨 AI 分析未執行：${reasonText}\n日報 AI 區塊（Snapshot／Regime／產業）將空白，請確認 API 狀態`);
+      }
+
       // 第一段：Daily Brief（去除 Watchlist_Focus）
       telegramResult = await telegram.publishDailyBrief(briefTextNoWL);
 

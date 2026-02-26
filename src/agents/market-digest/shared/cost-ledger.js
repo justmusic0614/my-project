@@ -25,6 +25,9 @@ const DATA_DIR = path.join(__dirname, '../data/cost-ledger');
 // Perplexity sonar 每次呼叫估算成本（包月方案計 $0.005/call 估算）
 const PERPLEXITY_COST_PER_CALL = 0.005;
 
+// 台北時區日期（UTC+8），與 Pipeline 的 _today() 保持一致
+const _today = () => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+
 class CostLedger {
   constructor() {
     this.config = {
@@ -142,7 +145,7 @@ class CostLedger {
     this.calculateTotal();
     this.currentRun.finishedAt = new Date().toISOString();
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _today();
     const filePath = path.join(DATA_DIR, `${today}.json`);
 
     let daily = { date: today, runs: [], dailyTotal: { cost_usd: 0, cost_twd: 0 } };
@@ -176,7 +179,7 @@ class CostLedger {
    * @returns {{ overBudget: boolean, spent: number, budget: number }}
    */
   checkBudget() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _today();
     const filePath = path.join(DATA_DIR, `${today}.json`);
 
     let spent = 0;
@@ -205,7 +208,7 @@ class CostLedger {
    * 取得當日成本摘要（供 Telegram 報告附加）
    */
   getDailySummary() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _today();
     const filePath = path.join(DATA_DIR, `${today}.json`);
 
     if (!fs.existsSync(filePath)) {
@@ -229,7 +232,7 @@ class CostLedger {
    * FMP 日配額追蹤（免費版 200 req/day）
    */
   checkFmpQuota() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _today();
     const quotaPath = path.join(DATA_DIR, 'fmp-quota.json');
 
     let quota = { date: today, calls: 0 };
@@ -248,7 +251,7 @@ class CostLedger {
   }
 
   incrementFmpQuota(count = 1) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _today();
     const quotaPath = path.join(DATA_DIR, 'fmp-quota.json');
 
     let quota = { date: today, calls: 0 };

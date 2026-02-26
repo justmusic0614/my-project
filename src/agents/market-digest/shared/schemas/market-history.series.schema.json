@@ -1,0 +1,6 @@
+{
+  "description": "歷史時間序列格式（getHistory() 輸出 / watchlist-close.json 每個 symbol）",
+  "required": ["date", "close"],
+  "allowed_extra": ["open", "high", "low", "volume"],
+  "constraint": "date ascending, no duplicates, close must be number"
+}

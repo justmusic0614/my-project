@@ -1,0 +1,15 @@
+{
+  "description": "Phase Engine evaluate() 輸出結果格式",
+  "required": ["phase", "confidence", "scores", "indicators", "asOf", "degraded"],
+  "phase_enum": [
+    "RISK_ON_EARLY",
+    "RISK_ON_MATURE",
+    "RISK_ON_LATE",
+    "CHOPPY_NEUTRAL",
+    "RISK_OFF_CORRECTION",
+    "RISK_OFF_STRESS",
+    "CRISIS",
+    "UNKNOWN"
+  ],
+  "confidence_enum": ["HIGH", "MEDIUM", "LOW"]
+}

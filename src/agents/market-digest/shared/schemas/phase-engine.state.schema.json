@@ -1,0 +1,4 @@
+{
+  "description": "Phase Engine 持久化狀態格式",
+  "required": ["schemaVersion", "currentPhase", "previousPhase", "phaseDays", "lastUpdated"]
+}

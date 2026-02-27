@@ -135,6 +135,7 @@ async function runPhase4(config = {}) {
     triggers:         phase3.triggers         || null,
     contradictions:   phase3.contradictions   || null,
     tacticalBias:     phase3.tacticalBias     || null,
+    autoPlaybook:     phase3.autoPlaybook     || null,
     riskOff
   };
 

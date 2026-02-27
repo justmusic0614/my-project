@@ -192,7 +192,13 @@ async function main() {
         events:           phase3.events     || [],
         secFilings:       phase3.secFilings || [],
         institutionalData: phase3.institutionalData || {},
-        gainersLosers:    phase3.gainersLosers || {}
+        gainersLosers:    phase3.gainersLosers || {},
+        phaseEngine:      phase3.phaseEngine      || null,
+        keyLevels:        phase3.keyLevels        || null,
+        triggers:         phase3.triggers         || null,
+        contradictions:   phase3.contradictions   || null,
+        tacticalBias:     phase3.tacticalBias     || null,
+        autoPlaybook:     phase3.autoPlaybook     || null
       });
       console.log(text);
       break;

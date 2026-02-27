@@ -85,7 +85,8 @@ async function handle(args, config = {}, context = {}) {
       keyLevels:         phase3.keyLevels          || null,
       triggers:          phase3.triggers           || null,
       contradictions:    phase3.contradictions      || null,
-      tacticalBias:      phase3.tacticalBias       || null
+      tacticalBias:      phase3.tacticalBias       || null,
+      autoPlaybook:      phase3.autoPlaybook       || null
     });
 
     const ts = new Date(phase3.processedAt || phase3.date).toLocaleString('zh-TW', {

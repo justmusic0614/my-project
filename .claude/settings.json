@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/review_plan_loop.py"
+            "command": "python3 /Users/suweicheng/projects/my-project/.claude/hooks/review_plan_loop.py"
           }
         ]
       }

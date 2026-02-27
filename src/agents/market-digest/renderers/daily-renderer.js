@@ -148,6 +148,10 @@ class DailyRenderer {
     const tacticalBiasBlock = this._renderTacticalBias(briefData.tacticalBias);
     if (tacticalBiasBlock) lines.push(tacticalBiasBlock);
 
+    // ── 4f. Auto Playbook ─────────────────────────────────────────────────
+    const playbookBlock = this._renderAutoPlaybook(briefData.autoPlaybook, briefData);
+    if (playbookBlock) lines.push(playbookBlock);
+
     // ── 5. Geopolitics（有 P0 地緣事件才顯示）────────────────────────────
     // 改用 AI 分類的 category 欄位（Stage 1 Haiku 判斷）
     const geoNews = rankedNews.filter(n =>
@@ -624,6 +628,50 @@ class DailyRenderer {
       lines.push(`  Positioning: ${tb.positioning}`);
     }
 
+    return lines.join('\n');
+  }
+
+  _renderAutoPlaybook(pb, data) {
+    if (!pb) return '';
+
+    const lines = ['\u{1F9ED} Auto_Playbook'];
+
+    // Base case
+    if (pb.baseCase?.summary) {
+      lines.push(`  ${pb.baseCase.summary}`);
+    }
+
+    // Confidence
+    if (pb.confidence) {
+      lines.push(`  Confidence: ${pb.confidence}`);
+    }
+
+    // Risk rules（高優先）
+    if (Array.isArray(pb.riskRules) && pb.riskRules.length) {
+      lines.push('  ⚠️ Risk Rules:');
+      pb.riskRules.forEach(r => lines.push(`    • ${r}`));
+    }
+
+    // Scenarios
+    if (Array.isArray(pb.scenarios) && pb.scenarios.length) {
+      pb.scenarios.forEach(sc => {
+        lines.push(`  📌 ${sc.title}`);
+        if (sc.when) lines.push(`    When: ${sc.when}`);
+        if (Array.isArray(sc.actions) && sc.actions.length) {
+          sc.actions.forEach(a => lines.push(`    → ${a}`));
+        }
+        if (Array.isArray(sc.confirms) && sc.confirms.length) {
+          lines.push(`    Confirms: ${sc.confirms.join('；')}`);
+        }
+        if (Array.isArray(sc.invalidates) && sc.invalidates.length) {
+          lines.push(`    Invalidates: ${sc.invalidates.join('；')}`);
+        }
+      });
+    }
+
+    if (lines.length <= 1) return '';
+    const dbg = this._debugLine(data);
+    if (dbg) lines.push(dbg);
     return lines.join('\n');
   }
 

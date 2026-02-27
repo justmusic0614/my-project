@@ -173,6 +173,7 @@ async function runPhase3(config = {}) {
   let triggers = null;
   let contradictions = null;
   let tacticalBias = null;
+  let autoPlaybook = null;
   try {
     const histMgr = new MarketHistoryManager();
 
@@ -307,6 +308,21 @@ async function runPhase3(config = {}) {
       })
     );
 
+    // Step 6g: Auto Playbook
+    logger.info('[Step 6g] Auto Playbook...');
+    const spxLast = (histMgr.getHistory('sp500', 2) || []).at(-1)?.close ?? null;
+    autoPlaybook = await safe('autoPlaybook', () =>
+      require('../analyzers/auto-playbook-engine').evaluate({
+        tacticalBias,
+        phaseEngine: phaseEngineResult,
+        keyLevels,
+        triggers,
+        contradictions,
+        riskOffScore: _riskOff?.score,
+        lastPrice: spxLast,
+      })
+    );
+
     histMgr.closeDb();
   } catch (err) {
     logger.warn(`Step 6 (Phase Engine) failed: ${err.message}`);
@@ -347,6 +363,7 @@ async function runPhase3(config = {}) {
     triggers,
     contradictions,
     tacticalBias,
+    autoPlaybook,
 
     // 市場狀態（透傳到 Phase 4 / Renderer）
     marketContext: phase2.marketContext || config.marketContext || null

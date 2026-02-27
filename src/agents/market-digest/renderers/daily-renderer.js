@@ -605,9 +605,10 @@ class DailyRenderer {
       BEARISH: 'Bearish',
     };
 
-    const fmt = (x) => {
+    const fmt = (x, dp = 2) => {
       const n = Number(x);
-      return Number.isFinite(n) ? n.toLocaleString() : String(x);
+      if (!Number.isFinite(n)) return String(x);
+      return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: dp });
     };
 
     const lines = ['\u{1F3AF} Tactical_Bias'];

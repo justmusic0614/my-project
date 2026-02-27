@@ -287,12 +287,23 @@ async function runPhase3(config = {}) {
 
     // Step 6f: Tactical Bias
     logger.info('[Step 6f] Tactical Bias...');
+    const { analyzeRiskOff: _analyzeRiskOff } = require('../analyzers/risk-off-analyzer');
+    const _riskOff = _analyzeRiskOff({
+      vix:        marketData.VIX?.value                                             || 15,
+      gold:       { change: marketData.GOLD?.changePct                              || 0 },
+      usd_jpy:    { change: 0 },
+      treasury:   { yield_10y_change: marketData.US10Y?.change ?? marketData.US10Y?.changePct ?? 0 },
+      foreign:    { netBuy: (phase2.twse?.institutional?.foreign || 0) / 1e6 }, // TWSE foreign 原始單位：元 → /1e6 = 百萬元
+      stockIndex: { change: marketData.TAIEX?.changePct                             || 0 },
+      volatility: { daily: Math.abs(marketData.TAIEX?.changePct                    || 0) },
+    }, uniqueNews || []);
     tacticalBias = await safe('tacticalBias', () =>
       require('../analyzers/tactical-bias-engine').evaluate({
         phaseEngine: phaseEngineResult,
         keyLevels,
         triggers,
         contradictions,
+        riskOffScore: (_riskOff && Number.isFinite(Number(_riskOff.score))) ? Number(_riskOff.score) : null,
       })
     );
 

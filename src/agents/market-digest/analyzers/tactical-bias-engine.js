@@ -116,6 +116,23 @@ function _downgrade(bias) {
   return bias;
 }
 
+function _downgradeConfidence(conf) {
+  if (conf === CONF.HIGH) return CONF.MEDIUM;
+  if (conf === CONF.MEDIUM) return CONF.LOW;
+  return CONF.LOW;
+}
+
+// items >= 2（以 message 去重後）視為重大矛盾
+// 去重避免 detector 吐兩條相同訊息誤判重大
+function _isMajorContradictions(contradictions) {
+  if (!contradictions) return false;
+  let items = [];
+  if (Array.isArray(contradictions)) items = contradictions;
+  else if (Array.isArray(contradictions.items)) items = contradictions.items;
+  const unique = new Set(items.map(c => String(c?.message || c?.description || '').trim().toLowerCase()));
+  return unique.size >= 2;
+}
+
 function _biasFromPhase(phase) {
   const p = _upper(phase);
   if (p.includes('RISK_ON_EARLY')) return BIAS.BULLISH;
@@ -125,7 +142,13 @@ function _biasFromPhase(phase) {
   return BIAS.NEUTRAL;
 }
 
-function evaluate({ phaseEngine, keyLevels, triggers, contradictions }) {
+// 決策順序：
+//   1. HIGH triggers → bias/confidence override
+//   2. PhaseEngine → base bias/confidence
+//   3. contradictions → 降 confidence；重大矛盾才降 bias
+//   4. Regime clamp（riskOffScore override，最後覆蓋）
+//   5. positioning 用 final bias 產出
+function evaluate({ phaseEngine, keyLevels, triggers, contradictions, riskOffScore }) {
   const fired = _getFiredTriggers(triggers);
   const hasHigh = fired.some(t => _getTriggerLevel(t) === 'HIGH');
 
@@ -143,10 +166,25 @@ function evaluate({ phaseEngine, keyLevels, triggers, contradictions }) {
     confidence = _getConfidence(phaseEngine);
   }
 
-  // 3) contradictions downgrade
+  // 3) contradictions：先降 confidence，重大矛盾（去重後 >= 2）才降 bias
   if (_hasContradictions(contradictions)) {
-    bias = _downgrade(bias);
-    if (confidence === CONF.HIGH) confidence = CONF.MEDIUM;
+    confidence = _downgradeConfidence(confidence);
+    if (_isMajorContradictions(contradictions)) {
+      bias = _downgrade(bias);
+    }
+  }
+
+  // 4) Regime clamp（riskOffScore override，最後執行）
+  // 型別容錯：字串 "45" 也能正確轉型
+  const rso = Number.isFinite(Number(riskOffScore)) ? Number(riskOffScore) : null;
+  if (rso !== null) {
+    if (rso >= 60) {
+      bias = BIAS.BEARISH;
+      if (confidence === CONF.HIGH) confidence = CONF.MEDIUM;
+    } else if (rso >= 40 && bias !== BIAS.BEARISH) {
+      bias = BIAS.DEFENSIVE;
+      if (confidence === CONF.HIGH) confidence = CONF.MEDIUM;
+    }
   }
 
   // key levels

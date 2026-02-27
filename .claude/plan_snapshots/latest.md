@@ -74,6 +74,33 @@
 - [x] BLOCKED 時輸出 `decision: block`，Claude Code 正確阻擋 ✅（Round 03，6 個 IMP）
 - [x] 修正後再次 APPROVED，守門閉環完整驗證 ✅（Round 04）
 
+### M4 — Review Watch Dashboard（即時監控面板）
+
+**目標**：新增一個終端即時面板，讓開發者在 VS Code 中一眼看到審稿閉環的運作狀態，不需要手動翻 `docs/reviews/` 目錄。
+
+**產出物**：
+- [ ] `tools/review_watch_dashboard.py` — 純 Python（無第三方套件）即時面板
+- [ ] `.vscode/tasks.json` — VS Code Task 設定（Cmd+Shift+P → Run Task）
+
+**功能**：
+- 自動偵測 Current Round（優先讀 `.claude/review_state.json`，fallback 從檔名推斷）
+- 顯示 6 步驟進度條：`[✓]` 完成 / `[ ]` 等待 / `[!]` 過期或順序異常
+  1. PLAN 更新
+  2. OpenAI review 保存
+  3. Diff 保存
+  4. Summary 保存
+  5. Checklist 更新
+  6. Snapshot 保存
+- 顯示最後 verdict（APPROVED / NEEDS_REVISION / BLOCKED）
+- 顯示最新 summary 尾巴（18 行）
+- 卡住超過 20 秒警示（⚠️ STALLED）
+- 每 0.8 秒自動刷新
+
+**驗收標準**：
+1. `python3 tools/review_watch_dashboard.py` 在 project root 執行不報錯
+2. 面板顯示 Round 04、Verdict APPROVED
+3. VS Code Task 可正常啟動面板
+
 ---
 
 ## 風險
@@ -86,6 +113,9 @@
 | OpenAI API 回傳格式異常 | 低 | 中 | VERDICT 解析失敗時預設 NEEDS_REVISION |
 | PLAN.md 超過 16000 字元 | 低 | 低 | 截斷後送 OpenAI，加 [TRUNCATED] 標記 |
 | MAX_ROUNDS 耗盡 | 低 | 低 | 超過後腳本 graceful exit，不阻擋 |
+| Dashboard Python 版本不相容 | 低 | 低 | 加 `from __future__ import annotations` 解決 3.9 型別標註問題 |
+| Dashboard 從錯誤目錄執行 | 低 | 低 | VS Code Task cwd 預設為 workspace root；手動執行時需確認 pwd |
+| plan_snapshots 目錄不存在 | 低 | 低 | step 6 顯示 `[ ]` 不影響其他步驟，不崩潰 |
 
 ---
 
@@ -121,3 +151,19 @@
 **Hook 回傳**：使用 JSON `{"decision": "block"/"continue", ...}` 而非單純 feedback 文字
 
 **狀態**：Gate-0 建立中（2026-02-27）
+
+### 2026-02-27 — M4 Review Watch Dashboard
+
+**決策**：新增 `tools/review_watch_dashboard.py` 即時監控面板 + `.vscode/tasks.json` VS Code Task
+
+**原因**：審稿閉環運作時，開發者需反覆翻閱 `docs/reviews/` 確認進度和 verdict，效率低且容易漏看。需要一個即時面板一眼掌握 6 步驟進度。
+
+**方案選擇**：
+- ~~方案 A：VS Code Extension~~（開發成本過高，不合比例）
+- ~~方案 B：Web Dashboard~~（需要 http server，過度工程）
+- ✅ **方案 C：純 Python 終端面板 + VS Code Task**（零依賴、0.8 秒輪詢、一鍵啟動）
+
+**技術決策**：
+- 加 `from __future__ import annotations` 確保 Python 3.9+ 相容
+- 使用 ANSI escape codes 清屏，不依賴 curses
+- 優先從 `.claude/review_state.json` 推斷 round，fallback 從檔名 glob

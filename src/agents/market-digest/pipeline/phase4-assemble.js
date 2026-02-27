@@ -28,6 +28,7 @@ const { DailyRenderer }   = require('../renderers/daily-renderer');
 const TelegramPublisher   = require('../publishers/telegram-publisher');
 const ArchivePublisher    = require('../publishers/archive-publisher');
 const AlertPublisher      = require('../publishers/alert-publisher');
+const { analyzeRiskOff }  = require('../analyzers/risk-off-analyzer');
 
 const logger = createLogger('pipeline:phase4');
 
@@ -107,9 +108,19 @@ async function runPhase4(config = {}) {
   // ── Step 2: 組裝 Daily Brief ──────────────────────────────────────────────
   logger.info('[Step 1] Rendering Daily Brief...');
   const renderer = new DailyRenderer();
+  const md = phase3.marketData || {};
+  const riskOff = analyzeRiskOff({
+    vix:        md.VIX?.value              || 15,
+    gold:       { change: md.GOLD?.changePct        || 0 },
+    usd_jpy:    { change: 0 },
+    treasury:   { yield_10y_change: md.US10Y?.changePct || 0 },
+    foreign:    { netBuy: (phase3.institutionalData?.foreign || 0) / 1e6 },
+    stockIndex: { change: md.TAIEX?.changePct       || 0 },
+    volatility: { daily: Math.abs(md.TAIEX?.changePct || 0) }
+  }, phase3.uniqueNews || []);
   const briefData = {
     date:             reportDate,
-    marketData:       phase3.marketData       || {},
+    marketData:       md,
     aiResult:         phase3.aiResult         || {},
     rankedNews:       phase3.aiResult?.rankedNews || phase3.uniqueNews || [],
     watchlist,
@@ -122,7 +133,8 @@ async function runPhase4(config = {}) {
     phaseEngine:      phase3.phaseEngine      || null,
     keyLevels:        phase3.keyLevels        || null,
     triggers:         phase3.triggers         || null,
-    contradictions:   phase3.contradictions   || null
+    contradictions:   phase3.contradictions   || null,
+    riskOff
   };
 
   // 渲染完整版（存檔用）

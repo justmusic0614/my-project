@@ -79,7 +79,12 @@ async function handle(args, config = {}, context = {}) {
       events:            phase3.events            || [],
       secFilings:        phase3.secFilings         || [],
       institutionalData: phase3.institutionalData  || {},
-      gainersLosers:     phase3.gainersLosers      || {}
+      gainersLosers:     phase3.gainersLosers      || {},
+      processedAt:       phase3.processedAt        || null,
+      phaseEngine:       phase3.phaseEngine        || null,
+      keyLevels:         phase3.keyLevels          || null,
+      triggers:          phase3.triggers           || null,
+      contradictions:    phase3.contradictions      || null
     });
 
     const ts = new Date(phase3.processedAt || phase3.date).toLocaleString('zh-TW', {

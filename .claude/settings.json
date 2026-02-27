@@ -38,6 +38,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/review_plan_loop.py"
+          }
+        ]
+      }
     ]
   }
 }

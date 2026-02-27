@@ -149,6 +149,7 @@ class PhaseEngine {
     if (degradedReasons.length > 0) confidence = 'MEDIUM';
     if (phaseDays <= 2) confidence = 'MEDIUM';
     if (phase === 'UNKNOWN') confidence = 'LOW';
+    if (degradedReasons.includes('breadth unavailable')) confidence = 'LOW';
 
     // ══════════════════════════════════════════════════════════════════════
     //  New State（供 saveState 持久化）

@@ -73,7 +73,7 @@ class DailyRenderer {
     if (phaseEngine && phaseEngine.phase) {
       const breadthState = phaseEngine?.indicators?.breadthState;
       const breadthPart  = ` | Breadth: ${breadthState || 'N/A'}`;
-      const phaseLine = `Market Phase: ${phaseEngine.phase}（連續 ${phaseEngine.newState?.phaseDays || '?'} 日）  信心：${phaseEngine.confidence || 'N/A'}${breadthPart}`;
+      const phaseLine = `Market Phase: ${phaseEngine.phase}（Trend-based, 連續 ${phaseEngine.newState?.phaseDays || '?'} 日） | Confidence: ${phaseEngine.confidence || 'N/A'}${breadthPart}`;
       lines.push(phaseLine);
       if (phaseEngine.degraded) {
         const reasons = phaseEngine.degradedReasons?.join(', ') || 'SQLite 歷史不足或 DB 未初始化';
@@ -122,7 +122,7 @@ class DailyRenderer {
       // Fix G: 同行加入量化 Risk-off Score（若有）
       const riskOff = briefData.riskOff;
       const scoreStr = riskOff ? `  |  Risk-off: ${riskOff.score}/100 ${riskOff.signal}` : '';
-      lines.push(`📈 Market_Regime: ${regimeEmoji} ${aiResult.marketRegime}${scoreStr}`);
+      lines.push(`📈 Market_Regime: ${regimeEmoji} ${aiResult.marketRegime}（Macro/Volatility-based）${scoreStr}`);
       if (aiResult.structuralTheme) {
         lines.push(`  Structural Theme: ${aiResult.structuralTheme}`);
       }

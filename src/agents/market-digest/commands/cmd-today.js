@@ -84,7 +84,8 @@ async function handle(args, config = {}, context = {}) {
       phaseEngine:       phase3.phaseEngine        || null,
       keyLevels:         phase3.keyLevels          || null,
       triggers:          phase3.triggers           || null,
-      contradictions:    phase3.contradictions      || null
+      contradictions:    phase3.contradictions      || null,
+      tacticalBias:      phase3.tacticalBias       || null
     });
 
     const ts = new Date(phase3.processedAt || phase3.date).toLocaleString('zh-TW', {

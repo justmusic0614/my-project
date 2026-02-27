@@ -172,6 +172,7 @@ async function runPhase3(config = {}) {
   let keyLevels = null;
   let triggers = null;
   let contradictions = null;
+  let tacticalBias = null;
   try {
     const histMgr = new MarketHistoryManager();
 
@@ -284,6 +285,17 @@ async function runPhase3(config = {}) {
       require('../shared/contradiction-detector').detect(indicatorsForContra)
     );
 
+    // Step 6f: Tactical Bias
+    logger.info('[Step 6f] Tactical Bias...');
+    tacticalBias = await safe('tacticalBias', () =>
+      require('../analyzers/tactical-bias-engine').evaluate({
+        phaseEngine: phaseEngineResult,
+        keyLevels,
+        triggers,
+        contradictions,
+      })
+    );
+
     histMgr.closeDb();
   } catch (err) {
     logger.warn(`Step 6 (Phase Engine) failed: ${err.message}`);
@@ -323,6 +335,7 @@ async function runPhase3(config = {}) {
     keyLevels,
     triggers,
     contradictions,
+    tacticalBias,
 
     // 市場狀態（透傳到 Phase 4 / Renderer）
     marketContext: phase2.marketContext || config.marketContext || null

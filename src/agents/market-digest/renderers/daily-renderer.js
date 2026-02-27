@@ -144,6 +144,10 @@ class DailyRenderer {
     const contraBlock = this._renderContradictions(briefData.contradictions, briefData);
     if (contraBlock) { lines.push(contraBlock); lines.push(''); }
 
+    // ── 4e. Tactical Bias ────────────────────────────────────────────────
+    const tacticalBiasBlock = this._renderTacticalBias(briefData.tacticalBias);
+    if (tacticalBiasBlock) lines.push(tacticalBiasBlock);
+
     // ── 5. Geopolitics（有 P0 地緣事件才顯示）────────────────────────────
     // 改用 AI 分類的 category 欄位（Stage 1 Haiku 判斷）
     const geoNews = rankedNews.filter(n =>
@@ -588,6 +592,37 @@ class DailyRenderer {
     if (lines.length <= 1) return '';
     const dbg = this._debugLine(data);
     if (dbg) lines.push(dbg);
+    return lines.join('\n');
+  }
+
+  _renderTacticalBias(tb) {
+    if (!tb || !tb.bias) return '';
+
+    const biasLabel = {
+      BULLISH: 'Bullish',
+      NEUTRAL: 'Neutral',
+      DEFENSIVE: 'Defensive tilt',
+      BEARISH: 'Bearish',
+    };
+
+    const fmt = (x) => {
+      const n = Number(x);
+      return Number.isFinite(n) ? n.toLocaleString() : String(x);
+    };
+
+    const lines = ['\u{1F3AF} Tactical_Bias'];
+    lines.push(`  Bias: ${biasLabel[tb.bias] || tb.bias}`);
+
+    if (tb.upsideLevel?.value != null) {
+      lines.push(`  Upside trigger: SPX > ${fmt(tb.upsideLevel.value)} (${tb.upsideLevel.label})`);
+    }
+    if (tb.downsideLevel?.value != null) {
+      lines.push(`  Downside trigger: SPX < ${fmt(tb.downsideLevel.value)} (${tb.downsideLevel.label})`);
+    }
+    if (tb.positioning) {
+      lines.push(`  Positioning: ${tb.positioning}`);
+    }
+
     return lines.join('\n');
   }
 

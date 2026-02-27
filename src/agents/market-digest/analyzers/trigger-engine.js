@@ -65,9 +65,7 @@ function evaluate(indicators, phaseState = {}) {
     }
   }
 
-  if (results.length > 0) {
-    logger.info(`Triggers fired: ${results.map(r => r.id).join(', ')}`);
-  }
+  logger.info(`Triggers evaluated: fired=${results.length}${results.length > 0 ? ` (${results.map(r => r.id).join(', ')})` : ' (all clear)'}`);
 
   return results;
 }

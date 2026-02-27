@@ -11,12 +11,13 @@
  *   node tools/import-history.js --dry-run --from 2025-01-01 # 只顯示，不寫入
  *   node tools/import-history.js --etf-only --from 2022-01-01 # 只補 SPY/RSP/QQQ
  *   node tools/import-history.js --backfill-series            # 從 SQLite 補 series JSON
+ *   node tools/import-history.js --backfill-taiex [--from 2022-01-01] # 補 TAIEX 歷史（TWSE）
  *
  * 資料來源（優先順序）：
  *   FMP (付費)    → SP500, NASDAQ, VIX, DXY, US10Y, GOLD, OIL_WTI, COPPER
  *   Yahoo (免費)  → SPY, RSP, QQQ, USDTWD, BTC；FMP 失敗時 fallback
  *   FRED (免費)   → FED_RATE, HY_SPREAD
- *   FinMind (付費) → TAIEX
+ *   TWSE (免費)   → TAIEX（加權股價指數，MI_5MINS_HIST open_data）
  *
  * 配額估算（4 年歷史）：
  *   FMP: ~8 calls, Yahoo: ~5 calls, FRED: 2 calls, FinMind: 1 call（合計 ~16 calls）
@@ -44,8 +45,9 @@ function parseArgs() {
     from:           null,
     to:             new Date().toISOString().slice(0, 10),
     dryRun:         false,
-    etfOnly:        false,  // 只補 SPY/RSP/QQQ（不跑 FMP/FRED/FinMind）
-    backfillSeries: false   // 從 SQLite 補 dxy/vix/hy_spread/us10y series JSON
+    etfOnly:        false,  // 只補 SPY/RSP/QQQ（不跑 FMP/FRED）
+    backfillSeries: false,  // 從 SQLite 補 dxy/vix/hy_spread/us10y series JSON
+    backfillTaiex:  false   // 從 TWSE OpenAPI 補 TAIEX 加權股價指數
   };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--from')             { opts.from           = args[++i]; continue; }
@@ -53,12 +55,14 @@ function parseArgs() {
     if (args[i] === '--dry-run')          { opts.dryRun         = true;      continue; }
     if (args[i] === '--etf-only')         { opts.etfOnly        = true;      continue; }
     if (args[i] === '--backfill-series')  { opts.backfillSeries = true;      continue; }
+    if (args[i] === '--backfill-taiex')   { opts.backfillTaiex  = true;      continue; }
   }
-  // --backfill-series 不需要 --from
-  if (!opts.from && !opts.backfillSeries) {
+  // --backfill-series / --backfill-taiex 不需要 --from（有預設值）
+  if (!opts.from && !opts.backfillSeries && !opts.backfillTaiex) {
     console.error('用法：node tools/import-history.js --from YYYY-MM-DD [--to YYYY-MM-DD] [--dry-run]');
     console.error('      node tools/import-history.js --etf-only --from YYYY-MM-DD');
     console.error('      node tools/import-history.js --backfill-series');
+    console.error('      node tools/import-history.js --backfill-taiex [--from 2022-01-01]');
     process.exit(1);
   }
   return opts;
@@ -82,6 +86,47 @@ function httpGet(url, headers = {}) {
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error(`timeout: ${url}`)); });
   });
+}
+
+// 純文字 GET（不做 JSON.parse，用於 TWSE CSV）
+function httpGetText(url) {
+  return new Promise((resolve, reject) => {
+    const opts = {
+      timeout: 30000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MarketDigest/2.0)' }
+    };
+    const req = https.get(url, opts, res => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error(`timeout: ${url}`)); });
+  });
+}
+
+// 解析帶引號的 CSV 行（處理欄位內含逗號的情況）
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// 民國日期 → 西元日期（支援 "YYY/MM/DD" 或 "YYYMMDD"）
+function parseRocDate(rocStr) {
+  const s = rocStr.replace(/"/g, '').trim();
+  const m1 = s.match(/^(\d{3})\/(\d{2})\/(\d{2})$/);
+  if (m1) return `${parseInt(m1[1]) + 1911}-${m1[2]}-${m1[3]}`;
+  const m2 = s.match(/^(\d{3})(\d{2})(\d{2})$/);
+  if (m2) return `${parseInt(m2[1]) + 1911}-${m2[2]}-${m2[3]}`;
+  return null;
 }
 
 // FRED 專用：VPS 環境 Node.js https 無法連線 FRED，改用 curl
@@ -293,6 +338,97 @@ function backfillSeriesFromDb(dataDir, dryRun) {
   db.close();
 }
 
+// ── TWSE TAIEX Backfill ───────────────────────────────────────────────────────
+/**
+ * 回傳 'YYYY-MM' 格式的月份清單（含頭尾）
+ */
+function getMonthList(fromDate, toDate) {
+  const result = [];
+  const cur = new Date(fromDate.slice(0, 7) + '-01T00:00:00Z');
+  const end = new Date(toDate.slice(0, 7)   + '-01T00:00:00Z');
+  while (cur <= end) {
+    result.push(cur.toISOString().slice(0, 7));
+    cur.setUTCMonth(cur.getUTCMonth() + 1);
+  }
+  return result;
+}
+
+/**
+ * 抓取 TWSE MI_5MINS_HIST 月份資料（open_data CSV）
+ * 回傳 { 'YYYY-MM-DD': closeValue, ... }
+ */
+async function fetchTwseIndexMonthly(yyyymm) {
+  const dateParam = yyyymm.replace('-', '') + '01';
+  const url = `https://www.twse.com.tw/indicesReport/MI_5MINS_HIST?response=open_data&date=${dateParam}`;
+  const text = await httpGetText(url);
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  if (lines.length < 2) return {};
+
+  // 第一行是標題，找收盤價欄位
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/"/g, '').trim());
+  // 欄位名稱通常包含「收盤」
+  let closeIdx = headers.findIndex(h => h.includes('收盤'));
+  if (closeIdx === -1) closeIdx = 4; // 預設第 5 欄
+
+  const result = {};
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    if (cols.length < 2) continue;
+    const dateStr = parseRocDate(cols[0]);
+    if (!dateStr) continue;
+    // 移除千位分隔符再轉數字
+    const closeRaw = (cols[closeIdx] || '').replace(/"/g, '').replace(/,/g, '');
+    const close = parseFloat(closeRaw);
+    if (!isNaN(close) && close > 1000) { // TAIEX 正常值 > 1,000
+      result[dateStr] = close;
+    }
+  }
+  return result;
+}
+
+/**
+ * 批次從 TWSE 抓取指定日期範圍的 TAIEX 日收盤，寫入 SQLite
+ */
+async function backfillTaiex(fromDate, dryRun) {
+  const toDate = new Date().toISOString().slice(0, 10);
+  const months = getMonthList(fromDate, toDate);
+  console.log(`\n=== TAIEX Backfill（TWSE）：${months[0]} ~ ${months[months.length - 1]}（${months.length} 個月）===`);
+  if (dryRun) console.log('[DRY RUN] 只顯示，不寫入\n');
+
+  const allData = {};
+  for (const ym of months) {
+    try {
+      const monthData = await fetchTwseIndexMonthly(ym);
+      const count = Object.keys(monthData).length;
+      Object.assign(allData, monthData);
+      console.log(`  ${ym}: ${count} 筆`);
+    } catch (err) {
+      console.warn(`  ${ym}: 失敗 — ${err.message}`);
+    }
+    await sleep(600); // 避免 TWSE rate limit
+  }
+
+  const sorted = Object.keys(allData).sort();
+  if (sorted.length === 0) {
+    console.error('未取得任何 TAIEX 數據。');
+    return;
+  }
+  console.log(`\n  合計 ${sorted.length} 筆（${sorted[0]} ~ ${sorted[sorted.length - 1]}）`);
+  console.log(`  範圍：${allData[sorted[0]].toFixed(2)} ~ ${allData[sorted[sorted.length - 1]].toFixed(2)}`);
+
+  if (dryRun) {
+    console.log('  預覽前 5 筆：', sorted.slice(0, 5).map(d => `${d}: ${allData[d]}`));
+    return;
+  }
+
+  const { MarketHistoryManager } = require('../processors/market-history-manager');
+  const mgr = new MarketHistoryManager();
+  const rows = sorted.map(date => ({ date, close: allData[date] }));
+  mgr.batchInsertColumn('taiex', rows);
+  mgr.closeDb();
+  console.log('✅ TAIEX backfill 完成。');
+}
+
 // ── 主程式 ────────────────────────────────────────────────────────────────────
 async function main() {
   const opts = parseArgs();
@@ -303,6 +439,14 @@ async function main() {
     console.log('\n=== Series JSON 補足模式（從 SQLite）===');
     if (opts.dryRun) console.log('[DRY RUN] 只顯示，不寫入\n');
     backfillSeriesFromDb(DATA_DIR, opts.dryRun);
+    console.log('\n完成。');
+    return;
+  }
+
+  // ── 模式 D：補 TAIEX（TWSE OpenAPI）──────────────────────────────────────
+  if (opts.backfillTaiex) {
+    const defaultFrom = new Date(Date.now() - 4 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await backfillTaiex(opts.from || defaultFrom, opts.dryRun);
     console.log('\n完成。');
     return;
   }
@@ -369,8 +513,10 @@ async function main() {
   const fredFedRate  = fetchFredHistorical('FEDFUNDS',     opts.from, opts.to); await sleep(300);
   const fredHySpread = fetchFredHistorical('BAMLH0A0HYM2', opts.from, opts.to); await sleep(300);
 
-  console.log('\n[4/6] FinMind TAIEX...');
-  const finmindTaiex = await fetchFinMindTaiex(opts.from, opts.to);
+  // FinMind TaiwanStockTotalReturnIndex 為報酬指數（現值 ~70,000-80,000），
+  // 與普通 TAIEX 加權指數（~20,000）單位不同，停止入庫。
+  // TAIEX 改由 phase3 appendDailySnapshot 每日寫入正確值。
+  const finmindTaiex = {};
 
   // 2. 合併：以 FMP SP500 日期集合為美股交易日基準
   console.log('\n[5/6] 合併並寫入 SQLite...');

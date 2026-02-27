@@ -79,7 +79,15 @@ class KeyLevelsEngine {
       return null;
     }
 
-    const closes = history.map(r => r.close);
+    // 合理性過濾：TAIEX 加權指數應在 10,000 - 40,000 範圍
+    // 排除 TaiwanStockTotalReturnIndex 報酬指數（現值 ~70,000-80,000）等異常值
+    const valid = history.filter(r => r.close >= 10000 && r.close <= 40000);
+    if (valid.length < 60) {
+      logger.warn(`TAIEX key-levels: insufficient valid data after sanity filter (${valid.length}/${history.length} bars)`);
+      return null;
+    }
+
+    const closes = valid.map(r => r.close);
     const current = closes[closes.length - 1];
 
     const ma20 = this._ma(closes, 20);
@@ -101,7 +109,7 @@ class KeyLevelsEngine {
       ma20, ma60,
       support,
       resistance,
-      date: history[history.length - 1].date
+      date: valid[valid.length - 1].date
     };
   }
 

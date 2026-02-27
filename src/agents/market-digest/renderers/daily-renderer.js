@@ -72,12 +72,12 @@ class DailyRenderer {
     // ── Market Phase 狀態行 ──────────────────────────────────────────────
     if (phaseEngine && phaseEngine.phase) {
       const breadthState = phaseEngine?.indicators?.breadthState;
-      const breadthPart  = breadthState ? ` | Breadth: ${breadthState}` : '';
+      const breadthPart  = ` | Breadth: ${breadthState || 'N/A'}`;
       const phaseLine = `Market Phase: ${phaseEngine.phase}（連續 ${phaseEngine.newState?.phaseDays || '?'} 日）  信心：${phaseEngine.confidence || 'N/A'}${breadthPart}`;
       lines.push(phaseLine);
       if (phaseEngine.degraded) {
         const reasons = phaseEngine.degradedReasons?.join(', ') || 'SQLite 歷史不足或 DB 未初始化';
-        lines.push(`⚠️ Phase Engine 資料不足（${reasons}）`);
+        lines.push(`⚠️ PhaseEngine: ${reasons} → confidence downgraded`);
       }
     }
 

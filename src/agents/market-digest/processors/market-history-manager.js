@@ -359,6 +359,13 @@ class MarketHistoryManager {
       row[dbCol] = dp?.changePct != null ? dp.changePct : null;
     }
 
+    // TAIEX 合理性 guard（10,000 - 40,000 為正常加權指數範圍）
+    // 排除 TaiwanStockTotalReturnIndex 報酬指數（現值 ~70,000-80,000）等異常值
+    if (row.taiex != null && (row.taiex < 10000 || row.taiex > 40000)) {
+      logger.warn(`appendDailySnapshot: TAIEX value ${row.taiex} out of reasonable range [10000-40000], setting to NULL`);
+      row.taiex = null;
+    }
+
     // 計算 source_quality
     const missing = [row.sp500, row.nasdaq, row.taiex, row.vix].filter(v => v == null).length;
     row.source_quality = missing === 0 ? 'full' : missing <= 1 ? 'partial' : 'degraded';

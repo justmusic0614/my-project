@@ -3,17 +3,20 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
+import argparse
 from pathlib import Path
 from datetime import datetime
 
-PLAN = Path("docs/PLAN.md")
-REVIEWS = Path("docs/reviews")
-STATE = Path(".claude/review_state.json")
+PLANS_DIR = Path("docs/plans")
+REVIEWS_BASE = Path("docs/reviews")
+STATES_DIR = Path(".claude/review_states")
+SNAPSHOTS_BASE = Path(".claude/plan_snapshots")
 
 POLL_SEC = 0.8
 SUMMARY_TAIL_LINES = 18
-STALL_WARN_SEC = 20  # 超過這秒數沒有新進展就警示
+STALL_WARN_SEC = 20
 
 
 def clear_screen():
@@ -41,10 +44,10 @@ def safe_mtime(p: Path) -> float:
         return 0.0
 
 
-def latest_file(glob_pat: str) -> Path | None:
-    if not REVIEWS.exists():
+def latest_file(directory: Path, glob_pat: str) -> Path | None:
+    if not directory.exists():
         return None
-    files = [p for p in REVIEWS.glob(glob_pat) if p.is_file()]
+    files = [p for p in directory.glob(glob_pat) if p.is_file()]
     if not files:
         return None
     files.sort(key=lambda p: safe_mtime(p), reverse=True)
@@ -52,16 +55,14 @@ def latest_file(glob_pat: str) -> Path | None:
 
 
 def parse_round_from_name(name: str) -> int | None:
-    # supports ...round03... and ...round3...
     m = re.search(r"round(\d+)", name)
     return int(m.group(1)) if m else None
 
 
-def latest_for_round(kind: str, round_no: int) -> Path | None:
-    if not REVIEWS.exists() or round_no <= 0:
+def latest_for_round(kind: str, round_no: int, reviews_dir: Path) -> Path | None:
+    if not reviews_dir.exists() or round_no <= 0:
         return None
     if kind == "review":
-        # review-YYYY...-roundNN.md
         pats = [f"review-*-round{round_no:02d}.md", f"review-*-round{round_no}.md"]
     elif kind == "summary":
         pats = [f"round{round_no:02d}-diff-summary.md", f"round{round_no}-diff-summary.md"]
@@ -72,7 +73,7 @@ def latest_for_round(kind: str, round_no: int) -> Path | None:
 
     candidates = []
     for pat in pats:
-        candidates.extend([p for p in REVIEWS.glob(pat) if p.is_file()])
+        candidates.extend([p for p in reviews_dir.glob(pat) if p.is_file()])
     if not candidates:
         return None
     candidates.sort(key=lambda p: safe_mtime(p), reverse=True)
@@ -96,26 +97,24 @@ def parse_verdict_from_review(review_path: Path) -> str:
     return m.group(1) if m else "UNKNOWN"
 
 
-def infer_current_round() -> int:
+def infer_current_round(state_path: Path, reviews_dir: Path) -> int:
     """
-    Prefer .claude/review_state.json if it exists and contains 'round',
-    else infer from latest review/summary/diff filenames.
+    優先讀 .claude/review_states/{slug}.json，
+    fallback 從 reviews_dir 下的檔名推斷。
     """
-    # Try state file
-    if STATE.exists():
+    if state_path.exists():
         try:
             import json
-            obj = json.loads(STATE.read_text(encoding="utf-8", errors="replace"))
+            obj = json.loads(state_path.read_text(encoding="utf-8", errors="replace"))
             r = obj.get("round")
             if isinstance(r, int) and r >= 0:
                 return r
         except Exception:
             pass
 
-    # Infer from file names
     candidates = []
     for pat in ["review-*-round*.md", "round*-diff-summary.md", "round*-diff.md"]:
-        p = latest_file(pat)
+        p = latest_file(reviews_dir, pat)
         if p:
             rn = parse_round_from_name(p.name)
             if rn is not None:
@@ -124,9 +123,6 @@ def infer_current_round() -> int:
 
 
 def step_status(step_mtime: float, base_mtime: float) -> str:
-    """
-    Returns one of: DONE, WAIT, STALE
-    """
     if step_mtime <= 0:
         return "WAIT"
     if step_mtime >= base_mtime:
@@ -135,7 +131,6 @@ def step_status(step_mtime: float, base_mtime: float) -> str:
 
 
 def icon(status: str) -> str:
-    # DONE / WAIT / STALE
     if status == "DONE":
         return "[✓]"
     if status == "STALE":
@@ -143,7 +138,73 @@ def icon(status: str) -> str:
     return "[ ]"
 
 
+def discover_plans() -> list[str]:
+    """列出 docs/plans/ 下所有 .md 的 stem（即 plan slug）"""
+    if not PLANS_DIR.exists():
+        return []
+    return sorted(p.stem for p in PLANS_DIR.glob("*.md") if p.is_file())
+
+
+def select_plan(arg_plan: str | None) -> str | None:
+    """
+    決定要監控哪個 plan slug：
+    1. 若指定 --plan，直接用
+    2. 若 docs/plans/ 只有一個，自動選
+    3. 多個時列出選單讓用戶選擇
+    """
+    slugs = discover_plans()
+
+    if arg_plan:
+        if arg_plan not in slugs and PLANS_DIR.exists():
+            # 允許 slug 不在 docs/plans/（例如 legacy PLAN.md）
+            pass
+        return arg_plan
+
+    if not slugs:
+        # 沒有 docs/plans/，fallback legacy
+        return "gate-0-review-system"
+
+    if len(slugs) == 1:
+        return slugs[0]
+
+    # 互動式選單
+    print("┌─────────────────────────────────────────────┐")
+    print("│ 請選擇要監控的 Plan：                        │")
+    print("├─────────────────────────────────────────────┤")
+    for i, slug in enumerate(slugs, 1):
+        print(f"│  {i}) {slug:<41}│")
+    print("└─────────────────────────────────────────────┘")
+
+    while True:
+        try:
+            choice = input(f"輸入編號 [1-{len(slugs)}]: ").strip()
+            idx = int(choice) - 1
+            if 0 <= idx < len(slugs):
+                return slugs[idx]
+        except (ValueError, EOFError, KeyboardInterrupt):
+            pass
+        print(f"請輸入 1 到 {len(slugs)} 之間的數字")
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Review Watch Dashboard v3")
+    parser.add_argument("--plan", "-p", help="Plan slug（e.g. gate-0-review-system）")
+    args = parser.parse_args()
+
+    plan_slug = select_plan(args.plan)
+    if not plan_slug:
+        print("找不到任何 plan，請先建立 docs/plans/*.md")
+        sys.exit(1)
+
+    reviews_dir = REVIEWS_BASE / plan_slug
+    state_path = STATES_DIR / f"{plan_slug}.json"
+    snapshots_dir = SNAPSHOTS_BASE / plan_slug
+    plan_file = PLANS_DIR / f"{plan_slug}.md"
+
+    # legacy fallback
+    if not plan_file.exists():
+        plan_file = Path("docs/PLAN.md")
+
     last_progress_ts = time.time()
     last_seen = {
         "plan": 0.0,
@@ -156,34 +217,34 @@ def main():
 
     while True:
         now = time.time()
-        cur_round = infer_current_round()
+        cur_round = infer_current_round(state_path, reviews_dir)
 
-        plan_m = safe_mtime(PLAN)
-        checklist_p = REVIEWS / "CHECKLIST.md"
+        plan_m = safe_mtime(plan_file)
+        checklist_p = reviews_dir / "CHECKLIST.md"
         checklist_m = safe_mtime(checklist_p)
 
-        review_p = latest_for_round("review", cur_round)
-        diff_p = latest_for_round("diff", cur_round)
-        summary_p = latest_for_round("summary", cur_round)
+        review_p = latest_for_round("review", cur_round, reviews_dir)
+        diff_p = latest_for_round("diff", cur_round, reviews_dir)
+        summary_p = latest_for_round("summary", cur_round, reviews_dir)
 
         review_m = safe_mtime(review_p) if review_p else 0.0
         diff_m = safe_mtime(diff_p) if diff_p else 0.0
         summary_m = safe_mtime(summary_p) if summary_p else 0.0
 
-        snap_p = Path(f".claude/plan_snapshots/round{cur_round:02d}.md")
+        snap_p = snapshots_dir / f"round{cur_round:02d}.md"
         snap_m = safe_mtime(snap_p)
 
         verdict = parse_verdict_from_review(review_p) if review_p else "—"
 
         # Base time: when PLAN last changed (round start signal)
-        base = plan_m if plan_m > 0 else min([t for t in [review_m, diff_m, summary_m] if t > 0], default=0.0)
+        base = plan_m if plan_m > 0 else min(
+            [t for t in [review_m, diff_m, summary_m] if t > 0], default=0.0
+        )
 
         s_review = step_status(review_m, base)
         s_diff = step_status(diff_m, base)
         s_summary = step_status(summary_m, base)
 
-        # Checklist should be updated after summary in v2.3.3 (ideal).
-        # If checklist exists but older than summary, mark STALE.
         if checklist_m <= 0:
             s_check = "WAIT"
         else:
@@ -192,7 +253,6 @@ def main():
             else:
                 s_check = "DONE"
 
-        # Snapshot for this round
         s_snap = step_status(snap_m, base) if cur_round > 0 else ("DONE" if snap_m > 0 else "WAIT")
 
         # Track progress
@@ -215,14 +275,15 @@ def main():
         clear_screen()
 
         header_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        slug_display = plan_slug[:20] if len(plan_slug) > 20 else plan_slug
         print("┌──────────────────────────────────────────────────────────────┐")
-        print(f"│ Review Dashboard — PLAN ↔ OpenAI (v2.3.3)   {header_now:<19}│")
+        print(f"│ Review Dashboard v3.0   {header_now:<19}          │")
+        print(f"│ Plan: {slug_display:<56}│")
         print("├──────────────────────────────────────────────────────────────┤")
         print(f"│ Current Round: {cur_round:02d}    Verdict: {verdict:<14}  {'⚠️ STALLED' if stall_warn else '':<10}│")
         print(f"│ PLAN mtime: {fmt_ts(plan_m):<8}  Last activity: {fmt_ts(newest):<8}  Stalled: {fmt_dur(stalled_for):<5}      │")
         print("├──────────────────────────────────────────────────────────────┤")
         print("│ Round Steps                                                  │")
-        # Step 1: PLAN updated exists
         plan_ok = "DONE" if plan_m > 0 else "WAIT"
         print(f"│  {icon(plan_ok)} 1) PLAN updated/exist        @ {fmt_ts(plan_m):<8}                 │")
         print(f"│  {icon(s_review)} 2) OpenAI review saved       @ {fmt_ts(review_m):<8}   {review_p.name if review_p else '—':<18}│")
@@ -236,7 +297,6 @@ def main():
             tail_txt = read_text_tail(summary_p, SUMMARY_TAIL_LINES)
             tail_lines = tail_txt.splitlines()[-SUMMARY_TAIL_LINES:]
             for ln in tail_lines:
-                # pad/truncate to fit box width
                 ln = ln.replace("\t", "  ")
                 if len(ln) > 60:
                     ln = ln[:60] + "…"
@@ -246,11 +306,15 @@ def main():
 
         print("└──────────────────────────────────────────────────────────────┘")
 
-        # Small hint footer (outside box)
         print("\nHints:")
-        print("- Edit docs/PLAN.md to start a round.")
+        print(f"- Edit docs/plans/{plan_slug}.md to start a round.")
         print("- If stalled, check: OPENAI_API_KEY, openai package, hook config, stderr logs.")
-        print("- Artifacts live in docs/reviews/ and .claude/plan_snapshots/")
+        print(f"- Artifacts live in docs/reviews/{plan_slug}/ and .claude/plan_snapshots/{plan_slug}/")
+        print(f"- Switch plan: python3 tools/review_watch_dashboard.py --plan <slug>")
+        all_plans = discover_plans()
+        if len(all_plans) > 1:
+            others = [s for s in all_plans if s != plan_slug]
+            print(f"- Other plans: {', '.join(others)}")
 
         time.sleep(POLL_SEC)
 

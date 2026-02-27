@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
 """
-review_plan_loop.py v2.3.3
+review_plan_loop.py v3.0
 
 Claude Code PostToolUse hook
-觸發條件：Write|Edit 工具，且 tool_input.file_path 包含 docs/PLAN.md
+觸發條件：Write|Edit 工具，且 tool_input.file_path 包含：
+  - docs/plans/*.md（新格式，per-plan slug）
+  - docs/PLAN.md（legacy 向後相容，slug = "gate-0-review-system"）
 
 功能：
-1. 讀取 docs/PLAN.md
-2. 對比前一輪快照 → unified diff
-3. 呼叫 OpenAI（REVIEW_MODEL）審稿 → review-{ts}-roundNN.md
-4. 呼叫 OpenAI（SUMMARY_MODEL）→ roundNN-diff-summary.md
-5. 存 roundNN-diff.md（diff + stats）
-6. 更新 docs/reviews/CHECKLIST.md（stable IDs，跨輪累積）
-7. 快照至 plan_snapshots/roundNN.md + latest.md
-8. stdout 輸出 JSON decision（block/continue）
+1. 從檔案路徑推斷 plan_slug（e.g. "gate-0-review-system"）
+2. 讀取對應 docs/plans/{slug}.md（或 legacy docs/PLAN.md）
+3. 對比前一輪快照 → unified diff
+4. 呼叫 OpenAI（REVIEW_MODEL）審稿 → docs/reviews/{slug}/review-{ts}-roundNN.md
+5. 呼叫 OpenAI（SUMMARY_MODEL）→ docs/reviews/{slug}/roundNN-diff-summary.md
+6. 存 docs/reviews/{slug}/roundNN-diff.md（diff + stats）
+7. 更新 docs/reviews/{slug}/CHECKLIST.md（stable IDs，跨輪累積）
+8. 快照至 .claude/plan_snapshots/{slug}/roundNN.md + latest.md
+9. stdout 輸出 JSON decision
+   - APPROVED       → decision: block（附 summary 建議，等待人工確認）
+   - NEEDS_REVISION → decision: block（提示修正）
+   - BLOCKED        → decision: block（嚴重問題）
 
 環境需求：
   pip install openai
   export OPENAI_API_KEY=sk-...
 """
+
+from __future__ import annotations
 
 import sys
 import json
@@ -27,6 +35,7 @@ import datetime
 import difflib
 import re
 from pathlib import Path
+
 
 # ── .env fallback 載入（Claude Code hook 不繼承 shell 環境變數）────────────
 def _load_dotenv_fallback() -> None:
@@ -55,6 +64,7 @@ def _load_dotenv_fallback() -> None:
     except Exception:
         pass
 
+
 _load_dotenv_fallback()
 
 # ── 配置常數（可調整） ───────────────────────────────────────────────────────
@@ -67,31 +77,42 @@ SUMMARY_MODEL = "gpt-4o-mini"
 # ── 路徑定義 ─────────────────────────────────────────────────────────────────
 # 本腳本位於 .claude/hooks/，因此 repo root 在上兩層
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-PLAN_PATH = REPO_ROOT / "docs" / "PLAN.md"
-REVIEWS_DIR = REPO_ROOT / "docs" / "reviews"
-SNAPSHOTS_DIR = REPO_ROOT / ".claude" / "plan_snapshots"
-STATE_PATH = REPO_ROOT / ".claude" / "review_state.json"
-CHECKLIST_PATH = REVIEWS_DIR / "CHECKLIST.md"
+
+# legacy docs/PLAN.md 對應的 slug
+LEGACY_SLUG = "gate-0-review-system"
 
 
-# ── 狀態管理 ─────────────────────────────────────────────────────────────────
+# ── Plan slug 推斷 ────────────────────────────────────────────────────────────
 
-def load_state() -> dict:
-    """載入輪次狀態，不存在時返回初始狀態"""
-    if STATE_PATH.exists():
-        try:
-            return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"round": 0, "status": "PENDING"}
+def get_plan_slug(file_path: str) -> str | None:
+    """
+    從被修改的檔案路徑提取 plan slug。
+    - docs/plans/feature-name.md  → "feature-name"
+    - docs/PLAN.md                → LEGACY_SLUG（向後相容）
+    - 其他                        → None（不處理）
+    """
+    # 新格式：docs/plans/*.md
+    if "docs/plans/" in file_path and file_path.endswith(".md"):
+        remainder = file_path.split("docs/plans/")[-1]
+        if "/" not in remainder and remainder:
+            return remainder[:-3]  # 去掉 .md
+
+    # Legacy：docs/PLAN.md
+    if "docs/PLAN.md" in file_path:
+        return LEGACY_SLUG
+
+    return None
 
 
-def save_state(state: dict) -> None:
-    """儲存輪次狀態"""
-    STATE_PATH.write_text(
-        json.dumps(state, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
+def get_paths(plan_slug: str) -> dict:
+    """返回 plan 相關的所有路徑（per-plan 隔離）"""
+    return {
+        "plan_file":      REPO_ROOT / "docs" / "plans" / f"{plan_slug}.md",
+        "reviews_dir":    REPO_ROOT / "docs" / "reviews" / plan_slug,
+        "snapshots_dir":  REPO_ROOT / ".claude" / "plan_snapshots" / plan_slug,
+        "state_path":     REPO_ROOT / ".claude" / "review_states" / f"{plan_slug}.json",
+        "checklist_path": REPO_ROOT / "docs" / "reviews" / plan_slug / "CHECKLIST.md",
+    }
 
 
 # ── Hook 輸入處理 ────────────────────────────────────────────────────────────
@@ -107,12 +128,37 @@ def get_hook_input() -> dict:
     return {}
 
 
-def is_target_file(hook_input: dict) -> bool:
-    """判斷是否為 docs/PLAN.md 的操作"""
+def is_target_file(hook_input: dict) -> tuple[bool, str]:
+    """
+    判斷是否為監控目標。
+    返回 (is_target, plan_slug)
+    """
     tool_input = hook_input.get("tool_input", {})
-    file_path = tool_input.get("file_path", "")
-    # 相容絕對路徑或相對路徑
-    return "docs/PLAN.md" in file_path
+    file_path = str(tool_input.get("file_path", ""))
+    slug = get_plan_slug(file_path)
+    return (slug is not None, slug or "")
+
+
+# ── 狀態管理 ─────────────────────────────────────────────────────────────────
+
+def load_state(paths: dict) -> dict:
+    """載入輪次狀態，不存在時返回初始狀態"""
+    state_path = paths["state_path"]
+    if state_path.exists():
+        try:
+            return json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"round": 0, "status": "PENDING"}
+
+
+def save_state(state: dict, paths: dict) -> None:
+    """儲存輪次狀態"""
+    state_path = paths["state_path"]
+    state_path.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
 
 
 # ── Diff 生成 ────────────────────────────────────────────────────────────────
@@ -299,19 +345,20 @@ def parse_imp_ids(review_content: str) -> list:
 
 # ── CHECKLIST 管理 ───────────────────────────────────────────────────────────
 
-def update_checklist(round_num: int, verdict: str, imp_items: list) -> None:
+def update_checklist(round_num: int, verdict: str, imp_items: list, paths: dict) -> None:
     """
     更新 CHECKLIST.md（累積，stable IDs）
     - 新 ID：直接新增
     - 已有 ID：只更新輪次（不覆蓋手動標記的 status）
     - APPROVED 且問題清單空：把所有 [ ] 標為 ✅
     """
+    checklist_path = paths["checklist_path"]
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # 讀取現有 CHECKLIST（解析表格行）
     existing_items = {}  # {id_str: {desc, status, round, evidence}}
-    if CHECKLIST_PATH.exists():
-        for line in CHECKLIST_PATH.read_text(encoding="utf-8").splitlines():
+    if checklist_path.exists():
+        for line in checklist_path.read_text(encoding="utf-8").splitlines():
             m = re.match(
                 r"\|\s*(IMP-\d{3})\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|",
                 line
@@ -326,9 +373,7 @@ def update_checklist(round_num: int, verdict: str, imp_items: list) -> None:
                 }
 
     # 合併新條目
-    new_ids = set()
     for imp_id, desc in imp_items:
-        new_ids.add(imp_id)
         if imp_id not in existing_items:
             existing_items[imp_id] = {
                 "desc": desc,
@@ -375,14 +420,17 @@ def update_checklist(round_num: int, verdict: str, imp_items: list) -> None:
         "- **輪次**：最後一次被更新的輪次\n"
     )
 
-    CHECKLIST_PATH.write_text(header + rows + footer, encoding="utf-8")
+    checklist_path.write_text(header + rows + footer, encoding="utf-8")
 
 
 # ── 文件輸出 ─────────────────────────────────────────────────────────────────
 
-def write_review_file(round_num: int, now_ts: str, review_content: str, plan_len: int) -> Path:
+def write_review_file(
+    round_num: int, now_ts: str, review_content: str, plan_len: int, paths: dict
+) -> Path:
     """寫入 review-{ts}-roundNN.md"""
-    path = REVIEWS_DIR / f"review-{now_ts}-round{round_num:02d}.md"
+    reviews_dir = paths["reviews_dir"]
+    path = reviews_dir / f"review-{now_ts}-round{round_num:02d}.md"
     path.write_text(
         f"# OpenAI Review — Round {round_num:02d}\n\n"
         f"> 時間：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -395,9 +443,12 @@ def write_review_file(round_num: int, now_ts: str, review_content: str, plan_len
     return path
 
 
-def write_diff_file(round_num: int, diff_text: str, diff_stats: dict) -> Path:
+def write_diff_file(
+    round_num: int, diff_text: str, diff_stats: dict, paths: dict
+) -> Path:
     """寫入 roundNN-diff.md"""
-    path = REVIEWS_DIR / f"round{round_num:02d}-diff.md"
+    reviews_dir = paths["reviews_dir"]
+    path = reviews_dir / f"round{round_num:02d}-diff.md"
     diff_body = diff_text if diff_text.strip() else "(第一輪，無前一輪快照)"
     path.write_text(
         f"# Diff — Round {round_num:02d} vs Round {(round_num - 1):02d}\n\n"
@@ -414,9 +465,12 @@ def write_diff_file(round_num: int, diff_text: str, diff_stats: dict) -> Path:
     return path
 
 
-def write_summary_file(round_num: int, verdict: str, summary_content: str) -> Path:
+def write_summary_file(
+    round_num: int, verdict: str, summary_content: str, paths: dict
+) -> Path:
     """寫入 roundNN-diff-summary.md"""
-    path = REVIEWS_DIR / f"round{round_num:02d}-diff-summary.md"
+    reviews_dir = paths["reviews_dir"]
+    path = reviews_dir / f"round{round_num:02d}-diff-summary.md"
     path.write_text(
         f"# Diff Summary — Round {round_num:02d}\n\n"
         f"> 生成時間：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -430,21 +484,39 @@ def write_summary_file(round_num: int, verdict: str, summary_content: str) -> Pa
 
 # ── Decision 輸出 ────────────────────────────────────────────────────────────
 
-def output_decision(verdict: str, round_num: int, review_content: str) -> None:
+def output_decision(
+    verdict: str,
+    round_num: int,
+    review_content: str,
+    summary_content: str = "",
+    plan_slug: str = "",
+) -> None:
     """
     輸出 JSON decision 給 Claude Code
-    - APPROVED          → decision: continue
-    - NEEDS_REVISION    → decision: block
-    - BLOCKED           → decision: block
+    - APPROVED       → decision: block（附 summary 建議，等待人工確認「開始實作」）
+    - NEEDS_REVISION → decision: block（提示修正）
+    - BLOCKED        → decision: block（嚴重問題）
     """
+    plan_label = f" [{plan_slug}]" if plan_slug else ""
+
     if verdict == "APPROVED":
+        suggestion = summary_content.strip() if summary_content else review_content[-500:]
         decision = {
-            "decision": "continue",
+            "decision": "block",
+            "reason": (
+                f"[Round {round_num:02d}]{plan_label} ✅ APPROVED — PLAN 品質合格\n\n"
+                f"{'='*40}\n"
+                f"審稿建議（僅供參考，不強制改動）：\n"
+                f"{'='*40}\n"
+                f"{suggestion}\n\n"
+                f"{'='*40}\n"
+                f"請告訴我「開始實作」，Claude 將繼續執行。"
+            ),
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
                 "additionalContext": (
-                    f"[Round {round_num:02d}] ✅ APPROVED — "
-                    "PLAN.md 品質合格，可進入 Gate-1 開始實作規劃。"
+                    f"[Round {round_num:02d}]{plan_label} VERDICT=APPROVED, "
+                    "waiting for human confirmation"
                 )
             }
         }
@@ -457,14 +529,14 @@ def output_decision(verdict: str, round_num: int, review_content: str) -> None:
         decision = {
             "decision": "block",
             "reason": (
-                f"[Round {round_num:02d}] VERDICT: {verdict}\n\n"
-                f"docs/PLAN.md 需要修正後才能繼續。\n\n"
+                f"[Round {round_num:02d}]{plan_label} VERDICT: {verdict}\n\n"
+                f"PLAN 需要修正後才能繼續。\n\n"
                 f"{after_verdict}"
             ),
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
                 "additionalContext": (
-                    "請依上方問題清單修正 docs/PLAN.md，"
+                    "請依上方問題清單修正 PLAN，"
                     "儲存後系統將自動進入下一輪審稿。"
                     f"（當前輪次：{round_num}/{MAX_ROUNDS}）"
                 )
@@ -477,20 +549,28 @@ def output_decision(verdict: str, round_num: int, review_content: str) -> None:
 # ── 主程式 ───────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    # 確保目錄存在
-    REVIEWS_DIR.mkdir(parents=True, exist_ok=True)
-    SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-
     # 讀取 hook 輸入
     hook_input = get_hook_input()
 
-    # 過濾：只處理 docs/PLAN.md
-    if not is_target_file(hook_input):
+    # 過濾：只處理監控目標（docs/plans/*.md 或 docs/PLAN.md）
+    is_target, plan_slug = is_target_file(hook_input)
+    if not is_target:
         sys.exit(0)
 
-    # 確認 PLAN.md 存在
-    if not PLAN_PATH.exists():
-        sys.stderr.write("review_plan_loop: docs/PLAN.md 不存在，跳過\n")
+    # 取得 per-plan 路徑
+    paths = get_paths(plan_slug)
+
+    # 確保目錄存在
+    paths["reviews_dir"].mkdir(parents=True, exist_ok=True)
+    paths["snapshots_dir"].mkdir(parents=True, exist_ok=True)
+    paths["state_path"].parent.mkdir(parents=True, exist_ok=True)
+
+    # plan_file：優先讀取 docs/plans/{slug}.md，fallback docs/PLAN.md（legacy）
+    plan_file = paths["plan_file"]
+    if not plan_file.exists():
+        plan_file = REPO_ROOT / "docs" / "PLAN.md"
+    if not plan_file.exists():
+        sys.stderr.write(f"review_plan_loop: plan file for '{plan_slug}' 不存在，跳過\n")
         sys.exit(0)
 
     # 前置檢查：openai 套件 + API key，缺一則 graceful skip（不消耗 round 計數）
@@ -505,12 +585,12 @@ def main() -> None:
         sys.exit(0)
 
     # 載入狀態
-    state = load_state()
+    state = load_state(paths)
 
     # 檢查是否超過 MAX_ROUNDS
     if state["round"] >= MAX_ROUNDS:
         sys.stderr.write(
-            f"review_plan_loop: 已達最大輪次 {MAX_ROUNDS}，停止自動審稿\n"
+            f"review_plan_loop: [{plan_slug}] 已達最大輪次 {MAX_ROUNDS}，停止自動審稿\n"
         )
         sys.exit(0)
 
@@ -519,13 +599,14 @@ def main() -> None:
     round_num = state["round"]
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    sys.stderr.write(f"review_plan_loop v2.3.3: 開始 Round {round_num:02d}...\n")
+    sys.stderr.write(f"review_plan_loop v3.0: [{plan_slug}] 開始 Round {round_num:02d}...\n")
 
-    # 讀取當前 PLAN.md
-    current_plan = PLAN_PATH.read_text(encoding="utf-8")
+    # 讀取當前 PLAN
+    current_plan = plan_file.read_text(encoding="utf-8")
 
     # 讀取前一輪快照
-    prev_snapshot_path = SNAPSHOTS_DIR / f"round{(round_num - 1):02d}.md"
+    snapshots_dir = paths["snapshots_dir"]
+    prev_snapshot_path = snapshots_dir / f"round{(round_num - 1):02d}.md"
     prev_content = ""
     if prev_snapshot_path.exists():
         prev_content = prev_snapshot_path.read_text(encoding="utf-8")
@@ -544,17 +625,17 @@ def main() -> None:
     summary_content = call_openai_summary(diff_text, review_content, round_num)
 
     # 寫入文件
-    review_path = write_review_file(round_num, now_ts, review_content, len(current_plan))
-    diff_path = write_diff_file(round_num, diff_text, diff_stats)
-    summary_path = write_summary_file(round_num, verdict, summary_content)
+    review_path = write_review_file(round_num, now_ts, review_content, len(current_plan), paths)
+    diff_path = write_diff_file(round_num, diff_text, diff_stats, paths)
+    summary_path = write_summary_file(round_num, verdict, summary_content, paths)
 
     # 更新 CHECKLIST.md
-    update_checklist(round_num, verdict, imp_items)
+    update_checklist(round_num, verdict, imp_items, paths)
 
     # 快照（round 編號 + latest 指標）
-    snapshot_path = SNAPSHOTS_DIR / f"round{round_num:02d}.md"
+    snapshot_path = snapshots_dir / f"round{round_num:02d}.md"
     snapshot_path.write_text(current_plan, encoding="utf-8")
-    latest_path = SNAPSHOTS_DIR / "latest.md"
+    latest_path = snapshots_dir / "latest.md"
     latest_path.write_text(current_plan, encoding="utf-8")
 
     # 更新狀態
@@ -565,17 +646,17 @@ def main() -> None:
         "diff": str(diff_path.relative_to(REPO_ROOT)),
         "summary": str(summary_path.relative_to(REPO_ROOT)),
     }
-    save_state(state)
+    save_state(state, paths)
 
     sys.stderr.write(
-        f"review_plan_loop: Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+        f"review_plan_loop: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
         f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
         f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
         f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
     )
 
     # 輸出 JSON decision
-    output_decision(verdict, round_num, review_content)
+    output_decision(verdict, round_num, review_content, summary_content, plan_slug)
     sys.exit(0)
 
 

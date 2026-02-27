@@ -103,7 +103,7 @@ const { createHealthCheckSystem } = require('./sre/health-check');
 # 任務預設資源閾值（記憶體 MB；CPU 1 分鐘平均負載，0 表示不限制）
 get_resource_thresholds() {
     case "$1" in
-        health)          echo "200 1.8" ;;
+        health)          echo "150 1.8" ;;
         phase1)          echo "400 1.5" ;;
         phase2)          echo "500 1.5" ;;
         phase3)          echo "350 1.8" ;;

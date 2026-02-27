@@ -79,11 +79,10 @@ class KeyLevelsEngine {
       return null;
     }
 
-    // 合理性過濾：TAIEX 加權指數應在 10,000 - 40,000 範圍
-    // 排除 TaiwanStockTotalReturnIndex 報酬指數（現值 ~70,000-80,000）等異常值
-    const valid = history.filter(r => r.close >= 10000 && r.close <= 40000);
+    // 基本有效值過濾（排除 null / 0 / 負數），不設硬性上限（台股可能漲破 40,000）
+    const valid = history.filter(r => r.close > 0);
     if (valid.length < 60) {
-      logger.warn(`TAIEX key-levels: insufficient valid data after sanity filter (${valid.length}/${history.length} bars)`);
+      logger.warn(`TAIEX key-levels: insufficient valid data (${valid.length}/${history.length} bars)`);
       return null;
     }
 

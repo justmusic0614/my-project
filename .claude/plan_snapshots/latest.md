@@ -69,9 +69,10 @@
 ### M3 — 多輪驗證
 
 **產出物**：
-- [ ] Round 2+ 可正常執行（基於前一輪快照生成 diff）
-- [ ] APPROVED 時輸出 `decision: continue`
-- [ ] NEEDS_REVISION 時輸出 `decision: block`（Claude 被強制停下修正）
+- [x] Round 2+ 正常執行（Round 02 基於 Round 01 快照生成 diff）✅
+- [x] APPROVED 時輸出 `decision: continue` ✅
+- [x] BLOCKED 時輸出 `decision: block`，Claude Code 正確阻擋 ✅（Round 03，6 個 IMP）
+- [x] 修正後再次 APPROVED，守門閉環完整驗證 ✅（Round 04）
 
 ---
 

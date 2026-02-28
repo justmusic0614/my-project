@@ -78,12 +78,22 @@ DIFF_MAX_LINES = 200
 REVIEW_MODEL = "gpt-4o"
 SUMMARY_MODEL = "gpt-4o-mini"
 
-# Reviewer Personas（L1-B）
+# Reviewer Personas（L1-B + v3.7 skeptic）
 REVIEWER_PERSONAS = {
     "engineer": "你是資深工程師審稿人，重點檢查實作可行性、里程碑具體性、驗收標準可測試性。",
     "security": "你是資安審稿人，重點檢查認證/授權設計、資料保護、注入攻擊面、敏感資料處理。",
     "devops":   "你是 DevOps 審稿人，重點檢查部署方式、回滾計劃、監控指標、服務依賴與 SLA。",
     "pm":       "你是產品經理審稿人，重點檢查用戶影響、商業風險、範圍蔓延、優先級合理性。",
+    "skeptic": (
+        "你是「SKEPTIC reviewer」，你的工作不是稱讚，而是找出會讓實作失敗/延期/不可驗收的缺口。\n"
+        "你特別要抓：\n"
+        "- 里程碑是否可驗收（deliverables + Done criteria）\n"
+        "- failure modes / rollback / observability（缺任何一項都要提 IMP）\n"
+        "- 測試矩陣（至少：happy path、邊界、故障注入/異常）\n"
+        "- 介面契約/資料契約是否具體（inputs/outputs/schema）\n"
+        "- 任何模糊動詞（優化/改善/提升）未配指標\n"
+        "你可以接受 PLAN 可實作，但仍必須提出至少 3 條具體 IMP。"
+    ),
 }
 
 # Pre-flight Suite 常數（L0）
@@ -236,18 +246,22 @@ def parse_reviewers(plan_content: str) -> list:
     """
     解析 PLAN frontmatter 中的 reviewers 欄位（L1-B）。
     格式：reviewers: [engineer, security, devops]
-    無 frontmatter 或無 reviewers 欄位時返回 ["engineer"]（向後相容）。
+    無 frontmatter 或無 reviewers 欄位時返回 ["engineer", "skeptic"]。
+    v3.7：skeptic 永遠強制注入（不受 frontmatter 控制）。
     """
     m = re.match(r"^---\n(.*?)\n---", plan_content, re.DOTALL)
     if not m:
-        return ["engineer"]
+        return ["engineer", "skeptic"]
     frontmatter = m.group(1)
     rev_match = re.search(r"reviewers:\s*\[([^\]]*)\]", frontmatter)
     if not rev_match:
-        return ["engineer"]
+        return ["engineer", "skeptic"]
     slugs = [s.strip().strip("\"'") for s in rev_match.group(1).split(",") if s.strip()]
     valid = [s for s in slugs if s in REVIEWER_PERSONAS]
-    return valid if valid else ["engineer"]
+    reviewers = valid if valid else ["engineer"]
+    if "skeptic" not in reviewers:
+        reviewers.append("skeptic")
+    return reviewers
 
 
 def preflight_expiry_alert(state: dict) -> list[str]:
@@ -342,6 +356,28 @@ def run_preflight(
         sys.stderr.write("[Pre-flight] ✓ 全部通過\n")
 
     return errors, warnings
+
+
+# ── 上一輪 review 檔案查找（v3.8 0-G 使用）────────────────────────────────────
+
+def _find_prev_review(state: dict, plan_slug: str) -> "Path | None":
+    """
+    找上一輪 review 檔案。
+    優先用 state["last_round_files"]["review"]（最精確）；
+    找不到再 glob 最新 review-*-round*.md 作為 fallback。
+    """
+    # 方法 1：直接從 state 取
+    last_files = state.get("last_round_files", {})
+    if last_files.get("review"):
+        p = REPO_ROOT / last_files["review"]
+        if p.exists():
+            return p
+    # 方法 2：glob fallback
+    review_dir = REPO_ROOT / "docs" / "reviews" / plan_slug
+    if not review_dir.exists():
+        return None
+    matches = sorted(review_dir.glob("review-*-round*.md"))
+    return matches[-1] if matches else None
 
 
 # ── Hook 輸入處理 ────────────────────────────────────────────────────────────
@@ -532,23 +568,26 @@ PLAN.md 完整內容：
 {truncated_plan}
 ---
 
-**嚴格遵守以下輸出格式**：
+**嚴格遵守以下輸出格式（機器解析，不得改動標題）**：
 
 VERDICT: APPROVED | NEEDS_REVISION | BLOCKED
 
-問題清單（每項必須標 [IMP-NNN]，NNN 三位數從 001 開始，跨輪 stable）：
-⚠️ [IMP-001] <問題描述（一行）>（未解決）
-✅ [IMP-002] RESOLVED: <一句話說明 diff 中做了什麼修正>（已解決）
+ISSUES:
+- （若有阻擋性問題，每條標 ⚠️ [IMP-NNN]；APPROVED 時可為空）
+- ✅ [IMP-NNN] RESOLVED: <已解決說明>（若本輪 diff 修正了前輪 IMP）
 
-建議修正：
-<具體建議，條列式>
+IMPROVEMENTS:
+- ⚠️ [IMP-NNN] <改進項：補哪段 + 補什麼 + 怎麼驗收（一句話）>
+（必須至少 3 條；即使 APPROVED 也需列出，代表下一輪追蹤項）
 
-注意：
-- APPROVED：PLAN 品質合格，可進入實作；若有改善空間仍可用 ⚠️ [IMP-NNN] 列出，下一輪繼續追蹤
-- NEEDS_REVISION：必須修正所有 ⚠️ IMP 後才能實作
+NOTES:
+- （可選補充）
+
+【硬規則】
+- IMPROVEMENTS 不得少於 3 條，否則 VERDICT 必須是 NEEDS_REVISION
+- 每條 IMP 必須可落地：說明「補哪段」+「補什麼」+「怎麼驗收」，不得寫「更清楚」「更完善」等空泛語句
+- [IMP-NNN] ID 若在前輪已出現，沿用相同 ID（跨輪 stable，從 001 開始）
 - BLOCKED：嚴重缺失（無目標、無驗收標準等根本性問題）
-- [IMP-NNN] ID 若在前輪已出現，沿用相同 ID
-- 若某 IMP 在本輪 diff 已被解決，用 ✅ [IMP-NNN] RESOLVED: <evidence> 列出，不要用 ⚠️
 """
 
     try:
@@ -649,6 +688,58 @@ def parse_imp_resolutions(review_content: str) -> dict:
     pattern = r"✅\s*\[IMP-(\d{3})\]\s*RESOLVED:\s*(.+?)(?=\n|$)"
     matches = re.findall(pattern, review_content)
     return {f"IMP-{num}": desc.strip() for num, desc in matches}
+
+
+def has_min_imps(review_content: str, k: int = 3) -> bool:
+    """
+    檢查 review 的 IMPROVEMENTS 區塊是否至少有 k 條 [IMP-N]。
+    只看 IMPROVEMENTS 區塊，不計 ISSUES 的 ✅ RESOLVED 行（補丁 B）。
+    使用 \\d{1,3} 接受 [IMP-1]～[IMP-999]（補丁 A）。
+    """
+    m = re.search(r"IMPROVEMENTS:(.*?)(?=\nNOTES:|\nPLAN:|\Z)", review_content, re.DOTALL)
+    if not m:
+        return False
+    return len(re.findall(r"\[IMP-\d{1,3}\]", m.group(1))) >= k
+
+
+# ── Actionable IMP 品質檢查（v3.8）────────────────────────────────────────────
+
+def extract_improvement_bullets(review_text: str) -> list:
+    """從 IMPROVEMENTS 區塊取出每條 bullet（'-' 開頭）。"""
+    m = re.search(r"IMPROVEMENTS:(.*?)(?=\nNOTES:|\nPLAN:|\Z)", review_text, re.DOTALL)
+    if not m:
+        return []
+    return [line.strip() for line in m.group(1).splitlines()
+            if line.strip().startswith("-")]
+
+
+_IMP_WHERE  = r"目標|範圍|非目標|里程碑|風險|驗收|decision log|章節|section|##"
+_IMP_WHAT   = r"新增|補上|補充|定義|列出|描述|提供|加入|加上|明確|spec|schema|interface"
+_IMP_VERIFY = r"驗收|測試|test|case|輸入|輸出|assert|pass criteria|成功條件|done criteria|check"
+
+
+def is_actionable_imp(line: str) -> bool:
+    """
+    合格條件（同時符合三項）：
+    1. 包含 [IMP-N]（1~3 位數）
+    2. 長度 >= 20（避免「更清楚」等極短空泛語句）
+    3. 同時命中 Where / What / Verify 三類關鍵詞
+    """
+    if not re.search(r"\[IMP-\d{1,3}\]", line):
+        return False
+    if len(line) < 20:
+        return False
+    return (
+        re.search(_IMP_WHERE, line, re.IGNORECASE) is not None
+        and re.search(_IMP_WHAT, line, re.IGNORECASE) is not None
+        and re.search(_IMP_VERIFY, line, re.IGNORECASE) is not None
+    )
+
+
+def has_actionable_imps(review_text: str, k: int = 3) -> bool:
+    """IMPROVEMENTS 區塊中 actionable IMP 數 >= k 才返回 True。"""
+    bullets = extract_improvement_bullets(review_text)
+    return sum(1 for b in bullets if is_actionable_imp(b)) >= k
 
 
 # ── CHECKLIST 管理 ───────────────────────────────────────────────────────────
@@ -916,13 +1007,14 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         )
         sys.exit(0)
 
-    # 新一輪（通過所有前置檢查後才遞增）
-    state["round"] += 1
-    round_num = state["round"]
+    # prev_round/candidate_round 模式（v3.8）：state 只在 gate 通過後才 commit
+    prev_round = state.get("round", 0)
+    candidate_round = prev_round + 1
+    round_num = candidate_round  # 後續程式碼沿用 round_num
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     dry_tag = " [DRY-RUN]" if dry_run else ""
-    sys.stderr.write(f"review_plan_loop v3.3: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
+    sys.stderr.write(f"review_plan_loop v3.8: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
@@ -937,11 +1029,10 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             warn_block = "\n\n[警告（修正 errors 後仍會顯示）]\n" + "\n".join(
                 f"  ℹ {w}" for w in preflight_warnings
             )
-        state["round"] -= 1  # 不計入正式輪次
+        # 注：prev_round/candidate_round 模式，state 尚未 commit，無需回滾
         if dry_run:
-            print(f"[DRY-RUN] Pre-flight 失敗（不計輪次）\n{error_lines}{warn_block}")
+            print(f"[DRY-RUN] Pre-flight 失敗\n{error_lines}{warn_block}")
         else:
-            save_state(state, paths)
             decision = {
                 "decision": "block",
                 "reason": (
@@ -958,9 +1049,38 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             print(json.dumps(decision, ensure_ascii=False))
         sys.exit(0)
 
+    # ── L0 0-G：上一輪 review IMPs 不 actionable → 直接 block（零 API，v3.8）──
+    prev_review_path = _find_prev_review(state, plan_slug)
+    if prev_review_path:
+        try:
+            prev_review_text = prev_review_path.read_text(encoding="utf-8")
+            prev_verdict = parse_verdict(prev_review_text)
+            if prev_verdict in ("NEEDS_REVISION", "BLOCKED"):
+                if not has_actionable_imps(prev_review_text):
+                    if not dry_run:
+                        decision_0g = {
+                            "decision": "block",
+                            "reason": (
+                                f"[Round {candidate_round:02d}][{plan_slug}] ❌ [0-G] "
+                                "上一輪 review 的 IMPROVEMENTS 不含 Where+What+Verify 三要素，"
+                                "無法判斷是否為具體可落地的改進項。\n\n"
+                                "請先確認 reviewer 輸出格式正確後再重跑（不消耗 API）。"
+                            ),
+                            "hookSpecificOutput": {
+                                "hookEventName": "PostToolUse",
+                                "additionalContext": "0-G block — 上一輪 IMPs 不 actionable"
+                            }
+                        }
+                        print(json.dumps(decision_0g, ensure_ascii=False))
+                    else:
+                        print(f"[DRY-RUN] [0-G] 上一輪 IMPs 不 actionable，實際執行會 block")
+                    sys.exit(0)
+        except Exception as e:
+            sys.stderr.write(f"review_plan_loop: [0-G] 讀取上一輪 review 失敗（跳過）: {e}\n")
+
     # 讀取前一輪快照
     snapshots_dir = paths["snapshots_dir"]
-    prev_snapshot_path = snapshots_dir / f"round{(round_num - 1):02d}.md"
+    prev_snapshot_path = snapshots_dir / f"round{(candidate_round - 1):02d}.md"
     prev_content = ""
     if prev_snapshot_path.exists():
         prev_content = prev_snapshot_path.read_text(encoding="utf-8")
@@ -1001,10 +1121,23 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         for p, content in all_reviews.items()
     )
 
-    # 合併 VERDICT（取最嚴格）
+    # 合併 VERDICT（取最嚴格，v3.7+v3.8 兩層保險）
     VERDICT_PRIORITY = {"BLOCKED": 0, "NEEDS_REVISION": 1, "APPROVED": 2}
-    verdicts = [parse_verdict(r) for r in all_reviews.values()]
-    verdict = min(verdicts, key=lambda v: VERDICT_PRIORITY.get(v, 1))
+
+    def _effective_verdict(r: str) -> str:
+        if not has_min_imps(r):         # 保險 1：IMPROVEMENTS 數 < 3
+            return "NEEDS_REVISION"
+        if not has_actionable_imps(r):  # 保險 2：IMP 不含 Where+What+Verify（v3.8）
+            return "NEEDS_REVISION"
+        return parse_verdict(r)
+
+    verdicts_map = {p: _effective_verdict(r) for p, r in all_reviews.items()}
+    verdict = min(verdicts_map.values(), key=lambda v: VERDICT_PRIORITY.get(v, 1))
+
+    # skeptic ≠ APPROVED → 合併 verdict 不得 APPROVED（v3.7 保險 3）
+    if verdicts_map.get("skeptic", "NEEDS_REVISION") != "APPROVED":
+        if VERDICT_PRIORITY.get(verdict, 1) > VERDICT_PRIORITY["NEEDS_REVISION"]:
+            verdict = "NEEDS_REVISION"
 
     # 解析 IMP 條目與 resolution evidence（L1-C，從合併文本解析）
     imp_items = parse_imp_ids(review_content)
@@ -1029,51 +1162,72 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         "total":   round(t_end - t_start, 2),
     }
 
+    sys.stderr.write(
+        f"review_plan_loop: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+        f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
+        f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
+        f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
+        f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
+        f"summary={timing['summary']}s  total={timing['total']}s\n"
+    )
+
     if dry_run:
-        # 乾跑：不更新 state/CHECKLIST/snapshot，不計入輪次
-        state["round"] -= 1
-        sys.stderr.write(
-            f"review_plan_loop: [{plan_slug}] DRY-RUN Round {round_num:02d} 完成 — VERDICT={verdict}\n"
-            f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
-            f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
-            f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
-            f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
-            f"summary={timing['summary']}s  total={timing['total']}s\n"
-            f"  [DRY-RUN] state/CHECKLIST/snapshot 未更新\n"
-        )
+        # 乾跑：不更新 state/CHECKLIST/snapshot
+        sys.stderr.write(f"  [DRY-RUN] state/CHECKLIST/snapshot 未更新\n")
         print(f"[DRY-RUN] VERDICT={verdict}\n{summary_content.strip()}")
-    else:
-        # 更新 CHECKLIST.md
-        update_checklist(round_num, verdict, imp_items, paths, imp_resolutions)
+        sys.exit(0)
 
-        # 快照（round 編號 + latest 指標）
-        snapshot_path = snapshots_dir / f"round{round_num:02d}.md"
-        snapshot_path.write_text(current_plan, encoding="utf-8")
-        latest_path = snapshots_dir / "latest.md"
-        latest_path.write_text(current_plan, encoding="utf-8")
-
-        # 更新狀態
-        state["status"] = verdict
-        state["last_round_ts"] = now_ts
-        state["last_timing"] = timing
-        state["last_round_files"] = {
-            "review": str(review_path.relative_to(REPO_ROOT)),
-            "diff": str(diff_path.relative_to(REPO_ROOT)),
-            "summary": str(summary_path.relative_to(REPO_ROOT)),
-        }
-        save_state(state, paths)
-
+    # ── Post-review gate（v3.8 B）：任一 persona IMPs 不 actionable → 無效輪 ──
+    failed_personas = [
+        p for p, r in all_reviews.items()
+        if not has_actionable_imps(r, k=3)
+    ]
+    if failed_personas:
+        failed_str = ", ".join(failed_personas)
         sys.stderr.write(
-            f"review_plan_loop: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
-            f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
-            f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
-            f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
-            f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
-            f"summary={timing['summary']}s  total={timing['total']}s\n"
+            f"review_plan_loop: [{plan_slug}] [Post-review gate] "
+            f"personas [{failed_str}] IMPs 不含 Where+What+Verify — 本輪視為無效，state 不更新\n"
         )
+        gate_decision = {
+            "decision": "block",
+            "reason": (
+                f"[Round {round_num:02d}][{plan_slug}] ❌ [Post-review gate] "
+                f"Personas [{failed_str}] 未產生 ≥3 條 actionable IMPs（每條必須含 Where+What+Verify）。\n\n"
+                "本輪 review/diff/summary 已寫入磁碟供稽核，但 round 未計入 state。\n"
+                "請修正 PLAN prompt 或等候下一次 reviewer 輸出後重跑。"
+            ),
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": f"Post-review gate block — personas {failed_str}"
+            }
+        }
+        print(json.dumps(gate_decision, ensure_ascii=False))
+        sys.exit(0)
 
-        # 輸出 JSON decision（帶 preflight_warnings）
-        output_decision(verdict, round_num, review_content, summary_content, plan_slug, preflight_warnings)
+    # ── Gate 通過：commit state/CHECKLIST/snapshot ──────────────────────────
+    # 更新 CHECKLIST.md
+    update_checklist(round_num, verdict, imp_items, paths, imp_resolutions)
+
+    # 快照（round 編號 + latest 指標）
+    snapshot_path = snapshots_dir / f"round{round_num:02d}.md"
+    snapshot_path.write_text(current_plan, encoding="utf-8")
+    latest_path = snapshots_dir / "latest.md"
+    latest_path.write_text(current_plan, encoding="utf-8")
+
+    # 更新狀態（prev_round/candidate_round 模式：此時才寫入 round）
+    state["round"] = candidate_round
+    state["status"] = verdict
+    state["last_round_ts"] = now_ts
+    state["last_timing"] = timing
+    state["last_round_files"] = {
+        "review": str(review_path.relative_to(REPO_ROOT)),
+        "diff": str(diff_path.relative_to(REPO_ROOT)),
+        "summary": str(summary_path.relative_to(REPO_ROOT)),
+    }
+    save_state(state, paths)
+
+    # 輸出 JSON decision（帶 preflight_warnings）
+    output_decision(verdict, round_num, review_content, summary_content, plan_slug, preflight_warnings)
     sys.exit(0)
 
 

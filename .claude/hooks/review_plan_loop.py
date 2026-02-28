@@ -38,6 +38,7 @@ import datetime
 import difflib
 import re
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 
 # ── .env fallback 載入（Claude Code hook 不繼承 shell 環境變數）────────────
@@ -76,6 +77,14 @@ PLAN_MAX_CHARS = 16000
 DIFF_MAX_LINES = 200
 REVIEW_MODEL = "gpt-4o"
 SUMMARY_MODEL = "gpt-4o-mini"
+
+# Reviewer Personas（L1-B）
+REVIEWER_PERSONAS = {
+    "engineer": "你是資深工程師審稿人，重點檢查實作可行性、里程碑具體性、驗收標準可測試性。",
+    "security": "你是資安審稿人，重點檢查認證/授權設計、資料保護、注入攻擊面、敏感資料處理。",
+    "devops":   "你是 DevOps 審稿人，重點檢查部署方式、回滾計劃、監控指標、服務依賴與 SLA。",
+    "pm":       "你是產品經理審稿人，重點檢查用戶影響、商業風險、範圍蔓延、優先級合理性。",
+}
 
 # Pre-flight Suite 常數（L0）
 REQUIRED_SECTIONS = ["## 目標", "## 驗收標準", "## Decision Log"]
@@ -221,6 +230,24 @@ def preflight_dependency_tracking(plan_content: str) -> list[str]:
             errors.append(f"依賴計劃 '{slug}' state.json 讀取失敗")
 
     return errors
+
+
+def parse_reviewers(plan_content: str) -> list:
+    """
+    解析 PLAN frontmatter 中的 reviewers 欄位（L1-B）。
+    格式：reviewers: [engineer, security, devops]
+    無 frontmatter 或無 reviewers 欄位時返回 ["engineer"]（向後相容）。
+    """
+    m = re.match(r"^---\n(.*?)\n---", plan_content, re.DOTALL)
+    if not m:
+        return ["engineer"]
+    frontmatter = m.group(1)
+    rev_match = re.search(r"reviewers:\s*\[([^\]]*)\]", frontmatter)
+    if not rev_match:
+        return ["engineer"]
+    slugs = [s.strip().strip("\"'") for s in rev_match.group(1).split(",") if s.strip()]
+    valid = [s for s in slugs if s in REVIEWER_PERSONAS]
+    return valid if valid else ["engineer"]
 
 
 def preflight_expiry_alert(state: dict) -> list[str]:
@@ -449,8 +476,11 @@ def build_history_context(round_num: int, paths: dict, n_rounds: int = 3) -> str
 
 # ── OpenAI 呼叫 ──────────────────────────────────────────────────────────────
 
-def call_openai_review(plan_content: str, diff_text: str, round_num: int, history_context: str = "") -> str:
-    """呼叫 OpenAI 進行 PLAN.md 審稿，返回 review 原文"""
+def call_openai_review(
+    plan_content: str, diff_text: str, round_num: int,
+    history_context: str = "", persona: str = "engineer"
+) -> str:
+    """呼叫 OpenAI 進行 PLAN.md 審稿，返回 review 原文。persona 決定審稿視角（L1-B）"""
     try:
         from openai import OpenAI
     except ImportError:
@@ -470,7 +500,8 @@ def call_openai_review(plan_content: str, diff_text: str, round_num: int, histor
     is_first_round = not diff_text.strip()
     diff_section = "(第一輪，無前一輪快照)" if is_first_round else diff_text
 
-    prompt = f"""你是資深工程師審稿人（Round {round_num:02d}）。
+    persona_intro = REVIEWER_PERSONAS.get(persona, REVIEWER_PERSONAS["engineer"])
+    prompt = f"""{persona_intro}（Round {round_num:02d}）。
 審核以下 PLAN.md，判斷是否達到「可實作」標準。
 
 必須逐一檢查以下 6 點：
@@ -932,12 +963,38 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     # 建立歷史上下文（L1-A）
     history_context = build_history_context(round_num, paths)
 
-    # 呼叫 OpenAI 審稿
-    review_content = call_openai_review(current_plan, diff_text, round_num, history_context)
+    # 解析 reviewers（L1-B）
+    reviewers = parse_reviewers(current_plan)
+
+    # 平行呼叫各 persona（L1-B）
+    with ThreadPoolExecutor(max_workers=min(len(reviewers), 4)) as executor:
+        futures = {
+            p: executor.submit(
+                call_openai_review, current_plan, diff_text, round_num, history_context, p
+            )
+            for p in reviewers
+        }
+        all_reviews = {}
+        for p, f in futures.items():
+            try:
+                all_reviews[p] = f.result()
+            except Exception as e:
+                all_reviews[p] = f"VERDICT: NEEDS_REVISION\n\nERROR: persona '{p}' 呼叫失敗 — {e}"
+
     t_review = time.time()
 
-    # 解析 VERDICT、IMP 條目與 resolution evidence（L1-C）
-    verdict = parse_verdict(review_content)
+    # 合併 review 內容（各 persona 以分隔線區分）
+    review_content = "\n\n---\n\n".join(
+        f"## [{p.upper()} PERSONA]\n\n{content}"
+        for p, content in all_reviews.items()
+    )
+
+    # 合併 VERDICT（取最嚴格）
+    VERDICT_PRIORITY = {"BLOCKED": 0, "NEEDS_REVISION": 1, "APPROVED": 2}
+    verdicts = [parse_verdict(r) for r in all_reviews.values()]
+    verdict = min(verdicts, key=lambda v: VERDICT_PRIORITY.get(v, 1))
+
+    # 解析 IMP 條目與 resolution evidence（L1-C，從合併文本解析）
     imp_items = parse_imp_ids(review_content)
     imp_resolutions = parse_imp_resolutions(review_content)
 

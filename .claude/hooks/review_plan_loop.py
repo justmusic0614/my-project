@@ -809,17 +809,13 @@ def output_decision(
     print(json.dumps(decision, ensure_ascii=False))
 
 
-# ── 主程式 ───────────────────────────────────────────────────────────────────
+# ── 核心審稿流程 ──────────────────────────────────────────────────────────────
 
-def main() -> None:
-    # 讀取 hook 輸入
-    hook_input = get_hook_input()
-
-    # 過濾：只處理監控目標（docs/plans/*.md 或 docs/PLAN.md）
-    is_target, plan_slug = is_target_file(hook_input)
-    if not is_target:
-        sys.exit(0)
-
+def run_review(plan_slug: str, dry_run: bool = False) -> None:
+    """
+    執行完整審稿流程（Pre-flight + diff + OpenAI review/summary + 輸出 decision）。
+    dry_run=True 時：仍寫入 review/diff/summary 文件，但不更新 state/CHECKLIST/snapshot。
+    """
     # 取得 per-plan 路徑
     paths = get_paths(plan_slug)
 
@@ -862,7 +858,8 @@ def main() -> None:
     round_num = state["round"]
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    sys.stderr.write(f"review_plan_loop v3.2: [{plan_slug}] 開始 Round {round_num:02d}...\n")
+    dry_tag = " [DRY-RUN]" if dry_run else ""
+    sys.stderr.write(f"review_plan_loop v3.3: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
@@ -871,29 +868,31 @@ def main() -> None:
     preflight_errors, preflight_warnings = run_preflight(current_plan, paths, state)
 
     if preflight_errors:
-        # 有阻擋性錯誤，不消耗 API，直接 block
         error_lines = "\n".join(f"  ✗ {e}" for e in preflight_errors)
         warn_block = ""
         if preflight_warnings:
             warn_block = "\n\n[警告（修正 errors 後仍會顯示）]\n" + "\n".join(
                 f"  ℹ {w}" for w in preflight_warnings
             )
-        decision = {
-            "decision": "block",
-            "reason": (
-                f"[Round {round_num:02d}][{plan_slug}] ❌ Pre-flight 失敗（未消耗 API）\n\n"
-                f"以下問題需要先修正：\n{error_lines}"
-                f"{warn_block}\n\n"
-                f"請修正後重新儲存 PLAN。"
-            ),
-            "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
-                "additionalContext": "Pre-flight block — 零 API 消耗"
-            }
-        }
-        print(json.dumps(decision, ensure_ascii=False))
         state["round"] -= 1  # 不計入正式輪次
-        save_state(state, paths)
+        if dry_run:
+            print(f"[DRY-RUN] Pre-flight 失敗（不計輪次）\n{error_lines}{warn_block}")
+        else:
+            save_state(state, paths)
+            decision = {
+                "decision": "block",
+                "reason": (
+                    f"[Round {round_num:02d}][{plan_slug}] ❌ Pre-flight 失敗（未消耗 API）\n\n"
+                    f"以下問題需要先修正：\n{error_lines}"
+                    f"{warn_block}\n\n"
+                    f"請修正後重新儲存 PLAN。"
+                ),
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": "Pre-flight block — 零 API 消耗"
+                }
+            }
+            print(json.dumps(decision, ensure_ascii=False))
         sys.exit(0)
 
     # 讀取前一輪快照
@@ -925,19 +924,10 @@ def main() -> None:
     summary_content = call_openai_summary(diff_text, review_content, round_num)
     t_summary = time.time()
 
-    # 寫入文件
+    # 寫入文件（dry_run 仍寫，方便查看 prompt 效果）
     review_path = write_review_file(round_num, now_ts, review_content, len(current_plan), paths)
     diff_path = write_diff_file(round_num, diff_text, diff_stats, paths)
     summary_path = write_summary_file(round_num, verdict, summary_content, paths)
-
-    # 更新 CHECKLIST.md
-    update_checklist(round_num, verdict, imp_items, paths)
-
-    # 快照（round 編號 + latest 指標）
-    snapshot_path = snapshots_dir / f"round{round_num:02d}.md"
-    snapshot_path.write_text(current_plan, encoding="utf-8")
-    latest_path = snapshots_dir / "latest.md"
-    latest_path.write_text(current_plan, encoding="utf-8")
 
     t_end = time.time()
 
@@ -949,29 +939,79 @@ def main() -> None:
         "total":   round(t_end - t_start, 2),
     }
 
-    # 更新狀態
-    state["status"] = verdict
-    state["last_round_ts"] = now_ts
-    state["last_timing"] = timing
-    state["last_round_files"] = {
-        "review": str(review_path.relative_to(REPO_ROOT)),
-        "diff": str(diff_path.relative_to(REPO_ROOT)),
-        "summary": str(summary_path.relative_to(REPO_ROOT)),
-    }
-    save_state(state, paths)
+    if dry_run:
+        # 乾跑：不更新 state/CHECKLIST/snapshot，不計入輪次
+        state["round"] -= 1
+        sys.stderr.write(
+            f"review_plan_loop: [{plan_slug}] DRY-RUN Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+            f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
+            f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
+            f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
+            f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
+            f"summary={timing['summary']}s  total={timing['total']}s\n"
+            f"  [DRY-RUN] state/CHECKLIST/snapshot 未更新\n"
+        )
+        print(f"[DRY-RUN] VERDICT={verdict}\n{summary_content.strip()}")
+    else:
+        # 更新 CHECKLIST.md
+        update_checklist(round_num, verdict, imp_items, paths)
 
-    sys.stderr.write(
-        f"review_plan_loop: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
-        f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
-        f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
-        f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
-        f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
-        f"summary={timing['summary']}s  total={timing['total']}s\n"
-    )
+        # 快照（round 編號 + latest 指標）
+        snapshot_path = snapshots_dir / f"round{round_num:02d}.md"
+        snapshot_path.write_text(current_plan, encoding="utf-8")
+        latest_path = snapshots_dir / "latest.md"
+        latest_path.write_text(current_plan, encoding="utf-8")
 
-    # 輸出 JSON decision（帶 preflight_warnings）
-    output_decision(verdict, round_num, review_content, summary_content, plan_slug, preflight_warnings)
+        # 更新狀態
+        state["status"] = verdict
+        state["last_round_ts"] = now_ts
+        state["last_timing"] = timing
+        state["last_round_files"] = {
+            "review": str(review_path.relative_to(REPO_ROOT)),
+            "diff": str(diff_path.relative_to(REPO_ROOT)),
+            "summary": str(summary_path.relative_to(REPO_ROOT)),
+        }
+        save_state(state, paths)
+
+        sys.stderr.write(
+            f"review_plan_loop: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+            f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
+            f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
+            f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
+            f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
+            f"summary={timing['summary']}s  total={timing['total']}s\n"
+        )
+
+        # 輸出 JSON decision（帶 preflight_warnings）
+        output_decision(verdict, round_num, review_content, summary_content, plan_slug, preflight_warnings)
     sys.exit(0)
+
+
+# ── 主程式 ───────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    # ── CLI 直接觸發模式（L2-C）──────────────────────────────────────────────
+    if "--run" in sys.argv:
+        idx = sys.argv.index("--run")
+        if idx + 1 >= len(sys.argv):
+            sys.stderr.write(
+                "用法：python3 review_plan_loop.py --run <plan-slug> [--dry-run]\n"
+            )
+            sys.exit(1)
+        slug = sys.argv[idx + 1]
+        dry_run = "--dry-run" in sys.argv
+        run_review(slug, dry_run=dry_run)
+        return
+
+    # ── Hook 模式（從 stdin 讀取）────────────────────────────────────────────
+    hook_input = get_hook_input()
+
+    # 過濾：只處理監控目標（docs/plans/*.md 或 docs/PLAN.md）
+    is_target, plan_slug = is_target_file(hook_input)
+    if not is_target:
+        sys.exit(0)
+
+    run_review(plan_slug)
 
 
 if __name__ == "__main__":

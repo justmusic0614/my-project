@@ -360,24 +360,64 @@ def run_preflight(
 
 # ── 上一輪 review 檔案查找（v3.8 0-G 使用）────────────────────────────────────
 
-def _find_prev_review(state: dict, plan_slug: str) -> "Path | None":
+def _find_prev_review(
+    state: dict, plan_slug: str, target_round: int = 0
+) -> "Path | None":
     """
-    找上一輪 review 檔案。
-    優先用 state["last_round_files"]["review"]（最精確）；
-    找不到再 glob 最新 review-*-round*.md 作為 fallback。
+    找上一輪 review 檔案（v3.9：三層查找，相容新舊 state 結構）。
+    target_round：顯式傳入目標輪次（= prev_round），避免靠 state.round 推測出錯。
     """
-    # 方法 1：直接從 state 取
     last_files = state.get("last_round_files", {})
+    # 優先用外部傳入的 target_round；無則 fallback state["round"]
+    last_committed_round = target_round if target_round > 0 else state.get("round", 0)
+
+    def _round_key(p: Path) -> int:
+        m = re.search(r"-round(\d+)", p.name)
+        return int(m.group(1)) if m else 0
+
+    # 方法 1a：新結構 last_round_files["reviews"] map（v3.9）
+    # 同時校驗 _round_key 符合 last_committed_round，防止 state 被污染
+    reviews_map = last_files.get("reviews", {})
+    if reviews_map:
+        for preferred in ("skeptic", "engineer"):
+            rel = reviews_map.get(preferred)
+            if not rel:
+                continue
+            path = REPO_ROOT / rel
+            if path.exists() and (_round_key(path) == last_committed_round or last_committed_round == 0):
+                return path
+        for _, rel in reviews_map.items():
+            path = REPO_ROOT / rel
+            if path.exists() and (_round_key(path) == last_committed_round or last_committed_round == 0):
+                return path
+
+    # 方法 1b：舊結構 last_round_files["review"]（向後相容）
     if last_files.get("review"):
-        p = REPO_ROOT / last_files["review"]
-        if p.exists():
-            return p
-    # 方法 2：glob fallback
+        path = REPO_ROOT / last_files["review"]
+        if path.exists():
+            return path
+
+    # 方法 2：glob fallback（int 排序避免 round10 < round2）
     review_dir = REPO_ROOT / "docs" / "reviews" / plan_slug
     if not review_dir.exists():
         return None
-    matches = sorted(review_dir.glob("review-*-round*.md"))
-    return matches[-1] if matches else None
+
+    all_matches = sorted(review_dir.glob("review-*-round*.md"), key=_round_key)
+    if not all_matches:
+        return None
+
+    # 優先：last_committed_round 的 skeptic 或 engineer
+    if last_committed_round > 0:
+        prev_matches = [p for p in all_matches if _round_key(p) == last_committed_round]
+        for preferred in ("skeptic", "engineer"):
+            for p in prev_matches:
+                if p.name.endswith(f"-{preferred}.md"):
+                    return p
+        if prev_matches:
+            return prev_matches[-1]
+
+    # 最終 fallback：最大 round
+    return all_matches[-1]
 
 
 # ── Hook 輸入處理 ────────────────────────────────────────────────────────────
@@ -478,15 +518,26 @@ def build_history_context(round_num: int, paths: dict, n_rounds: int = 3) -> str
     lines = []
     start = max(1, round_num - n_rounds)
     for r in range(start, round_num):
-        candidates = sorted(
-            reviews_dir.glob(f"review-*-round{r:02d}.md"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
+        # v3.9 修正 A：glob 支援 per-persona 後綴（review-*-roundNN-{persona}.md）
+        all_candidates = sorted(
+            reviews_dir.glob(f"review-*-round{r:02d}*.md"),
+            key=lambda p: p.stat().st_mtime, reverse=True
         )
-        if not candidates:
+        # 每輪只選一份（優先 skeptic > engineer > 任一），避免多 persona 汙染 context
+        candidate = None
+        for preferred in ("skeptic", "engineer"):
+            for p in all_candidates:
+                if p.name.endswith(f"-{preferred}.md"):
+                    candidate = p
+                    break
+            if candidate:
+                break
+        if not candidate and all_candidates:
+            candidate = all_candidates[0]
+        if not candidate:
             continue
         try:
-            text = candidates[0].read_text(encoding="utf-8", errors="replace")
+            text = candidate.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
 
@@ -742,6 +793,73 @@ def has_actionable_imps(review_text: str, k: int = 3) -> bool:
     return sum(1 for b in bullets if is_actionable_imp(b)) >= k
 
 
+# ── IMP Response Matrix helpers（v3.9）───────────────────────────────────────
+
+def get_prev_checklist_open_imps(paths: dict) -> set:
+    """
+    讀 CHECKLIST.md，回傳 status 為 [ ] 或 ⚠️ 的 IMP IDs（set[str]）。
+    找不到或解析失敗 → 回傳空 set（不中斷流程）。
+    用 split('|') 解析表格，避免 Evidence 欄有 | 時 regex 出錯。
+    動態從 header 行找 Status 欄位 index，未來欄位順序變動不會偏掉。
+    """
+    checklist_path = paths["checklist_path"]
+    if not checklist_path.exists():
+        return set()
+    open_imps = set()
+    status_col = 2  # 預設（ID | 項目 | Status ...）
+    try:
+        for line in checklist_path.read_text(encoding="utf-8").splitlines():
+            if not line.startswith("|"):
+                continue
+            cols = [c.strip() for c in line.split("|")]
+            cols = [c for c in cols if c]  # 去掉 split | 產生的首尾空字串
+            if len(cols) < 3:
+                continue
+            # 分隔行用更保險的判斷（| --- | --- | 也能正確跳過）
+            if set(line.replace("|", "").strip()) <= {"-", " "}:
+                continue
+            # header 行 → 動態更新 status_col
+            if cols[0] in ("ID", ""):
+                if "Status" in cols:
+                    status_col = cols.index("Status")
+                continue
+            # 資料行
+            if re.match(r"IMP-\d+", cols[0]) and len(cols) > status_col:
+                imp_id = cols[0]
+                status = cols[status_col]
+                if status in ("[ ]", "⚠️"):
+                    open_imps.add(imp_id)
+    except Exception:
+        pass
+    return open_imps
+
+
+def build_imp_response_matrix(prev_open_imps: set, all_reviews: dict) -> str:
+    """
+    比對上輪 open IMPs 是否在本輪 review 有 RESOLVED（v3.9）。
+    接受 all_reviews dict，串接所有 persona review 後解析 RESOLVED，
+    避免 RESOLVED 只出現在 skeptic 那份時被漏掉。
+    """
+    if not prev_open_imps:
+        return "(no previous open IMPs)"
+
+    combined = "\n".join(all_reviews.values())
+    # 放寬 regex：接受 RESOLVED: 或 RESOLVED - 或大小寫
+    resolved_ids = set(
+        f"IMP-{m}" for m in re.findall(
+            r"✅\s*\[IMP-(\d+)\]\s*RESOLVED\s*[:\-]", combined, re.IGNORECASE
+        )
+    )
+
+    lines = []
+    for imp_id in sorted(prev_open_imps):
+        if imp_id in resolved_ids:
+            lines.append(f"- ✅ {imp_id} — responded")
+        else:
+            lines.append(f"- ⚠️ {imp_id} — not addressed")
+    return "\n".join(lines)
+
+
 # ── CHECKLIST 管理 ───────────────────────────────────────────────────────────
 
 def update_checklist(
@@ -832,22 +950,50 @@ def update_checklist(
 
 # ── 文件輸出 ─────────────────────────────────────────────────────────────────
 
-def write_review_file(
-    round_num: int, now_ts: str, review_content: str, plan_len: int, paths: dict
-) -> Path:
-    """寫入 review-{ts}-roundNN.md"""
+def save_persona_reviews(
+    round_num: int, now_ts: str, all_reviews: dict,
+    plan_len: int, verdicts_map: dict, paths: dict
+) -> dict:
+    """
+    將各 persona review 分別寫入獨立檔案（v3.9）。
+    路徑：docs/reviews/{slug}/review-{ts}-roundNN-{persona}.md
+    返回：{persona: str(path)}（相對 REPO_ROOT）
+    """
     reviews_dir = paths["reviews_dir"]
-    path = reviews_dir / f"review-{now_ts}-round{round_num:02d}.md"
-    path.write_text(
-        f"# OpenAI Review — Round {round_num:02d}\n\n"
-        f"> 時間：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"> 模型：{REVIEW_MODEL}\n"
-        f"> PLAN.md 字元數：{plan_len}\n\n"
-        f"---\n\n"
-        f"{review_content}\n",
-        encoding="utf-8"
-    )
-    return path
+    # 用 now_ts 解析人類可讀時間（與檔名 ts 保持一致）
+    try:
+        now_human = datetime.datetime.strptime(now_ts, "%Y%m%d-%H%M%S").strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        now_human = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    result = {}
+    for persona, content in all_reviews.items():
+        effective_v = verdicts_map.get(persona, "NEEDS_REVISION")
+        raw_v = parse_verdict(content)
+        # 計算 verdict 被 override 的原因（Suggestion 2）
+        if raw_v != effective_v:
+            if not has_min_imps(content):
+                reason = " (because min_imps<3)"
+            elif not has_actionable_imps(content):
+                reason = " (because actionable<3)"
+            else:
+                reason = " (override)"
+        else:
+            reason = ""
+        verdict_line = f"> Effective Verdict: {effective_v}{reason}\n"
+
+        path = reviews_dir / f"review-{now_ts}-round{round_num:02d}-{persona}.md"
+        path.write_text(
+            f"# OpenAI Review — Round {round_num:02d} [{persona.upper()}]\n\n"
+            f"> 時間：{now_human}\n"
+            f"> 模型：{REVIEW_MODEL}\n"
+            f"> PLAN.md 字元數：{plan_len}\n"
+            f"{verdict_line}\n"
+            f"---\n\n"
+            f"{content}\n",
+            encoding="utf-8"
+        )
+        result[persona] = str(path.relative_to(REPO_ROOT))
+    return result
 
 
 def write_diff_file(
@@ -887,6 +1033,100 @@ def write_summary_file(
         encoding="utf-8"
     )
     return path
+
+
+# ── Dashboard（v3.9）────────────────────────────────────────────────────────
+
+def write_dashboard(
+    plan_slug: str, round_num: int, verdict: str,
+    verdicts_map: dict, reviews_map: dict,
+    diff_path: "Path | None", summary_path: "Path | None",
+    response_matrix_md: str, paths: dict, timing: dict,
+    preflight_passed: bool = True,
+    gate_passed: bool = True,
+    gate_notes: str = ""
+) -> Path:
+    """
+    產出 DASHBOARD.md（每輪覆寫，v3.9）。
+    路徑：docs/reviews/{slug}/DASHBOARD.md
+    可在 preflight block 以空 reviews_map/verdicts_map 呼叫（minimal DASHBOARD）。
+    """
+    dashboard_path = paths["reviews_dir"] / "DASHBOARD.md"
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    personas_str = ", ".join(verdicts_map.keys()) if verdicts_map else "-"
+
+    # Round Progress Bar（Suggestion 1 + 雷 2）
+    # review_icon 用 artifacts 是否存在推斷，能反映「API 跑了但寫檔掛掉」的情況
+    pf_icon     = "✅" if preflight_passed else "❌"
+    review_ran  = bool(diff_path or summary_path or reviews_map)
+    review_icon = "✅" if review_ran else ("❌" if preflight_passed else "—")
+    ag_icon     = "✅" if (gate_passed and preflight_passed) else ("❌" if preflight_passed else "—")
+    commit_icon = "✅" if (gate_passed and preflight_passed) else "—"
+    progress_bar = (
+        f"`[0-G] {pf_icon}  [Review] {review_icon}  "
+        f"[Actionable Gate] {ag_icon}  [Commit] {commit_icon}`"
+    )
+
+    # Artifacts
+    diff_rel = str(diff_path.relative_to(REPO_ROOT)) if diff_path else "-"
+    sum_rel  = str(summary_path.relative_to(REPO_ROOT)) if summary_path else "-"
+    reviews_lines = "\n".join(
+        f"  - {p}: {rp}" for p, rp in reviews_map.items()
+    ) if reviews_map else "  - (none)"
+
+    # Verdict by Persona
+    verdict_lines = "\n".join(
+        f"- {p}: {verdicts_map[p]}" for p in verdicts_map
+    ) if verdicts_map else "- (none)"
+
+    # Checklist Snapshot（前 20 條，跳過 header/分隔行）
+    checklist_path = paths["checklist_path"]
+    if checklist_path.exists():
+        try:
+            snap_lines = [
+                ln for ln in checklist_path.read_text(encoding="utf-8").splitlines()
+                if (ln.startswith("|")
+                    and not ln.startswith("| ID")
+                    and not (set(ln.replace("|", "").strip()) <= {"-", " "}))
+            ][:20]
+            checklist_snapshot = "\n".join(snap_lines) if snap_lines else "(no items)"
+        except Exception:
+            checklist_snapshot = "(parse error)"
+    else:
+        checklist_snapshot = "(no checklist yet)"
+
+    # Timing
+    timing_str = (
+        f"diff={timing.get('diff', '-')}s  "
+        f"review={timing.get('review', '-')}s  "
+        f"summary={timing.get('summary', '-')}s  "
+        f"total={timing.get('total', '-')}s"
+    ) if timing else "-"
+
+    content = (
+        f"# Review Dashboard — {plan_slug}\n\n"
+        f"> Round: {round_num:02d}\n"
+        f"> Verdict: {verdict}\n"
+        f"> Personas: {personas_str}\n"
+        f"> Updated: {now}\n\n"
+        f"## Pipeline\n\n"
+        f"{progress_bar}\n\n"
+        f"## Artifacts\n\n"
+        f"- Diff: {diff_rel}\n"
+        f"- Summary: {sum_rel}\n"
+        f"- Reviews:\n{reviews_lines}\n\n"
+        f"## Verdict by Persona\n\n"
+        f"{verdict_lines}\n\n"
+        f"## IMP Response Matrix (vs previous round)\n\n"
+        f"{response_matrix_md}\n\n"
+        f"## Checklist Snapshot (top 20)\n\n"
+        f"{checklist_snapshot}\n\n"
+        f"## Gate Notes\n\n"
+        f"{gate_notes if gate_notes else '- All gates PASSED'}\n"
+        f"- Timing: {timing_str}\n"
+    )
+    dashboard_path.write_text(content, encoding="utf-8")
+    return dashboard_path
 
 
 # ── Decision 輸出 ────────────────────────────────────────────────────────────
@@ -1014,7 +1254,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     dry_tag = " [DRY-RUN]" if dry_run else ""
-    sys.stderr.write(f"review_plan_loop v3.8: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
+    sys.stderr.write(f"review_plan_loop v3.9: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
@@ -1049,8 +1289,9 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             print(json.dumps(decision, ensure_ascii=False))
         sys.exit(0)
 
-    # ── L0 0-G：上一輪 review IMPs 不 actionable → 直接 block（零 API，v3.8）──
-    prev_review_path = _find_prev_review(state, plan_slug)
+    # ── L0 0-G：上一輪 review IMPs 不 actionable → 直接 block（零 API，v3.8+v3.9）──
+    # 6-B：顯式傳 target_round=prev_round，避免靠 state.round 推測出錯
+    prev_review_path = _find_prev_review(state, plan_slug, target_round=prev_round)
     if prev_review_path:
         try:
             prev_review_text = prev_review_path.read_text(encoding="utf-8")
@@ -1058,6 +1299,20 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             if prev_verdict in ("NEEDS_REVISION", "BLOCKED"):
                 if not has_actionable_imps(prev_review_text):
                     if not dry_run:
+                        # 6-C（雷 2）：0-G block 時也寫 minimal DASHBOARD，pipeline 顯示 [0-G] ❌
+                        _gate_notes_0g = (
+                            "- 0-G preflight: BLOCKED — prev round IMPs not actionable\n"
+                            "- Round NOT started (zero API calls)"
+                        )
+                        write_dashboard(
+                            plan_slug, round_num, verdict="BLOCKED",
+                            verdicts_map={}, reviews_map={},
+                            diff_path=None, summary_path=None,
+                            response_matrix_md="(N/A — preflight blocked)",
+                            paths=paths, timing={},
+                            preflight_passed=False,
+                            gate_notes=_gate_notes_0g
+                        )
                         decision_0g = {
                             "decision": "block",
                             "reason": (
@@ -1148,7 +1403,8 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     t_summary = time.time()
 
     # 寫入文件（dry_run 仍寫，方便查看 prompt 效果）
-    review_path = write_review_file(round_num, now_ts, review_content, len(current_plan), paths)
+    # 6-A：v3.9 per-persona 分檔（傳 verdicts_map 讓檔頭顯示 Effective Verdict）
+    reviews_map = save_persona_reviews(round_num, now_ts, all_reviews, len(current_plan), verdicts_map, paths)
     diff_path = write_diff_file(round_num, diff_text, diff_stats, paths)
     summary_path = write_summary_file(round_num, verdict, summary_content, paths)
 
@@ -1162,11 +1418,20 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         "total":   round(t_end - t_start, 2),
     }
 
+    # 6-D：IMP 回應矩陣（v3.9）
+    prev_open_imps = get_prev_checklist_open_imps(paths)
+    response_matrix_md = build_imp_response_matrix(prev_open_imps, all_reviews)
+
+    review_lines = "\n".join(
+        f"  review [{p}] → {rp}"
+        for p, rp in reviews_map.items()
+    )
     sys.stderr.write(
-        f"review_plan_loop: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
-        f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
+        f"review_plan_loop v3.9: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+        f"{review_lines}\n"
         f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
         f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
+        f"  dashboard → docs/reviews/{plan_slug}/DASHBOARD.md\n"
         f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
         f"summary={timing['summary']}s  total={timing['total']}s\n"
     )
@@ -1201,6 +1466,19 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
                 "additionalContext": f"Post-review gate block — personas {failed_str}"
             }
         }
+        # 6-E（v3.9）：gate fail 時也寫 DASHBOARD，pipeline 顯示 [Actionable Gate] ❌
+        _gate_notes_fail = (
+            f"- Post-review gate: BLOCKED — personas [{failed_str}] IMPs not actionable\n"
+            "- Round NOT committed to state"
+        )
+        write_dashboard(
+            plan_slug, round_num, verdict, verdicts_map,
+            reviews_map, diff_path, summary_path,
+            response_matrix_md, paths, timing,
+            preflight_passed=True,
+            gate_passed=False,
+            gate_notes=_gate_notes_fail
+        )
         print(json.dumps(gate_decision, ensure_ascii=False))
         sys.exit(0)
 
@@ -1219,12 +1497,23 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     state["status"] = verdict
     state["last_round_ts"] = now_ts
     state["last_timing"] = timing
+    # 6-F（v3.9）：state 用新結構 reviews map
     state["last_round_files"] = {
-        "review": str(review_path.relative_to(REPO_ROOT)),
+        "reviews": reviews_map,
         "diff": str(diff_path.relative_to(REPO_ROOT)),
         "summary": str(summary_path.relative_to(REPO_ROOT)),
     }
     save_state(state, paths)
+
+    # 6-F（v3.9）：寫最終 DASHBOARD（所有 gate PASS）
+    write_dashboard(
+        plan_slug, round_num, verdict, verdicts_map,
+        reviews_map, diff_path, summary_path,
+        response_matrix_md, paths, timing,
+        preflight_passed=True,
+        gate_passed=True,
+        gate_notes="- 0-G preflight: PASS\n- Post-review gate: PASS"
+    )
 
     # 輸出 JSON decision（帶 preflight_warnings）
     output_decision(verdict, round_num, review_content, summary_content, plan_slug, preflight_warnings)

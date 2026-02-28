@@ -1,0 +1,17 @@
+{
+  "round": 1,
+  "status": "APPROVED",
+  "last_complexity": 25,
+  "last_round_ts": "20260228-144538",
+  "last_timing": {
+    "diff": 0.0,
+    "review": 1.85,
+    "summary": 4.95,
+    "total": 6.8
+  },
+  "last_round_files": {
+    "review": "docs/reviews/review-loop-l1a/review-20260228-144538-round01.md",
+    "diff": "docs/reviews/review-loop-l1a/round01-diff.md",
+    "summary": "docs/reviews/review-loop-l1a/round01-diff-summary.md"
+  }
+}

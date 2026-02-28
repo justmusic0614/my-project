@@ -396,9 +396,60 @@ def generate_diff(old_content: str, new_content: str) -> tuple:
     return "".join(diff_lines), stats
 
 
+# ── 歷史上下文（L1-A）────────────────────────────────────────────────────────
+
+def build_history_context(round_num: int, paths: dict, n_rounds: int = 3) -> str:
+    """
+    從過去最多 n_rounds 輪的 review 文件提取歷史摘要（L1-A Context-Aware Review）。
+    - NEEDS_REVISION/BLOCKED：列出待解決 IMP IDs
+    - APPROVED：標示「本輪已解決」
+    - 找不到歷史 → 返回空字串（不影響正常流程）
+    """
+    if round_num <= 1:
+        return ""
+
+    reviews_dir = paths["reviews_dir"]
+    if not reviews_dir.exists():
+        return ""
+
+    lines = []
+    start = max(1, round_num - n_rounds)
+    for r in range(start, round_num):
+        candidates = sorted(
+            reviews_dir.glob(f"review-*-round{r:02d}.md"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+        if not candidates:
+            continue
+        try:
+            text = candidates[0].read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        verdict_m = re.search(r"VERDICT:\s*(APPROVED|NEEDS_REVISION|BLOCKED)", text)
+        verdict = verdict_m.group(1) if verdict_m else "UNKNOWN"
+
+        imp_ids = sorted(set(f"IMP-{m}" for m in re.findall(r"\[IMP-(\d{3})\]", text)))
+        imp_str = ", ".join(imp_ids) if imp_ids else "（無）"
+
+        if verdict == "APPROVED":
+            lines.append(f"  Round {r:02d} VERDICT={verdict}: [{imp_str}]（本輪已解決）")
+        else:
+            lines.append(f"  Round {r:02d} VERDICT={verdict}: [{imp_str}]")
+
+    if not lines:
+        return ""
+
+    return (
+        "前輪審稿記要（請聚焦尚未解決的問題，勿重複已解決項）：\n"
+        + "\n".join(lines)
+    )
+
+
 # ── OpenAI 呼叫 ──────────────────────────────────────────────────────────────
 
-def call_openai_review(plan_content: str, diff_text: str, round_num: int) -> str:
+def call_openai_review(plan_content: str, diff_text: str, round_num: int, history_context: str = "") -> str:
     """呼叫 OpenAI 進行 PLAN.md 審稿，返回 review 原文"""
     try:
         from openai import OpenAI
@@ -430,7 +481,7 @@ def call_openai_review(plan_content: str, diff_text: str, round_num: int) -> str
 5. 驗收標準：是否可測試（有明確通過/失敗條件）
 6. Decision Log：是否記錄了本輪的決策理由
 
-本輪 diff（相比前一輪快照的變化）：
+{f"{history_context}{chr(10)}{chr(10)}" if history_context else ""}本輪 diff（相比前一輪快照的變化）：
 ```
 {diff_section}
 ```
@@ -811,7 +862,7 @@ def main() -> None:
     round_num = state["round"]
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    sys.stderr.write(f"review_plan_loop v3.1: [{plan_slug}] 開始 Round {round_num:02d}...\n")
+    sys.stderr.write(f"review_plan_loop v3.2: [{plan_slug}] 開始 Round {round_num:02d}...\n")
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
@@ -859,8 +910,11 @@ def main() -> None:
     diff_text, diff_stats = generate_diff(prev_content, current_plan)
     t_diff = time.time()
 
+    # 建立歷史上下文（L1-A）
+    history_context = build_history_context(round_num, paths)
+
     # 呼叫 OpenAI 審稿
-    review_content = call_openai_review(current_plan, diff_text, round_num)
+    review_content = call_openai_review(current_plan, diff_text, round_num, history_context)
     t_review = time.time()
 
     # 解析 VERDICT 和 IMP 條目

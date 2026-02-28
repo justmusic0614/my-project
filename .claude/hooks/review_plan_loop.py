@@ -1129,7 +1129,7 @@ def write_dashboard(
     return dashboard_path
 
 
-# ── Status JSON（v3.10）─────────────────────────────────────────────────────
+# ── Status JSON（v4.0）─────────────────────────────────────────────────────
 
 def write_status_json(
     plan_slug: str,
@@ -1150,9 +1150,10 @@ def write_status_json(
     timing: dict,
     paths: dict,
     message: str = "",
+    timeline_path: "Path | None" = None,
 ) -> Path:
     """
-    覆寫 docs/reviews/{slug}/.status.json（v3.10）。
+    覆寫 docs/reviews/{slug}/.status.json（v4.0）。
     atomic write（tmp → replace）避免 watcher 讀到半截。
     stage: "RUNNING" | "PRECHECK_BLOCKED" | "GATE_BLOCKED" | "COMMITTED"
     """
@@ -1162,6 +1163,21 @@ def write_status_json(
 
     def _rel(p: "Path | None") -> "str | None":
         return str(p.relative_to(REPO_ROOT)) if p else None
+
+    def _ui(s: str, v: str) -> dict:
+        if s == "RUNNING":
+            return {"icon": "⏳", "color": "yellow",  "label": "Running",           "short": "RUN"}
+        if s == "PRECHECK_BLOCKED":
+            return {"icon": "⛔", "color": "red",     "label": "Preflight Blocked", "short": "PF-BLOCK"}
+        if s == "GATE_BLOCKED":
+            return {"icon": "🛑", "color": "red",     "label": "Gate Blocked",      "short": "GATE-BLOCK"}
+        if s == "COMMITTED":
+            if v == "APPROVED":
+                return {"icon": "✅", "color": "green",  "label": "Approved",       "short": "OK"}
+            if v == "NEEDS_REVISION":
+                return {"icon": "🟡", "color": "yellow", "label": "Needs Revision", "short": "REV"}
+            return     {"icon": "🛑", "color": "red",    "label": "Blocked",        "short": "BLK"}
+        return {"icon": "❓", "color": "gray", "label": s, "short": (s[:6] if s else "UNK")}
 
     # IMP matrix 統計（從 response_matrix_md 計算行前綴）
     prev_open_count = len(prev_open_imps) if prev_open_imps else 0
@@ -1175,7 +1191,8 @@ def write_status_json(
                 not_addressed_count += 1
 
     payload = {
-        "version": "3.10",
+        "schema_version": "1",
+        "version": "4.0",
         "plan_slug": plan_slug,
         "round": round_num,
         "stage": stage,
@@ -1185,11 +1202,14 @@ def write_status_json(
         "personas": list(personas),
         "verdicts_by_persona": dict(verdicts_map),
         "failed_personas": list(failed_personas) if failed_personas else [],
+        "ui": _ui(stage, verdict),
         "artifacts": {
-            "dashboard": _rel(dashboard_path),
-            "diff":      _rel(diff_path),
-            "summary":   _rel(summary_path),
-            "reviews":   dict(reviews_map) if reviews_map else None,
+            "dashboard":  _rel(dashboard_path),
+            "diff":       _rel(diff_path),
+            "summary":    _rel(summary_path),
+            "reviews":    dict(reviews_map) if reviews_map else None,
+            "reviews_dir": str(paths["reviews_dir"].relative_to(REPO_ROOT)),
+            "timeline":   _rel(timeline_path),
         },
         "imp_matrix": {
             "prev_open_count":     prev_open_count,
@@ -1212,6 +1232,97 @@ def write_status_json(
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(status_path)
     return status_path
+
+
+# ── Timeline（v4.0）─────────────────────────────────────────────────────────
+
+def append_timeline_entry(
+    plan_slug: str,
+    round_num: int,
+    stage: str,
+    verdict: str,
+    verdicts_map: dict,
+    reviews_map: "dict | None",
+    diff_path: "Path | None",
+    summary_path: "Path | None",
+    dashboard_path: "Path | None",
+    response_matrix_md: "str | None",
+    failed_personas: "list | None",
+    timing: dict,
+    paths: dict,
+    note: str = "",
+) -> Path:
+    """
+    在 docs/reviews/{slug}/TIMELINE.md 追加一筆條目（append-only，v4.0）。
+    只在終局 stage 呼叫：PRECHECK_BLOCKED / GATE_BLOCKED / COMMITTED。
+    不追加 RUNNING（太吵）。
+    """
+    tz_tw = datetime.timezone(datetime.timedelta(hours=8))
+    ts = datetime.datetime.now(tz=tz_tw).strftime("%Y-%m-%d %H:%M:%S+08:00")
+
+    def _r(p: "Path | None") -> str:
+        return str(p.relative_to(REPO_ROOT)) if p else "(none)"
+
+    timeline_path = paths["reviews_dir"] / "TIMELINE.md"
+
+    # 首次建立：寫 header
+    if not timeline_path.exists():
+        timeline_path.write_text(
+            f"# Review Timeline — {plan_slug}\n\n"
+            f"> append-only. Do not edit past entries unless you know what you are doing.\n\n"
+            f"---\n\n",
+            encoding="utf-8",
+        )
+
+    personas_line = (
+        ", ".join(f"{k}={v}" for k, v in verdicts_map.items()) if verdicts_map else "(none)"
+    )
+
+    reviews_lines = ""
+    if reviews_map:
+        for persona, path_str in reviews_map.items():
+            reviews_lines += f"  - {persona}: {path_str}\n"
+    else:
+        reviews_lines = "  (none)\n"
+
+    matrix_block = response_matrix_md.strip() if response_matrix_md else "(N/A)"
+    fp_str = ", ".join(failed_personas) if failed_personas else "(none)"
+
+    t = timing or {}
+
+    def _f(x: "object") -> float:
+        try:
+            return float(x)  # type: ignore[arg-type]
+        except Exception:
+            return 0.0
+
+    t_str = (
+        f"diff={_f(t.get('diff')):.1f}s "
+        f"review={_f(t.get('review')):.1f}s "
+        f"summary={_f(t.get('summary')):.1f}s "
+        f"total={_f(t.get('total')):.1f}s"
+    )
+
+    note_line = f"\n> {note}\n" if note else ""
+    section = (
+        f"## [{ts}] Round {round_num:02d} — {stage} — {verdict}\n"
+        f"{note_line}"
+        f"- Personas: {personas_line}\n"
+        f"- Reviews:\n{reviews_lines}"
+        f"- Artifacts:\n"
+        f"  - Dashboard: {_r(dashboard_path)}\n"
+        f"  - Diff: {_r(diff_path)}\n"
+        f"  - Summary: {_r(summary_path)}\n"
+        f"- IMP Matrix:\n{matrix_block}\n"
+        f"- Failed personas: {fp_str}\n"
+        f"- Timing: {t_str}\n\n"
+        f"---\n\n"
+    )
+
+    with timeline_path.open("a", encoding="utf-8") as f:
+        f.write(section)
+
+    return timeline_path
 
 
 # ── Decision 輸出 ────────────────────────────────────────────────────────────
@@ -1339,7 +1450,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     dry_tag = " [DRY-RUN]" if dry_run else ""
-    sys.stderr.write(f"review_plan_loop v3.10: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
+    sys.stderr.write(f"review_plan_loop v4.0: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
 
     # v3.10：RUNNING 狀態（watcher 可見「正在跑」）
     if not dry_run:
@@ -1411,7 +1522,16 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
                             preflight_passed=False,
                             gate_notes=_gate_notes_0g
                         )
-                        # v3.10：PRECHECK_BLOCKED
+                        # v4.0：PRECHECK_BLOCKED — timeline + status
+                        _timeline_path = append_timeline_entry(
+                            plan_slug, round_num, stage="PRECHECK_BLOCKED", verdict="BLOCKED",
+                            verdicts_map={}, reviews_map=None,
+                            diff_path=None, summary_path=None,
+                            dashboard_path=paths["reviews_dir"] / "DASHBOARD.md",
+                            response_matrix_md=None, failed_personas=None,
+                            timing={}, paths=paths,
+                            note="blocked by 0-G preflight (zero API calls)",
+                        )
                         write_status_json(
                             plan_slug, round_num, stage="PRECHECK_BLOCKED",
                             verdict="BLOCKED",
@@ -1422,7 +1542,8 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
                             dashboard_path=paths["reviews_dir"] / "DASHBOARD.md",
                             prev_open_imps=None, response_matrix_md=None,
                             failed_personas=None, timing={}, paths=paths,
-                            message="blocked by 0-G preflight (zero API)"
+                            message="blocked by 0-G preflight (zero API)",
+                            timeline_path=_timeline_path,
                         )
                         decision_0g = {
                             "decision": "block",
@@ -1538,7 +1659,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         for p, rp in reviews_map.items()
     )
     sys.stderr.write(
-        f"review_plan_loop v3.10: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+        f"review_plan_loop v4.0: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
         f"{review_lines}\n"
         f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
         f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
@@ -1590,7 +1711,16 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             gate_passed=False,
             gate_notes=_gate_notes_fail
         )
-        # v3.10：GATE_BLOCKED
+        # v4.0：GATE_BLOCKED — timeline + status
+        _timeline_path = append_timeline_entry(
+            plan_slug, round_num, stage="GATE_BLOCKED", verdict=verdict,
+            verdicts_map=verdicts_map, reviews_map=reviews_map,
+            diff_path=diff_path, summary_path=summary_path,
+            dashboard_path=paths["reviews_dir"] / "DASHBOARD.md",
+            response_matrix_md=response_matrix_md,
+            failed_personas=failed_personas, timing=timing, paths=paths,
+            note=f"blocked by post-review gate: {failed_str}",
+        )
         write_status_json(
             plan_slug, round_num, stage="GATE_BLOCKED",
             verdict=verdict,
@@ -1601,7 +1731,8 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             dashboard_path=paths["reviews_dir"] / "DASHBOARD.md",
             prev_open_imps=prev_open_imps, response_matrix_md=response_matrix_md,
             failed_personas=failed_personas, timing=timing, paths=paths,
-            message=f"blocked by post-review gate: {failed_str}"
+            message=f"blocked by post-review gate: {failed_str}",
+            timeline_path=_timeline_path,
         )
         print(json.dumps(gate_decision, ensure_ascii=False))
         sys.exit(0)
@@ -1639,7 +1770,16 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         gate_notes="- 0-G preflight: PASS\n- Post-review gate: PASS"
     )
 
-    # v3.10：COMMITTED
+    # v4.0：COMMITTED — timeline + status
+    _timeline_path = append_timeline_entry(
+        plan_slug, round_num, stage="COMMITTED", verdict=verdict,
+        verdicts_map=verdicts_map, reviews_map=reviews_map,
+        diff_path=diff_path, summary_path=summary_path,
+        dashboard_path=paths["reviews_dir"] / "DASHBOARD.md",
+        response_matrix_md=response_matrix_md,
+        failed_personas=[], timing=timing, paths=paths,
+        note="committed",
+    )
     write_status_json(
         plan_slug, round_num, stage="COMMITTED",
         verdict=verdict,
@@ -1650,7 +1790,8 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         dashboard_path=paths["reviews_dir"] / "DASHBOARD.md",
         prev_open_imps=prev_open_imps, response_matrix_md=response_matrix_md,
         failed_personas=[], timing=timing, paths=paths,
-        message="committed"
+        message="committed",
+        timeline_path=_timeline_path,
     )
 
     # 輸出 JSON decision（帶 preflight_warnings）

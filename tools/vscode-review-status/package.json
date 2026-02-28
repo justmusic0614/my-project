@@ -1,0 +1,44 @@
+{
+  "name": "vscode-review-status",
+  "displayName": "Review Status",
+  "description": "Shows review_plan_loop status in VS Code status bar",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.80.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Review Status",
+      "properties": {
+        "reviewStatus.planSlug": {
+          "type": "string",
+          "default": "",
+          "description": "Plan slug (e.g. review-loop-l1a)"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "reviewStatus.openDashboard",
+        "title": "Review: Open Dashboard"
+      },
+      {
+        "command": "reviewStatus.openTimeline",
+        "title": "Review: Open Timeline"
+      },
+      {
+        "command": "reviewStatus.revealReviewsDir",
+        "title": "Review: Reveal Reviews Folder"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -watch -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

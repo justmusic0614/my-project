@@ -496,8 +496,8 @@ PLAN.md 完整內容：
 VERDICT: APPROVED | NEEDS_REVISION | BLOCKED
 
 問題清單（每項必須標 [IMP-NNN]，NNN 三位數從 001 開始，跨輪 stable）：
-⚠️ [IMP-001] <問題描述（一行）>
-⚠️ [IMP-002] <問題描述（一行）>
+⚠️ [IMP-001] <問題描述（一行）>（未解決）
+✅ [IMP-002] RESOLVED: <一句話說明 diff 中做了什麼修正>（已解決）
 
 建議修正：
 <具體建議，條列式>
@@ -506,6 +506,7 @@ VERDICT: APPROVED | NEEDS_REVISION | BLOCKED
 - 若本輪無問題，問題清單可為空，但 VERDICT 必須是 APPROVED
 - [IMP-NNN] ID 若在前輪已出現，沿用相同 ID
 - BLOCKED 用於嚴重缺失（無目標、無驗收標準等根本性問題）
+- 若某 IMP 在本輪 diff 已被解決，用 ✅ [IMP-NNN] RESOLVED: <evidence> 列出，不要用 ⚠️
 """
 
     try:
@@ -588,23 +589,40 @@ def parse_verdict(review_content: str) -> str:
 
 def parse_imp_ids(review_content: str) -> list:
     """
-    從 review 內容中解析 [IMP-NNN] 條目
+    從 review 內容中解析待解決 [IMP-NNN] 條目（⚠️ 格式）
     返回 list of (id_str, desc_str)，如 [("IMP-001", "缺少驗收標準")]
     """
-    pattern = r"[⚠️\*•\-]*\s*\[IMP-(\d{3})\]\s*(.+?)(?=\n|$)"
+    pattern = r"[⚠️\*•\-]*\s*\[IMP-(\d{3})\](?!\s*RESOLVED:)\s*(.+?)(?=\n|$)"
     matches = re.findall(pattern, review_content)
     return [(f"IMP-{num}", desc.strip()) for num, desc in matches]
 
 
+def parse_imp_resolutions(review_content: str) -> dict:
+    """
+    從 review 內容中解析 IMP 解決 evidence（L1-C）。
+    格式：✅ [IMP-NNN] RESOLVED: <evidence>
+    返回 {imp_id: evidence_str}，如 {"IMP-001": "新增驗收標準章節"}
+    找不到時返回空 dict，不中斷流程。
+    """
+    pattern = r"✅\s*\[IMP-(\d{3})\]\s*RESOLVED:\s*(.+?)(?=\n|$)"
+    matches = re.findall(pattern, review_content)
+    return {f"IMP-{num}": desc.strip() for num, desc in matches}
+
+
 # ── CHECKLIST 管理 ───────────────────────────────────────────────────────────
 
-def update_checklist(round_num: int, verdict: str, imp_items: list, paths: dict) -> None:
+def update_checklist(
+    round_num: int, verdict: str, imp_items: list, paths: dict,
+    imp_resolutions: dict = None
+) -> None:
     """
     更新 CHECKLIST.md（累積，stable IDs）
     - 新 ID：直接新增
     - 已有 ID：只更新輪次（不覆蓋手動標記的 status）
-    - APPROVED 且問題清單空：把所有 [ ] 標為 ✅
+    - APPROVED 且問題清單空：把所有 [ ] 標為 ✅，並填入 resolution evidence（L1-C）
     """
+    if imp_resolutions is None:
+        imp_resolutions = {}
     checklist_path = paths["checklist_path"]
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -638,11 +656,13 @@ def update_checklist(round_num: int, verdict: str, imp_items: list, paths: dict)
             # 只更新輪次，不覆蓋 status
             existing_items[imp_id]["round"] = f"R{round_num:02d}"
 
-    # APPROVED 且本輪無新問題 → 把既有 [ ] 標為 ✅
+    # APPROVED 且本輪無新問題 → 把既有 [ ] 標為 ✅，並填入 resolution evidence（L1-C）
     if verdict == "APPROVED" and not imp_items:
         for imp_id in existing_items:
             if existing_items[imp_id]["status"] == "[ ]":
                 existing_items[imp_id]["status"] = "✅"
+                if imp_id in imp_resolutions:
+                    existing_items[imp_id]["evidence"] = imp_resolutions[imp_id][:80]
 
     # 重建 CHECKLIST.md
     sorted_items = sorted(existing_items.items(), key=lambda x: x[0])
@@ -916,9 +936,10 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     review_content = call_openai_review(current_plan, diff_text, round_num, history_context)
     t_review = time.time()
 
-    # 解析 VERDICT 和 IMP 條目
+    # 解析 VERDICT、IMP 條目與 resolution evidence（L1-C）
     verdict = parse_verdict(review_content)
     imp_items = parse_imp_ids(review_content)
+    imp_resolutions = parse_imp_resolutions(review_content)
 
     # 呼叫 OpenAI 生成摘要
     summary_content = call_openai_summary(diff_text, review_content, round_num)
@@ -954,7 +975,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         print(f"[DRY-RUN] VERDICT={verdict}\n{summary_content.strip()}")
     else:
         # 更新 CHECKLIST.md
-        update_checklist(round_num, verdict, imp_items, paths)
+        update_checklist(round_num, verdict, imp_items, paths, imp_resolutions)
 
         # 快照（round 編號 + latest 指標）
         snapshot_path = snapshots_dir / f"round{round_num:02d}.md"

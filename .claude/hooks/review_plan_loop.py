@@ -458,11 +458,21 @@ def build_history_context(round_num: int, paths: dict, n_rounds: int = 3) -> str
         verdict = verdict_m.group(1) if verdict_m else "UNKNOWN"
 
         imp_ids = sorted(set(f"IMP-{m}" for m in re.findall(r"\[IMP-(\d{3})\]", text)))
-        imp_str = ", ".join(imp_ids) if imp_ids else "（無）"
 
         if verdict == "APPROVED":
-            lines.append(f"  Round {r:02d} VERDICT={verdict}: [{imp_str}]（本輪已解決）")
+            # 區分已 RESOLVED 與仍待追蹤的 IMP（L1-C + L0-X fix）
+            resolved_ids = sorted(set(
+                f"IMP-{m}" for m in re.findall(r"✅\s*\[IMP-(\d{3})\]\s*RESOLVED:", text)
+            ))
+            pending_ids = [i for i in imp_ids if i not in resolved_ids]
+            res_str = ", ".join(resolved_ids) if resolved_ids else "（無）"
+            pend_str = ", ".join(pending_ids) if pending_ids else "（無）"
+            lines.append(
+                f"  Round {r:02d} VERDICT={verdict}: "
+                f"已解決=[{res_str}]  仍待追蹤=[{pend_str}]"
+            )
         else:
+            imp_str = ", ".join(imp_ids) if imp_ids else "（無）"
             lines.append(f"  Round {r:02d} VERDICT={verdict}: [{imp_str}]")
 
     if not lines:
@@ -534,9 +544,10 @@ VERDICT: APPROVED | NEEDS_REVISION | BLOCKED
 <具體建議，條列式>
 
 注意：
-- 若本輪無問題，問題清單可為空，但 VERDICT 必須是 APPROVED
+- APPROVED：PLAN 品質合格，可進入實作；若有改善空間仍可用 ⚠️ [IMP-NNN] 列出，下一輪繼續追蹤
+- NEEDS_REVISION：必須修正所有 ⚠️ IMP 後才能實作
+- BLOCKED：嚴重缺失（無目標、無驗收標準等根本性問題）
 - [IMP-NNN] ID 若在前輪已出現，沿用相同 ID
-- BLOCKED 用於嚴重缺失（無目標、無驗收標準等根本性問題）
 - 若某 IMP 在本輪 diff 已被解決，用 ✅ [IMP-NNN] RESOLVED: <evidence> 列出，不要用 ⚠️
 """
 
@@ -687,10 +698,11 @@ def update_checklist(
             # 只更新輪次，不覆蓋 status
             existing_items[imp_id]["round"] = f"R{round_num:02d}"
 
-    # APPROVED 且本輪無新問題 → 把既有 [ ] 標為 ✅，並填入 resolution evidence（L1-C）
-    if verdict == "APPROVED" and not imp_items:
+    # APPROVED → 把「本輪未再提及」的 [ ] 標為 ✅（嚴格模式：本輪仍提及的保持 [ ]）
+    if verdict == "APPROVED":
+        current_imp_ids = {imp_id for imp_id, _ in imp_items}
         for imp_id in existing_items:
-            if existing_items[imp_id]["status"] == "[ ]":
+            if existing_items[imp_id]["status"] == "[ ]" and imp_id not in current_imp_ids:
                 existing_items[imp_id]["status"] = "✅"
                 if imp_id in imp_resolutions:
                     existing_items[imp_id]["evidence"] = imp_resolutions[imp_id][:80]

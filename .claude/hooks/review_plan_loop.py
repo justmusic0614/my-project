@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-review_plan_loop.py v3.0
+review_plan_loop.py v3.1
 
 Claude Code PostToolUse hook
 觸發條件：Write|Edit 工具，且 tool_input.file_path 包含：
@@ -9,17 +9,19 @@ Claude Code PostToolUse hook
 
 功能：
 1. 從檔案路徑推斷 plan_slug（e.g. "gate-0-review-system"）
-2. 讀取對應 docs/plans/{slug}.md（或 legacy docs/PLAN.md）
-3. 對比前一輪快照 → unified diff
-4. 呼叫 OpenAI（REVIEW_MODEL）審稿 → docs/reviews/{slug}/review-{ts}-roundNN.md
-5. 呼叫 OpenAI（SUMMARY_MODEL）→ docs/reviews/{slug}/roundNN-diff-summary.md
-6. 存 docs/reviews/{slug}/roundNN-diff.md（diff + stats）
-7. 更新 docs/reviews/{slug}/CHECKLIST.md（stable IDs，跨輪累積）
-8. 快照至 .claude/plan_snapshots/{slug}/roundNN.md + latest.md
-9. stdout 輸出 JSON decision
-   - APPROVED       → decision: block（附 summary 建議，等待人工確認）
-   - NEEDS_REVISION → decision: block（提示修正）
-   - BLOCKED        → decision: block（嚴重問題）
+2. Pre-flight Suite（零 API）：結構/語言/複雜度/依賴/過期/測試覆蓋
+3. 讀取對應 docs/plans/{slug}.md（或 legacy docs/PLAN.md）
+4. 對比前一輪快照 → unified diff
+5. 呼叫 OpenAI（REVIEW_MODEL）審稿 → docs/reviews/{slug}/review-{ts}-roundNN.md
+6. 呼叫 OpenAI（SUMMARY_MODEL）→ docs/reviews/{slug}/roundNN-diff-summary.md
+7. 存 docs/reviews/{slug}/roundNN-diff.md（diff + stats）
+8. 更新 docs/reviews/{slug}/CHECKLIST.md（stable IDs，跨輪累積）
+9. 快照至 .claude/plan_snapshots/{slug}/roundNN.md + latest.md
+10. 計時各步驟 → state.json 儲存 + stderr 輸出（L3-B Timing Profiler）
+11. stdout 輸出 JSON decision
+    - APPROVED       → decision: block（附 summary 建議，等待人工確認）
+    - NEEDS_REVISION → decision: block（提示修正）
+    - BLOCKED        → decision: block（嚴重問題）
 
 環境需求：
   pip install openai
@@ -31,6 +33,7 @@ from __future__ import annotations
 import sys
 import json
 import os
+import time
 import datetime
 import difflib
 import re
@@ -74,6 +77,12 @@ DIFF_MAX_LINES = 200
 REVIEW_MODEL = "gpt-4o"
 SUMMARY_MODEL = "gpt-4o-mini"
 
+# Pre-flight Suite 常數（L0）
+REQUIRED_SECTIONS = ["## 目標", "## 驗收標準", "## Decision Log"]
+FUZZY_VERBS = ["優化", "改善", "提升", "改進", "加強", "完善", "增強"]
+PREFLIGHT_EXPIRY_DAYS = 90
+COMPLEXITY_GROWTH_THRESHOLD = 0.30  # 超過 30% 成長 → 警告
+
 # ── 路徑定義 ─────────────────────────────────────────────────────────────────
 # 本腳本位於 .claude/hooks/，因此 repo root 在上兩層
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -113,6 +122,199 @@ def get_paths(plan_slug: str) -> dict:
         "state_path":     REPO_ROOT / ".claude" / "review_states" / f"{plan_slug}.json",
         "checklist_path": REPO_ROOT / "docs" / "reviews" / plan_slug / "CHECKLIST.md",
     }
+
+
+# ── Pre-flight Suite（L0，零 API 前置把關）────────────────────────────────────
+
+def preflight_structure_linter(plan_content: str) -> list[str]:
+    """0-A: 檢查必要章節是否存在（阻擋性）"""
+    missing = [sec for sec in REQUIRED_SECTIONS if sec not in plan_content]
+    return [f"缺少必要章節：{sec}" for sec in missing]
+
+
+def preflight_language_linter(plan_content: str) -> list[str]:
+    """0-B: 偵測目標章節中不帶量化條件的模糊動詞（警告性）"""
+    # 提取目標章節（從 ## 目標 到下一個 ## 之前）
+    m = re.search(r"## 目標\n(.*?)(?=\n## |\Z)", plan_content, re.DOTALL)
+    if not m:
+        return []
+
+    target_section = m.group(1)
+    warnings = []
+    for line in target_section.splitlines():
+        for verb in FUZZY_VERBS:
+            if verb in line:
+                # 同一行是否含量化條件（數字、%、可測指標單位）
+                has_metric = bool(
+                    re.search(r"\d|%|個|倍|ms\b|秒|分鐘|小時|KB|MB|GB", line)
+                )
+                if not has_metric:
+                    warnings.append(
+                        f"目標章節含模糊動詞「{verb}」（無量化條件）："
+                        f"{line.strip()[:50]}"
+                    )
+                    break  # 同一行只報一次
+    return warnings
+
+
+def _calc_complexity(plan_content: str) -> int:
+    """計算計劃複雜度指數（里程碑 × 10 + 風險行 × 3 + 字數 / 100）"""
+    milestone_count = len(re.findall(r"(?m)^#{1,3}\s+M\d", plan_content))
+    if milestone_count == 0:
+        # fallback：含「里程碑」或「Milestone」的行
+        milestone_count = len(re.findall(r"(?m)^.*(里程碑|Milestone)", plan_content))
+    risk_lines = len(re.findall(r"(?m)^.*(風險|[Rr]isk)", plan_content))
+    word_count = len(plan_content) // 100
+    return milestone_count * 10 + risk_lines * 3 + word_count
+
+
+def preflight_complexity_budget(plan_content: str, state: dict) -> list[str]:
+    """0-C: 相比前輪複雜度成長 > 30% 時警示（警告性）"""
+    current = _calc_complexity(plan_content)
+    prev = state.get("last_complexity", 0)
+    state["last_complexity"] = current  # 更新，稍後 save_state 持久化
+
+    if prev <= 0:
+        return []  # 第一輪，無比較基準
+
+    growth = (current - prev) / prev
+    if growth > COMPLEXITY_GROWTH_THRESHOLD:
+        return [
+            f"計劃複雜度成長 {growth:.0%}（{prev} → {current}），"
+            f"超過 {COMPLEXITY_GROWTH_THRESHOLD:.0%} 閾值，請確認是否 scope creep"
+        ]
+    return []
+
+
+def preflight_dependency_tracking(plan_content: str) -> list[str]:
+    """0-D: frontmatter depends_on 的依賴 plan 未 APPROVED 則 block（阻擋性）"""
+    # 提取 YAML frontmatter（--- 區塊），用 re 解析，不引入 PyYAML
+    m = re.match(r"^---\n(.*?)\n---", plan_content, re.DOTALL)
+    if not m:
+        return []  # 無 frontmatter，跳過
+
+    frontmatter = m.group(1)
+    dep_match = re.search(r"depends_on:\s*\[([^\]]*)\]", frontmatter)
+    if not dep_match:
+        return []  # 無依賴聲明
+
+    slugs = [
+        s.strip().strip("\"'")
+        for s in dep_match.group(1).split(",")
+        if s.strip()
+    ]
+
+    errors = []
+    for slug in slugs:
+        state_file = REPO_ROOT / ".claude" / "review_states" / f"{slug}.json"
+        if not state_file.exists():
+            errors.append(f"依賴計劃 '{slug}' 尚未建立（state.json 不存在）")
+            continue
+        try:
+            dep_state = json.loads(state_file.read_text(encoding="utf-8"))
+            if dep_state.get("status") != "APPROVED":
+                errors.append(
+                    f"依賴計劃 '{slug}' 尚未 APPROVED"
+                    f"（當前：{dep_state.get('status', 'UNKNOWN')}）"
+                )
+        except Exception:
+            errors.append(f"依賴計劃 '{slug}' state.json 讀取失敗")
+
+    return errors
+
+
+def preflight_expiry_alert(state: dict) -> list[str]:
+    """0-E: PLAN 超過 N 天未重審（警告性，不阻擋）"""
+    approved_at = state.get("approved_at", "")
+    if not approved_at:
+        return []
+    try:
+        approved_dt = datetime.datetime.fromisoformat(approved_at)
+        days = (datetime.datetime.now() - approved_dt).days
+        if days > PREFLIGHT_EXPIRY_DAYS:
+            return [
+                f"PLAN 已 {days} 天未重審"
+                f"（APPROVED @ {approved_dt.strftime('%Y-%m-%d')}）"
+            ]
+    except Exception:
+        pass
+    return []
+
+
+def preflight_test_coverage_hint(plan_content: str) -> list[str]:
+    """0-F: 驗收標準關鍵字 vs 測試描述匹配（警告性，不阻擋）"""
+    m = re.search(r"## 驗收標準\n(.*?)(?=\n## |\Z)", plan_content, re.DOTALL)
+    if not m:
+        return []
+
+    criteria_text = m.group(1)
+    keywords: set[str] = set()
+    for line in criteria_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # 取中文詞組（2-8 字）或英文單字（4 字以上）
+        words = re.findall(r"[\u4e00-\u9fff]{2,8}|\b[A-Za-z]{4,}\b", line)
+        keywords.update(words[:3])  # 每行最多 3 個關鍵字
+
+    if not keywords:
+        return []
+
+    test_dir = REPO_ROOT / "src" / "test"
+    if not test_dir.exists():
+        return []
+
+    test_descs: list[str] = []
+    for test_file in test_dir.rglob("*.test.js"):
+        try:
+            content = test_file.read_text(encoding="utf-8", errors="replace")
+            descs = re.findall(r'(?:describe|it)\s*\(\s*["\']([^"\']+)', content)
+            test_descs.extend(descs)
+        except Exception:
+            pass
+
+    if not test_descs:
+        return []
+
+    all_test_text = " ".join(test_descs).lower()
+    uncovered = [kw for kw in sorted(keywords) if kw.lower() not in all_test_text]
+    if uncovered:
+        return [f"驗收標準關鍵字尚無對應測試：{', '.join(uncovered[:5])}"]
+    return []
+
+
+def run_preflight(
+    plan_content: str, paths: dict, state: dict
+) -> tuple[list[str], list[str]]:
+    """
+    執行 Pre-flight Suite（0-A 到 0-F）
+    返回 (errors, warnings)：
+      errors：阻擋性問題（0-A 結構、0-D 依賴），不消耗 API
+      warnings：提示性問題（0-B 語言、0-C 複雜度、0-E 過期、0-F 測試），繼續審稿
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    errors.extend(preflight_structure_linter(plan_content))           # 0-A 阻擋
+    warnings.extend(preflight_language_linter(plan_content))           # 0-B 警告
+    warnings.extend(preflight_complexity_budget(plan_content, state))  # 0-C 警告
+    errors.extend(preflight_dependency_tracking(plan_content))         # 0-D 阻擋
+    warnings.extend(preflight_expiry_alert(state))                     # 0-E 警告
+    warnings.extend(preflight_test_coverage_hint(plan_content))        # 0-F 警告
+
+    total = len(errors) + len(warnings)
+    if total > 0:
+        sys.stderr.write(
+            f"[Pre-flight] {len(errors)} 個錯誤，{len(warnings)} 個警告：\n"
+        )
+        for e in errors:
+            sys.stderr.write(f"  ✗ {e}\n")
+        for w in warnings:
+            sys.stderr.write(f"  ℹ {w}\n")
+    else:
+        sys.stderr.write("[Pre-flight] ✓ 全部通過\n")
+
+    return errors, warnings
 
 
 # ── Hook 輸入處理 ────────────────────────────────────────────────────────────
@@ -490,14 +692,22 @@ def output_decision(
     review_content: str,
     summary_content: str = "",
     plan_slug: str = "",
+    preflight_warnings: list | None = None,
 ) -> None:
     """
     輸出 JSON decision 給 Claude Code
     - APPROVED       → decision: block（附 summary 建議，等待人工確認「開始實作」）
     - NEEDS_REVISION → decision: block（提示修正）
     - BLOCKED        → decision: block（嚴重問題）
+    preflight_warnings 若有，附加在 reason 末尾。
     """
     plan_label = f" [{plan_slug}]" if plan_slug else ""
+
+    # 組裝 preflight warnings 段落（若有）
+    warn_section = ""
+    if preflight_warnings:
+        warn_lines = "\n".join(f"  ℹ {w}" for w in preflight_warnings)
+        warn_section = f"\n\n[Pre-flight 警告（不影響 VERDICT）]\n{warn_lines}"
 
     if verdict == "APPROVED":
         suggestion = summary_content.strip() if summary_content else review_content[-500:]
@@ -508,7 +718,8 @@ def output_decision(
                 f"{'='*40}\n"
                 f"審稿建議（僅供參考，不強制改動）：\n"
                 f"{'='*40}\n"
-                f"{suggestion}\n\n"
+                f"{suggestion}"
+                f"{warn_section}\n\n"
                 f"{'='*40}\n"
                 f"請告訴我「開始實作」，Claude 將繼續執行。"
             ),
@@ -532,6 +743,7 @@ def output_decision(
                 f"[Round {round_num:02d}]{plan_label} VERDICT: {verdict}\n\n"
                 f"PLAN 需要修正後才能繼續。\n\n"
                 f"{after_verdict}"
+                f"{warn_section}"
             ),
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
@@ -599,10 +811,39 @@ def main() -> None:
     round_num = state["round"]
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    sys.stderr.write(f"review_plan_loop v3.0: [{plan_slug}] 開始 Round {round_num:02d}...\n")
+    sys.stderr.write(f"review_plan_loop v3.1: [{plan_slug}] 開始 Round {round_num:02d}...\n")
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
+
+    # ── Pre-flight Suite（L0）─────────────────────────────────────────────────
+    preflight_errors, preflight_warnings = run_preflight(current_plan, paths, state)
+
+    if preflight_errors:
+        # 有阻擋性錯誤，不消耗 API，直接 block
+        error_lines = "\n".join(f"  ✗ {e}" for e in preflight_errors)
+        warn_block = ""
+        if preflight_warnings:
+            warn_block = "\n\n[警告（修正 errors 後仍會顯示）]\n" + "\n".join(
+                f"  ℹ {w}" for w in preflight_warnings
+            )
+        decision = {
+            "decision": "block",
+            "reason": (
+                f"[Round {round_num:02d}][{plan_slug}] ❌ Pre-flight 失敗（未消耗 API）\n\n"
+                f"以下問題需要先修正：\n{error_lines}"
+                f"{warn_block}\n\n"
+                f"請修正後重新儲存 PLAN。"
+            ),
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": "Pre-flight block — 零 API 消耗"
+            }
+        }
+        print(json.dumps(decision, ensure_ascii=False))
+        state["round"] -= 1  # 不計入正式輪次
+        save_state(state, paths)
+        sys.exit(0)
 
     # 讀取前一輪快照
     snapshots_dir = paths["snapshots_dir"]
@@ -611,11 +852,16 @@ def main() -> None:
     if prev_snapshot_path.exists():
         prev_content = prev_snapshot_path.read_text(encoding="utf-8")
 
+    # ── Timing Profiler（L3-B）────────────────────────────────────────────────
+    t_start = time.time()
+
     # 生成 diff
     diff_text, diff_stats = generate_diff(prev_content, current_plan)
+    t_diff = time.time()
 
     # 呼叫 OpenAI 審稿
     review_content = call_openai_review(current_plan, diff_text, round_num)
+    t_review = time.time()
 
     # 解析 VERDICT 和 IMP 條目
     verdict = parse_verdict(review_content)
@@ -623,6 +869,7 @@ def main() -> None:
 
     # 呼叫 OpenAI 生成摘要
     summary_content = call_openai_summary(diff_text, review_content, round_num)
+    t_summary = time.time()
 
     # 寫入文件
     review_path = write_review_file(round_num, now_ts, review_content, len(current_plan), paths)
@@ -638,9 +885,20 @@ def main() -> None:
     latest_path = snapshots_dir / "latest.md"
     latest_path.write_text(current_plan, encoding="utf-8")
 
+    t_end = time.time()
+
+    # 計算各步驟耗時
+    timing = {
+        "diff":    round(t_diff - t_start, 2),
+        "review":  round(t_review - t_diff, 2),
+        "summary": round(t_summary - t_review, 2),
+        "total":   round(t_end - t_start, 2),
+    }
+
     # 更新狀態
     state["status"] = verdict
     state["last_round_ts"] = now_ts
+    state["last_timing"] = timing
     state["last_round_files"] = {
         "review": str(review_path.relative_to(REPO_ROOT)),
         "diff": str(diff_path.relative_to(REPO_ROOT)),
@@ -653,10 +911,12 @@ def main() -> None:
         f"  review  → {review_path.relative_to(REPO_ROOT)}\n"
         f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
         f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
+        f"  timing: diff={timing['diff']}s  review={timing['review']}s  "
+        f"summary={timing['summary']}s  total={timing['total']}s\n"
     )
 
-    # 輸出 JSON decision
-    output_decision(verdict, round_num, review_content, summary_content, plan_slug)
+    # 輸出 JSON decision（帶 preflight_warnings）
+    output_decision(verdict, round_num, review_content, summary_content, plan_slug, preflight_warnings)
     sys.exit(0)
 
 

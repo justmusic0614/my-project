@@ -40,7 +40,10 @@ import difflib
 import re
 import urllib.parse
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+import webbrowser
+import threading
 
 
 # ── .env fallback 載入（Claude Code hook 不繼承 shell 環境變數）────────────
@@ -110,6 +113,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # legacy docs/PLAN.md 對應的 slug
 LEGACY_SLUG = "gate-0-review-system"
+
+# v4.2 常數
+OPENAI_TIMEOUT_SEC = 180                                       # OpenAI 單 persona review timeout（秒）
+STATUS_LINE_PATH = REPO_ROOT / ".claude" / "status_line.txt"   # VS Code status line 檔案
+COST_LOG_PATH = REPO_ROOT / ".claude" / "cost.jsonl"           # per-persona API call cost log
 
 
 # ── Plan slug 推斷 ────────────────────────────────────────────────────────────
@@ -1150,6 +1158,108 @@ def _vscode_file_uri(p: "Path | None") -> "str | None":
         return None
 
 
+def atomic_write(path: Path, text: str) -> Path:
+    """
+    Atomic write：寫 .tmp → replace（POSIX atomic）。
+    確保 watcher 不會讀到半寫入的檔案（v4.2）。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+    return path
+
+
+# v4.2.1: in-process append locks (prevent 2 threads writing same jsonl simultaneously)
+_APPEND_LOCKS: dict = {}
+_APPEND_LOCKS_GUARD = threading.Lock()
+
+
+def _get_append_lock(path: Path):
+    key = str(path.resolve())
+    with _APPEND_LOCKS_GUARD:
+        lk = _APPEND_LOCKS.get(key)
+        if lk is None:
+            lk = threading.Lock()
+            _APPEND_LOCKS[key] = lk
+        return lk
+
+
+def write_status_line(plan_slug: str, round_num: int, stage: str, message: str = "") -> Path:
+    """
+    寫一行狀態到 .claude/status_line.txt（VS Code status bar 讀取用，v4.2）。
+    格式：[slug] R##: STAGE — message
+    """
+    msg_part = f" — {message}" if message else ""
+    line = f"[{plan_slug}] R{round_num:02d}: {stage}{msg_part}\n"
+    return atomic_write(STATUS_LINE_PATH, line)
+
+
+_OPENED_HTML: set = set()   # module-level dedup set
+
+
+def open_status_html(paths: dict, plan_slug: str) -> None:
+    """
+    首次 RUNNING 時自動用瀏覽器開啟 STATUS.html（v4.2）。
+    每個 (plan_slug, reviews_dir) 只開一次，用 daemon thread 避免阻塞。
+    """
+    try:
+        key = (plan_slug, str(paths.get("reviews_dir")))
+        if key in _OPENED_HTML:
+            return
+        _OPENED_HTML.add(key)
+
+        html_path = paths["reviews_dir"] / "STATUS.html"
+        if not html_path.exists():
+            return
+        url = html_path.resolve().as_uri()   # file:///... URI
+
+        t = threading.Thread(target=webbrowser.open, args=(url,), daemon=True)
+        t.start()
+    except Exception:
+        pass
+
+
+def append_cost_log(
+    plan_slug: str,
+    round_num: int,
+    persona: str,
+    duration_sec: float,
+    model: str = "",
+    error: str = "",
+) -> Path:
+    """
+    每 persona API call 結束後 append 一行到 .claude/cost.jsonl（v4.2）。
+    atomic：copy-replace pattern（同 timeline.jsonl）。
+    """
+    entry = {
+        "ts": datetime.datetime.utcnow().isoformat() + "Z",
+        "plan_slug": plan_slug,
+        "round": round_num,
+        "persona": persona,
+        "duration_sec": round(duration_sec, 2),
+        "model": model,
+        "error": error or None,
+    }
+    new_line = json.dumps(entry, ensure_ascii=False) + "\n"
+    tmp_path = COST_LOG_PATH.with_name(COST_LOG_PATH.name + ".tmp")
+    COST_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lk = _get_append_lock(COST_LOG_PATH)
+    with lk:
+        with open(tmp_path, "w", encoding="utf-8") as out:
+            if COST_LOG_PATH.exists():
+                with open(COST_LOG_PATH, "r", encoding="utf-8") as src:
+                    shutil.copyfileobj(src, out)
+            out.write(new_line)
+            out.flush()
+            try:
+                os.fsync(out.fileno())
+            except OSError:
+                pass
+        tmp_path.replace(COST_LOG_PATH)
+    return COST_LOG_PATH
+
+
 def _compute_imp_breakdown(
     prev_open_imps: "set | None",
     all_reviews_text: "dict | None",
@@ -1274,7 +1384,7 @@ def write_status_json(
 
     payload = {
         "schema_version": "1",
-        "version": "4.1",
+        "version": "4.2",
         "plan_slug": plan_slug,
         "round": round_num,
         "stage": stage,
@@ -1316,10 +1426,7 @@ def write_status_json(
     }
 
     status_path = paths["reviews_dir"] / ".status.json"
-    # atomic write：先寫 .tmp，再 replace（POSIX atomic）
-    tmp = status_path.with_name(status_path.name + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(status_path)
+    atomic_write(status_path, json.dumps(payload, ensure_ascii=False, indent=2))
     if return_payload:
         return status_path, payload
     return status_path
@@ -1724,9 +1831,7 @@ def write_status_html(paths: dict) -> Path:
 </html>
 """
 
-    tmp = status_html_path.with_suffix(".html.tmp")
-    tmp.write_text(html_content, encoding="utf-8")
-    tmp.replace(status_html_path)
+    atomic_write(status_html_path, html_content)
     return status_html_path
 
 
@@ -1748,17 +1853,18 @@ def append_timeline_jsonl(payload: dict, paths: dict) -> Path:
 
     new_line = json.dumps(payload, ensure_ascii=False) + "\n"
     tmp_path = jsonl_path.with_suffix(".jsonl.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as out:
+    lk = _get_append_lock(jsonl_path)
+    with lk, open(tmp_path, "w", encoding="utf-8") as out:
         if jsonl_path.exists():
             with open(jsonl_path, "r", encoding="utf-8") as src:
                 shutil.copyfileobj(src, out)
         out.write(new_line)
         out.flush()
         try:
-            os.fsync(out.fileno())
+            os.fsync(out.fileno())   # 確保 replace 前已完全寫入（防 watcher race）
         except OSError:
             pass
-    tmp_path.replace(jsonl_path)
+    tmp_path.replace(jsonl_path)  # replace 在 lock 外（rename 本身 atomic，可接受）
     return jsonl_path
 
 
@@ -1887,7 +1993,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     dry_tag = " [DRY-RUN]" if dry_run else ""
-    sys.stderr.write(f"review_plan_loop v4.1: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
+    sys.stderr.write(f"review_plan_loop v4.2: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
 
     # v3.10：RUNNING 狀態（watcher 可見「正在跑」）
     if not dry_run:
@@ -1902,6 +2008,8 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             message="running"
         )
         write_status_html(paths)   # v4.1：RUNNING shimmer UI
+        write_status_line(plan_slug, round_num, "RUNNING", "reviewing...")   # v4.2
+        open_status_html(paths, plan_slug)                                   # v4.2
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
@@ -1986,6 +2094,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
                         )
                         write_status_html(paths)
                         append_timeline_jsonl(_payload_0g, paths)
+                        write_status_line(plan_slug, round_num, "PRECHECK_BLOCKED", "blocked by 0-G preflight")
                         decision_0g = {
                             "decision": "block",
                             "reason": (
@@ -2036,10 +2145,26 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         }
         all_reviews = {}
         for p, f in futures.items():
+            _t0 = time.time()
+            _err = ""
             try:
-                all_reviews[p] = f.result()
+                all_reviews[p] = f.result(timeout=OPENAI_TIMEOUT_SEC)
+            except TimeoutError:
+                _err = f"timeout ({OPENAI_TIMEOUT_SEC}s)"
+                all_reviews[p] = (
+                    f"VERDICT: NEEDS_REVISION\n\n"
+                    f"ERROR: persona '{p}' timeout after {OPENAI_TIMEOUT_SEC}s — review skipped"
+                )
             except Exception as e:
+                _err = str(e)
                 all_reviews[p] = f"VERDICT: NEEDS_REVISION\n\nERROR: persona '{p}' 呼叫失敗 — {e}"
+            finally:
+                _dur = time.time() - _t0
+                if not dry_run:
+                    try:
+                        append_cost_log(plan_slug, round_num, p, _dur, model=REVIEW_MODEL, error=_err)
+                    except Exception:
+                        pass
 
     t_review = time.time()
 
@@ -2100,7 +2225,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         for p, rp in reviews_map.items()
     )
     sys.stderr.write(
-        f"review_plan_loop v4.1: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+        f"review_plan_loop v4.2: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
         f"{review_lines}\n"
         f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
         f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
@@ -2179,6 +2304,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         )
         write_status_html(paths)
         append_timeline_jsonl(_payload_gate, paths)
+        write_status_line(plan_slug, round_num, "GATE_BLOCKED", f"blocked: {failed_str}")
         print(json.dumps(gate_decision, ensure_ascii=False))
         sys.exit(0)
 
@@ -2242,6 +2368,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     )
     write_status_html(paths)
     append_timeline_jsonl(_payload_committed, paths)
+    write_status_line(plan_slug, round_num, "COMMITTED", f"verdict={verdict}")
     sys.stderr.write(
         f"  status   → docs/reviews/{plan_slug}/.status.json\n"
         f"  html     → docs/reviews/{plan_slug}/STATUS.html\n"

@@ -119,6 +119,27 @@ OPENAI_TIMEOUT_SEC = 180                                       # OpenAI 單 pers
 STATUS_LINE_PATH = REPO_ROOT / ".claude" / "status_line.txt"   # VS Code status line 檔案
 COST_LOG_PATH = REPO_ROOT / ".claude" / "cost.jsonl"           # per-persona API call cost log
 
+# v4.3：驗收條件三件套 keywords（warning only）
+_AC_WHERE_RE = re.compile(
+    r"`[^`]+`|"              # code span（檔名/路徑）
+    r"\S+\.(js|py|md|json|html|ts|sh|yaml|yml)|"
+    r"章節|section|函數|function|class|"
+    r"\.claude/|src/|docs/",
+    re.IGNORECASE,
+)
+
+_AC_WHAT_RE = re.compile(
+    r"新增|修改|移除|補上|補充|改為|定義|重構|建立|加入|刪除|"
+    r"add|update|remove|replace|define|create|delete|implement",
+    re.IGNORECASE,
+)
+
+_AC_VERIFY_RE = re.compile(
+    r"驗收|verify|grep|tail|cat|node\s|pytest|test|輸出|exit.?code|"
+    r"確認.*存在|確認.*輸出|assert|expect",
+    re.IGNORECASE,
+)
+
 
 # ── Plan slug 推斷 ────────────────────────────────────────────────────────────
 
@@ -353,6 +374,11 @@ def run_preflight(
     warnings.extend(preflight_expiry_alert(state))                     # 0-E 警告
     warnings.extend(preflight_test_coverage_hint(plan_content))        # 0-F 警告
 
+    # 0-G-AC：驗收條件三件套（v4.3，warning only）
+    ac_result = validate_acceptance_criteria(plan_content)
+    if ac_result["issues"]:
+        warnings.extend(ac_result["issues"])
+
     total = len(errors) + len(warnings)
     if total > 0:
         sys.stderr.write(
@@ -366,6 +392,87 @@ def run_preflight(
         sys.stderr.write("[Pre-flight] ✓ 全部通過\n")
 
     return errors, warnings
+
+
+# ── 驗收條件三件套檢查（v4.3）───────────────────────────────────────────────────
+
+def extract_acceptance_criteria(plan_text: str) -> list[str]:
+    """擷取驗收條件 checkbox（v4.3）"""
+    m = re.search(
+        r"##\s*(驗收標準|驗收條件|Acceptance Criteria)\s*\n(.*?)(?=\n##\s|\Z)",
+        plan_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not m:
+        return []
+
+    section = m.group(2)
+
+    acs = []
+    buf = []
+
+    for line in section.splitlines():
+
+        if re.match(r"\s*-\s*\[[ x]\]\s+", line, re.IGNORECASE):
+
+            if buf:
+                acs.append(" ".join(buf))
+            buf = [line.strip()]
+
+        elif buf and re.match(r"\s{2,}\S", line):
+            buf.append(line.strip())
+
+        else:
+            if buf:
+                acs.append(" ".join(buf))
+                buf = []
+
+    if buf:
+        acs.append(" ".join(buf))
+
+    return acs
+
+
+def check_ac_triad(ac_line: str) -> dict:
+    """檢查單條 AC 是否命中 WHERE/WHAT/VERIFY（v4.3）。"""
+    return {
+        "where": bool(_AC_WHERE_RE.search(ac_line)),
+        "what": bool(_AC_WHAT_RE.search(ac_line)),
+        "verify": bool(_AC_VERIFY_RE.search(ac_line)),
+    }
+
+
+def validate_acceptance_criteria(plan_text: str) -> dict:
+    """驗收條件三件套 preflight（v4.3）。返回 {"ok": bool, "issues": list[str]}。"""
+    acs = extract_acceptance_criteria(plan_text)
+
+    if not acs:
+        return {"ok": True, "issues": []}
+
+    issues = []
+
+    for i, ac in enumerate(acs, 1):
+
+        triad = check_ac_triad(ac)
+
+        missing = [
+            k.upper()
+            for k, v in triad.items()
+            if not v
+        ]
+
+        if missing:
+
+            short = re.sub(r"\s+", " ", ac)[:80]
+
+            issues.append(
+                f"AC #{i} 缺少 {', '.join(missing)}：{short}"
+            )
+
+    return {
+        "ok": len(issues) == 0,
+        "issues": issues,
+    }
 
 
 # ── 上一輪 review 檔案查找（v3.8 0-G 使用）────────────────────────────────────

@@ -162,3 +162,30 @@ SSH 注意事項：
 - [ ] 每個 phase 的測試方式
 - [ ] 整體完成後的 E2E 驗證
 ```
+
+---
+
+## 驗收條件寫法建議
+
+好的驗收條件應包含：
+
+1. **在哪裡** — 指定檔案或章節
+2. **做什麼** — 明確動作
+3. **怎麼確認** — 指令或輸出
+
+**好的例子：**
+
+- [ ] 在 `config.json` 新增 `"timeout": 30`
+      驗收：`node -e "console.log(require('./config.json').timeout)"` 輸出 30
+
+- [ ] 在 `collector.js` 移除硬編碼 URL
+      驗收：`grep API_URL collector.js` 有輸出
+
+- [ ] 在 `README.md` 補上 rollback 說明
+      驗收：`grep rollback README.md` 有輸出
+
+**不夠好的例子：**
+
+- [ ] 測試通過
+- [ ] 功能正常
+- [ ] 優化效能

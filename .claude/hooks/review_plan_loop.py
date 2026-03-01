@@ -33,10 +33,12 @@ from __future__ import annotations
 import sys
 import json
 import os
+import shutil
 import time
 import datetime
 import difflib
 import re
+import urllib.parse
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1129,7 +1131,71 @@ def write_dashboard(
     return dashboard_path
 
 
-# ── Status JSON（v4.0）─────────────────────────────────────────────────────
+# ── IMP 解析 RE（v4.1）────────────────────────────────────────────────────────
+# 策略：逐行掃；行含 resolve word 且不含純否定片語 → 行內所有 IMP ID 算 RESPONDED
+IMP_ID_RE       = re.compile(r"IMP-\d{1,4}", re.IGNORECASE)
+RESOLVE_WORD_RE = re.compile(r"\b(RESOLVED|FIXED|ADDRESSED)\b", re.IGNORECASE)
+NEGATE_RE       = re.compile(r"\b(not\s+resolved|unresolved|pending)\b", re.IGNORECASE)
+
+
+def _vscode_file_uri(p: "Path | None") -> "str | None":
+    """產生 vscode://file<abs_path> URI（v4.1）。safe='/:'，保留路徑分隔符及冒號。"""
+    if not p:
+        return None
+    try:
+        abs_path = str(p.resolve())
+        encoded = urllib.parse.quote(abs_path, safe="/:")
+        return "vscode://file" + encoded
+    except Exception:
+        return None
+
+
+def _compute_imp_breakdown(
+    prev_open_imps: "set | None",
+    all_reviews_text: "dict | None",
+) -> "tuple[dict, dict]":
+    """
+    計算 IMP×Persona breakdown（v4.1）。
+    逐行掃描 + 否定句防呆：
+      - has_negate AND NOT has_resolve → skip（避免 'not resolved' 誤判）
+      - 允許 'previously unresolved, now resolved' → RESPONDED
+    returns: (by_persona, imp_detail)
+    """
+    prev_ids = sorted(prev_open_imps) if prev_open_imps else []
+    reviews = all_reviews_text or {}
+
+    resolved_by_persona: dict = {}
+    for persona, text in reviews.items():
+        resolved: set = set()
+        for line in text.splitlines():
+            has_resolve = RESOLVE_WORD_RE.search(line)
+            has_negate  = NEGATE_RE.search(line)
+            if has_negate and not has_resolve:
+                continue
+            if has_resolve:
+                for imp in IMP_ID_RE.findall(line):
+                    resolved.add(imp.upper())
+        resolved_by_persona[persona] = resolved
+
+    by_imp: dict = {}
+    for imp_id in prev_ids:
+        by_imp[imp_id] = {}
+        for persona in reviews:
+            st = "RESPONDED" if imp_id.upper() in resolved_by_persona.get(persona, set()) else "NOT_ADDRESSED"
+            by_imp[imp_id][persona] = st
+
+    # total = len(prev_ids)，不用 max(1)；UI 層用 if total === 0 → hide bar
+    total = len(prev_ids)
+    by_persona: dict = {}
+    for persona in reviews:
+        resp = sum(1 for iid in prev_ids if by_imp.get(iid, {}).get(persona) == "RESPONDED")
+        not_addr = total - resp
+        by_persona[persona] = {"responded": resp, "not_addressed": not_addr}
+
+    return by_persona, {"prev_open_imps": prev_ids, "by_imp": by_imp}
+
+
+# ── Status JSON（v4.1）─────────────────────────────────────────────────────
 
 def write_status_json(
     plan_slug: str,
@@ -1151,11 +1217,14 @@ def write_status_json(
     paths: dict,
     message: str = "",
     timeline_path: "Path | None" = None,
-) -> Path:
+    all_reviews_text: "dict | None" = None,
+    return_payload: bool = False,
+) -> "Path | tuple[Path, dict]":
     """
-    覆寫 docs/reviews/{slug}/.status.json（v4.0）。
+    覆寫 docs/reviews/{slug}/.status.json（v4.1）。
     atomic write（tmp → replace）避免 watcher 讀到半截。
     stage: "RUNNING" | "PRECHECK_BLOCKED" | "GATE_BLOCKED" | "COMMITTED"
+    return_payload=True 時回傳 (status_path, payload)；預設只回傳 status_path（向後相容）。
     """
     # updated_at：Asia/Taipei +08:00（不依賴 pytz）
     tz_tw = datetime.timezone(datetime.timedelta(hours=8))
@@ -1190,9 +1259,22 @@ def write_status_json(
             elif ln.startswith("- ⚠️"):
                 not_addressed_count += 1
 
+    # IMP×Persona breakdown（v4.1）
+    by_persona, imp_detail = _compute_imp_breakdown(prev_open_imps, all_reviews_text)
+    prev_ids = list(imp_detail["prev_open_imps"])
+    prev_c = len(prev_ids)
+    responded_any = sum(
+        1 for imp_id in prev_ids
+        if any(v == "RESPONDED" for v in imp_detail["by_imp"].get(imp_id, {}).values())
+    ) if prev_ids else responded_count
+    not_addressed_any = prev_c - responded_any if prev_ids else not_addressed_count
+
+    # vscode_file_uri：指向 DASHBOARD.md 或 STATUS.html
+    _vscode_uri = _vscode_file_uri(dashboard_path or (paths["reviews_dir"] / "STATUS.html"))
+
     payload = {
         "schema_version": "1",
-        "version": "4.0",
+        "version": "4.1",
         "plan_slug": plan_slug,
         "round": round_num,
         "stage": stage,
@@ -1204,18 +1286,25 @@ def write_status_json(
         "failed_personas": list(failed_personas) if failed_personas else [],
         "ui": _ui(stage, verdict),
         "artifacts": {
-            "dashboard":  _rel(dashboard_path),
-            "diff":       _rel(diff_path),
-            "summary":    _rel(summary_path),
-            "reviews":    dict(reviews_map) if reviews_map else None,
-            "reviews_dir": str(paths["reviews_dir"].relative_to(REPO_ROOT)),
-            "timeline":   _rel(timeline_path),
+            "dashboard":      _rel(dashboard_path),
+            "diff":           _rel(diff_path),
+            "summary":        _rel(summary_path),
+            "reviews":        dict(reviews_map) if reviews_map else None,
+            "reviews_dir":    str(paths["reviews_dir"].relative_to(REPO_ROOT)),
+            "timeline":       _rel(timeline_path),
+            "status_html":    str((paths["reviews_dir"] / "STATUS.html").relative_to(REPO_ROOT)),
+            "timeline_jsonl": str((paths["reviews_dir"] / "timeline.jsonl").relative_to(REPO_ROOT)),
+            "vscode_file_uri": _vscode_uri,
         },
         "imp_matrix": {
-            "prev_open_count":     prev_open_count,
-            "responded_count":     responded_count,
-            "not_addressed_count": not_addressed_count,
+            "prev_open_count":          prev_open_count,
+            "responded_count":          responded_count,
+            "not_addressed_count":      not_addressed_count,
+            "responded_any_count":      responded_any,
+            "not_addressed_any_count":  not_addressed_any,
         },
+        "imp_matrix_by_persona": by_persona,
+        "imp_matrix_detail": imp_detail,
         "timing_sec": {
             "diff":    timing.get("diff"),
             "review":  timing.get("review"),
@@ -1231,7 +1320,13 @@ def write_status_json(
     tmp = status_path.with_name(status_path.name + ".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(status_path)
+    if return_payload:
+        return status_path, payload
     return status_path
+
+
+# module-level default（防止 RUNNING 前讀取 crash）
+write_status_json.last_payload = {}  # type: ignore[attr-defined]
 
 
 # ── Timeline（v4.0）─────────────────────────────────────────────────────────
@@ -1323,6 +1418,348 @@ def append_timeline_entry(
         f.write(section)
 
     return timeline_path
+
+
+# ── STATUS.html（v4.1）────────────────────────────────────────────────────────
+
+def write_status_html(paths: dict) -> Path:
+    """
+    覆寫 docs/reviews/{slug}/STATUS.html（v4.1）。
+    讀取 .status.json 動態渲染（JS fetch polling）。
+    atomic write（.html.tmp → replace）避免 watcher 讀到半 HTML。
+    """
+    reviews_dir = paths["reviews_dir"]
+    reviews_dir.mkdir(parents=True, exist_ok=True)
+    status_html_path = reviews_dir / "STATUS.html"
+
+    html_content = r"""<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review Status</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --green: #3fb950;
+    --yellow: #d29922; --red: #f85149; --blue: #58a6ff;
+    --shimmer1: #1f2937; --shimmer2: #374151;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; padding: 1.5rem; }
+  h1 { font-size: 1.1rem; color: var(--blue); margin-bottom: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .status-icon { font-size: 2rem; margin-right: 0.5rem; }
+  .status-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green  { background: #1b4332; color: var(--green); }
+  .badge-yellow { background: #3d2b00; color: var(--yellow); }
+  .badge-red    { background: #4a1010; color: var(--red); }
+  .badge-gray   { background: #21262d; color: var(--muted); }
+  .meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.4rem; }
+  .imp-bar-wrap { margin-top: 0.5rem; }
+  .imp-bar-bg { background: #21262d; border-radius: 4px; height: 8px; overflow: hidden; }
+  .imp-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  .persona-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+  .chip { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.72rem; border: 1px solid var(--border); }
+  .chip-ok   { border-color: var(--green); color: var(--green); }
+  .chip-rev  { border-color: var(--yellow); color: var(--yellow); }
+  .chip-blk  { border-color: var(--red); color: var(--red); }
+  .chip-run  { border-color: var(--muted); color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th, td { padding: 0.35rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .tl-entry { font-size: 0.78rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+  .tl-ts { color: var(--muted); margin-right: 0.5rem; }
+  .btn { display: inline-block; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem;
+         background: #21262d; color: var(--text); text-decoration: none; border: 1px solid var(--border);
+         cursor: pointer; margin-top: 0.5rem; }
+  .btn:hover { background: #30363d; }
+  .btn[disabled] { opacity: 0.4; cursor: default; pointer-events: none; }
+  .err-msg { color: var(--red); font-size: 0.8rem; margin-top: 0.5rem; }
+  /* shimmer for RUNNING */
+  @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+  .shimmer { background: linear-gradient(90deg, var(--shimmer1) 25%, var(--shimmer2) 50%, var(--shimmer1) 75%);
+             background-size: 800px 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
+  .shimmer-line { height: 14px; margin: 0.4rem 0; }
+  .shimmer-short { width: 40%; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>📋 Review Status</h1>
+<div id="main-card" class="card">
+  <div id="shimmer-state" class="hidden">
+    <div class="shimmer shimmer-line"></div>
+    <div class="shimmer shimmer-line shimmer-short"></div>
+    <div class="shimmer shimmer-line"></div>
+  </div>
+  <div id="status-content" class="hidden">
+    <div class="status-main">
+      <span id="s-icon" class="status-icon"></span>
+      <span id="s-slug" style="font-weight:600"></span>
+      <span id="s-round" class="badge badge-gray"></span>
+      <span id="s-stage" class="badge badge-gray"></span>
+      <span id="s-verdict" class="badge badge-gray"></span>
+    </div>
+    <div class="meta" id="s-meta"></div>
+    <div class="imp-bar-wrap" id="imp-bar-wrap">
+      <div style="font-size:0.75rem;color:var(--muted);margin:0.5rem 0 0.2rem">IMP Coverage</div>
+      <div class="imp-bar-bg"><div id="imp-bar-fill" class="imp-bar-fill" style="width:0%;background:var(--green)"></div></div>
+      <div id="imp-bar-label" style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem"></div>
+    </div>
+    <div class="persona-chips" id="persona-chips"></div>
+    <div>
+      <a id="vscode-btn" class="btn" href="#">Open in VS Code</a>
+      <span id="vscode-tip" style="font-size:0.72rem;color:var(--muted);margin-left:0.5rem;display:none">本機 VS Code 才有效</span>
+    </div>
+    <div id="fetch-err" class="err-msg hidden"></div>
+  </div>
+</div>
+
+<div class="card" id="tl-card" style="display:none">
+  <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">Timeline</div>
+  <div id="tl-entries"></div>
+</div>
+
+<div class="card" id="imp-detail-card" style="display:none">
+  <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">IMP×Persona</div>
+  <div id="imp-detail-content"></div>
+</div>
+
+<script>
+(function() {
+  var _pollTimer = null;
+  var _tlLoaded = false;
+
+  function badgeClass(color) {
+    if (color === 'green')  return 'badge-green';
+    if (color === 'yellow') return 'badge-yellow';
+    if (color === 'red')    return 'badge-red';
+    return 'badge-gray';
+  }
+
+  function chipClass(v) {
+    if (!v) return 'chip-run';
+    v = v.toUpperCase();
+    if (v === 'APPROVED') return 'chip-ok';
+    if (v === 'NEEDS_REVISION') return 'chip-rev';
+    if (v === 'BLOCKED') return 'chip-blk';
+    return 'chip-run';
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function scheduleNextPoll(ms) {
+    if (document.hidden) ms = 5000;
+    if (_pollTimer) clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(fetchAndRender, ms);
+  }
+
+  function showShimmer() {
+    document.getElementById('shimmer-state').classList.remove('hidden');
+    document.getElementById('status-content').classList.add('hidden');
+  }
+
+  function showContent() {
+    document.getElementById('shimmer-state').classList.add('hidden');
+    document.getElementById('status-content').classList.remove('hidden');
+  }
+
+  function renderStatus(s) {
+    var ui = s.ui || {};
+    document.getElementById('s-icon').textContent    = ui.icon || '❓';
+    document.getElementById('s-slug').textContent    = s.plan_slug || '';
+    document.getElementById('s-round').textContent   = 'r' + String(s.round || 0).padStart(2,'0');
+    document.getElementById('s-stage').textContent   = ui.short || s.stage || '';
+    document.getElementById('s-verdict').textContent = s.verdict || '';
+
+    var stageEl   = document.getElementById('s-stage');
+    var verdictEl = document.getElementById('s-verdict');
+    stageEl.className   = 'badge ' + badgeClass(ui.color);
+    verdictEl.className = 'badge ' + badgeClass(ui.color);
+
+    var meta = [];
+    if (s.updated_at) meta.push('Updated: ' + s.updated_at);
+    if (s.stage === 'RUNNING') meta.push('⏳ polling...');
+    document.getElementById('s-meta').textContent = meta.join('  ·  ');
+
+    // IMP bar
+    var imp = s.imp_matrix || {};
+    var total = imp.prev_open_count || 0;
+    var barWrap = document.getElementById('imp-bar-wrap');
+    if (total === 0) {
+      barWrap.style.display = 'none';
+    } else {
+      barWrap.style.display = '';
+      var any = imp.responded_any_count != null ? imp.responded_any_count : imp.responded_count || 0;
+      var pct = Math.round(any / total * 100);
+      var fillColor = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+      document.getElementById('imp-bar-fill').style.width  = pct + '%';
+      document.getElementById('imp-bar-fill').style.background = fillColor;
+      document.getElementById('imp-bar-label').textContent = any + ' / ' + total + ' responded (' + pct + '%)';
+    }
+
+    // persona chips
+    var chips = document.getElementById('persona-chips');
+    chips.innerHTML = '';
+    var vmap = s.verdicts_by_persona || {};
+    Object.keys(vmap).forEach(function(p) {
+      var chip = document.createElement('span');
+      chip.className = 'chip ' + chipClass(vmap[p]);
+      chip.textContent = p + ': ' + (vmap[p] || 'RUNNING');
+      chips.appendChild(chip);
+    });
+
+    // VS Code button
+    var uri = s.artifacts && s.artifacts.vscode_file_uri;
+    var btn = document.getElementById('vscode-btn');
+    var tip = document.getElementById('vscode-tip');
+    if (uri) {
+      btn.href = uri;
+      btn.removeAttribute('disabled');
+      tip.style.display = 'none';
+    } else {
+      btn.href = '#';
+      btn.setAttribute('disabled', 'disabled');
+      tip.style.display = '';
+    }
+
+    // IMP detail table
+    renderImpDetail(s);
+  }
+
+  function renderImpDetail(s) {
+    var detail = s.imp_matrix_detail;
+    if (!detail || !detail.prev_open_imps || detail.prev_open_imps.length === 0) {
+      document.getElementById('imp-detail-card').style.display = 'none';
+      return;
+    }
+    document.getElementById('imp-detail-card').style.display = '';
+    var imps = detail.prev_open_imps;
+    var byImp = detail.by_imp || {};
+    var personas = Object.keys((s.verdicts_by_persona || {}));
+    if (personas.length === 0 && imps.length > 0) {
+      personas = Object.keys(byImp[imps[0]] || {});
+    }
+    var html = '<table><tr><th>IMP</th>';
+    personas.forEach(function(p) { html += '<th>' + esc(p) + '</th>'; });
+    html += '</tr>';
+    imps.forEach(function(iid) {
+      html += '<tr><td>' + esc(iid) + '</td>';
+      personas.forEach(function(p) {
+        var st = (byImp[iid] || {})[p] || 'NOT_ADDRESSED';
+        html += '<td style="color:' + (st === 'RESPONDED' ? 'var(--green)' : 'var(--red)') + '">' + (st === 'RESPONDED' ? '✅' : '⚠️') + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</table>';
+    document.getElementById('imp-detail-content').innerHTML = html;
+  }
+
+  function loadTimeline() {
+    if (_tlLoaded) return;
+    var ctrl = new AbortController();
+    var t = setTimeout(function(){ ctrl.abort(); }, 3000);
+    fetch('timeline.jsonl?t=' + Date.now(), { signal: ctrl.signal })
+      .then(function(r){ return r.text(); })
+      .then(function(text) {
+        var lines = text.split('\n').filter(Boolean);
+        var entries = [];
+        lines.forEach(function(ln) {
+          try { entries.push(JSON.parse(ln)); } catch(e) {}
+        });
+        entries = entries.slice(-12).reverse();
+        if (entries.length === 0) return;
+        document.getElementById('tl-card').style.display = '';
+        var html = '';
+        entries.forEach(function(e) {
+          html += '<div class="tl-entry"><span class="tl-ts">' + esc(e.updated_at || '') + '</span>';
+          html += (e.ui && e.ui.icon ? e.ui.icon + ' ' : '') + esc(e.stage || '') + ' — ' + esc(e.verdict || '') + '</div>';
+        });
+        document.getElementById('tl-entries').innerHTML = html;
+        _tlLoaded = true;
+      })
+      .catch(function(){})
+      .finally(function(){ clearTimeout(t); });
+  }
+
+  function fetchAndRender() {
+    var ctrl = new AbortController();
+    var t = setTimeout(function(){ ctrl.abort(); }, 3000);
+    fetch('.status.json?t=' + Date.now(), { signal: ctrl.signal })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(s) {
+        document.getElementById('fetch-err').classList.add('hidden');
+        showContent();
+        renderStatus(s);
+        loadTimeline();
+        var ms = s.stage === 'RUNNING' ? 1000 : 5000;
+        scheduleNextPoll(ms);
+      })
+      .catch(function(e) {
+        if (e && e.name === 'AbortError') {
+          document.getElementById('fetch-err').classList.remove('hidden');
+          document.getElementById('fetch-err').textContent = '⚠ fetch timeout — 請用本機 server 開啟（VS Code Live Server 或 python -m http.server）';
+        } else {
+          document.getElementById('fetch-err').classList.remove('hidden');
+          document.getElementById('fetch-err').textContent = '⚠ 無法讀取 .status.json — 請用本機 server 開啟（VS Code Live Server 或 python -m http.server）';
+        }
+        showContent();
+        scheduleNextPoll(5000);
+      })
+      .finally(function(){ clearTimeout(t); });
+  }
+
+  showShimmer();
+  fetchAndRender();
+})();
+</script>
+</body>
+</html>
+"""
+
+    tmp = status_html_path.with_suffix(".html.tmp")
+    tmp.write_text(html_content, encoding="utf-8")
+    tmp.replace(status_html_path)
+    return status_html_path
+
+
+# ── Timeline JSONL（v4.1）────────────────────────────────────────────────────
+
+def append_timeline_jsonl(payload: dict, paths: dict) -> Path:
+    """
+    atomic append-only，每終局 stage 一行（v4.1）。
+    RUNNING 防呆：直接 return（不寫）。
+    atomic：copy-replace + shutil.copyfileobj，大檔案不一次讀入記憶體（避免 O(n²)）。
+    os.fsync + try/except：確保寫入，Docker/SMB FS 靜默忽略 fsync 失敗。
+    """
+    reviews_dir = paths["reviews_dir"]
+    reviews_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = reviews_dir / "timeline.jsonl"
+
+    if payload.get("stage") == "RUNNING":
+        return jsonl_path
+
+    new_line = json.dumps(payload, ensure_ascii=False) + "\n"
+    tmp_path = jsonl_path.with_suffix(".jsonl.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as out:
+        if jsonl_path.exists():
+            with open(jsonl_path, "r", encoding="utf-8") as src:
+                shutil.copyfileobj(src, out)
+        out.write(new_line)
+        out.flush()
+        try:
+            os.fsync(out.fileno())
+        except OSError:
+            pass
+    tmp_path.replace(jsonl_path)
+    return jsonl_path
 
 
 # ── Decision 輸出 ────────────────────────────────────────────────────────────
@@ -1450,7 +1887,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
     now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     dry_tag = " [DRY-RUN]" if dry_run else ""
-    sys.stderr.write(f"review_plan_loop v4.0: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
+    sys.stderr.write(f"review_plan_loop v4.1: [{plan_slug}] 開始 Round {round_num:02d}{dry_tag}...\n")
 
     # v3.10：RUNNING 狀態（watcher 可見「正在跑」）
     if not dry_run:
@@ -1464,6 +1901,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             failed_personas=None, timing={}, paths=paths,
             message="running"
         )
+        write_status_html(paths)   # v4.1：RUNNING shimmer UI
 
     # 讀取當前 PLAN
     current_plan = plan_file.read_text(encoding="utf-8")
@@ -1532,7 +1970,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
                             timing={}, paths=paths,
                             note="blocked by 0-G preflight (zero API calls)",
                         )
-                        write_status_json(
+                        _, _payload_0g = write_status_json(
                             plan_slug, round_num, stage="PRECHECK_BLOCKED",
                             verdict="BLOCKED",
                             preflight_passed=False, gate_passed=False,
@@ -1544,7 +1982,10 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
                             failed_personas=None, timing={}, paths=paths,
                             message="blocked by 0-G preflight (zero API)",
                             timeline_path=_timeline_path,
+                            return_payload=True,
                         )
+                        write_status_html(paths)
+                        append_timeline_jsonl(_payload_0g, paths)
                         decision_0g = {
                             "decision": "block",
                             "reason": (
@@ -1659,7 +2100,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         for p, rp in reviews_map.items()
     )
     sys.stderr.write(
-        f"review_plan_loop v4.0: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
+        f"review_plan_loop v4.1: [{plan_slug}] Round {round_num:02d} 完成 — VERDICT={verdict}\n"
         f"{review_lines}\n"
         f"  diff    → {diff_path.relative_to(REPO_ROOT)}\n"
         f"  summary → {summary_path.relative_to(REPO_ROOT)}\n"
@@ -1721,7 +2162,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             failed_personas=failed_personas, timing=timing, paths=paths,
             note=f"blocked by post-review gate: {failed_str}",
         )
-        write_status_json(
+        _, _payload_gate = write_status_json(
             plan_slug, round_num, stage="GATE_BLOCKED",
             verdict=verdict,
             preflight_passed=True, gate_passed=False,
@@ -1733,7 +2174,11 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
             failed_personas=failed_personas, timing=timing, paths=paths,
             message=f"blocked by post-review gate: {failed_str}",
             timeline_path=_timeline_path,
+            all_reviews_text=all_reviews,
+            return_payload=True,
         )
+        write_status_html(paths)
+        append_timeline_jsonl(_payload_gate, paths)
         print(json.dumps(gate_decision, ensure_ascii=False))
         sys.exit(0)
 
@@ -1780,7 +2225,7 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         failed_personas=[], timing=timing, paths=paths,
         note="committed",
     )
-    write_status_json(
+    _, _payload_committed = write_status_json(
         plan_slug, round_num, stage="COMMITTED",
         verdict=verdict,
         preflight_passed=True, gate_passed=True,
@@ -1792,6 +2237,15 @@ def run_review(plan_slug: str, dry_run: bool = False) -> None:
         failed_personas=[], timing=timing, paths=paths,
         message="committed",
         timeline_path=_timeline_path,
+        all_reviews_text=all_reviews,
+        return_payload=True,
+    )
+    write_status_html(paths)
+    append_timeline_jsonl(_payload_committed, paths)
+    sys.stderr.write(
+        f"  status   → docs/reviews/{plan_slug}/.status.json\n"
+        f"  html     → docs/reviews/{plan_slug}/STATUS.html\n"
+        f"  jsonl    → docs/reviews/{plan_slug}/timeline.jsonl\n"
     )
 
     # 輸出 JSON decision（帶 preflight_warnings）

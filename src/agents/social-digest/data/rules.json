@@ -1,0 +1,49 @@
+{
+  "version": "2026-03-01.1",
+  "_comment": "修改此檔必須遞增 version（格式 YYYY-MM-DD.N）",
+
+  "top_picks_max": 20,
+  "everything_else_max": 60,
+
+  "must_keywords": [
+    "破產", "裁員", "地震", "颱風", "緊急", "重大"
+  ],
+
+  "mute_keywords": [
+    "廣告", "促銷", "優惠碼"
+  ],
+
+  "novelty_exempt_keywords": [
+    "破產", "裁員", "地震", "颱風"
+  ],
+
+  "no_novelty_penalty_groups": [],
+
+  "must_include_quota": 8,
+
+  "novelty": {
+    "topic_signature_window_hours": 24,
+    "topic_signature_penalty": 15,
+    "source_signature_window_days": 7,
+    "source_signature_penalty": 5
+  },
+
+  "weight_bounds": {
+    "min": 0.2,
+    "max": 3.0,
+    "cooldown_hours": 24
+  },
+
+  "feedback_adjustments": {
+    "good": 0.1,
+    "pin": 0.2,
+    "mute": -0.2
+  },
+
+  "alerts": {
+    "email_parse_ok_rate_min": 0.9,
+    "post_extract_ok_rate_min": 0.8,
+    "high_conf_rate_drop_threshold": 0.2,
+    "new_template_fp_rate_threshold": 0.5
+  }
+}

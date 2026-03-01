@@ -1,0 +1,17 @@
+{
+  "name": "social-digest",
+  "version": "1.0.0",
+  "description": "Facebook Groups 晨報 Agent",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js run",
+    "dry-run": "node agent.js run --dry-run",
+    "status": "node agent.js status"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^16.6.1",
+    "imapflow": "^1.2.10",
+    "nodemailer": "^6.10.1"
+  }
+}

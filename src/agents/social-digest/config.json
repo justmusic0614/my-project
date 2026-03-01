@@ -1,0 +1,70 @@
+{
+  "name": "social-digest",
+  "version": "1.0.0",
+  "description": "Facebook Groups 晨報 Agent — IMAP 收信 + AI 摘要 + Email Digest",
+
+  "imap": {
+    "host": "imap.gmail.com",
+    "port": 993,
+    "secure": true,
+    "user": "${GMAIL_IMAP_USER}",
+    "password": "${GMAIL_IMAP_PASSWORD}",
+    "mailboxType": "gmail_label",
+    "label": "${IMAP_LABEL:-FB-Groups}",
+    "feedbackLabel": "${IMAP_FEEDBACK_LABEL:-FB-Groups-Feedback}",
+    "lookbackMinutes": 120,
+    "connectionTimeout": 15000
+  },
+
+  "smtp": {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "secure": false,
+    "user": "${GMAIL_SMTP_USER}",
+    "password": "${GMAIL_SMTP_PASSWORD}",
+    "from": "${GMAIL_SMTP_USER}",
+    "recipient": "${DIGEST_RECIPIENT}"
+  },
+
+  "ai": {
+    "enabled": "${AI_ENABLED:-true}",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": "${OPENAI_API_KEY}",
+    "maxPostsPerDay": 200,
+    "maxBatches": 6,
+    "batchSize": 30,
+    "promptVersion": "1.0"
+  },
+
+  "digest": {
+    "topPicksMax": 20,
+    "everythingElseMax": 60,
+    "subjectPrefix": "[SocialDigest]",
+    "sendDryRunHtml": true
+  },
+
+  "http": {
+    "timeout": 5000,
+    "maxRedirects": 2,
+    "userAgent": "social-digest/1.0",
+    "concurrency": 2,
+    "throttleMs": 300
+  },
+
+  "db": {
+    "path": "${DB_PATH:-data/social-digest.db}"
+  },
+
+  "paths": {
+    "src": "src",
+    "data": "data",
+    "runtime": "data/runtime",
+    "logs": "logs"
+  },
+
+  "logging": {
+    "level": "${LOG_LEVEL:-info}",
+    "format": "${LOG_FORMAT:-pretty}"
+  }
+}

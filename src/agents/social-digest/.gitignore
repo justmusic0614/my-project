@@ -1,0 +1,22 @@
+node_modules/
+package-lock.json
+
+# SQLite 資料庫（運行期資料）
+data/social-digest.db
+data/social-digest.db-shm
+data/social-digest.db-wal
+
+# 執行期 preview
+data/runtime/latest.html
+data/runtime/run-*.json
+
+# 日誌
+logs/
+
+# 本地環境
+.env
+.env.local
+
+# 系統
+.DS_Store
+*.swp

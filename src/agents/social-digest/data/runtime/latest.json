@@ -1,0 +1,16 @@
+{
+  "imap_last_uid": null,
+  "imap_last_internal_date": null,
+  "imap_last_message_id": null,
+  "last_run_id": "run-2026-03-01T1401-3607d8",
+  "last_run_at": "2026-03-01T14:01:10.966Z",
+  "last_run_status": "ok",
+  "mail_count": 0,
+  "post_count": 0,
+  "new_post_count": 0,
+  "sent_count": 0,
+  "email_parse_ok_rate": null,
+  "post_extract_ok_rate": null,
+  "high_conf_rate": null,
+  "l2_success_rate": null
+}

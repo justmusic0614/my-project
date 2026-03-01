@@ -1,0 +1,14 @@
+[
+  {
+    "_comment": "範例群組，請用 tools/fb-groups-export.js 替換為實際清單",
+    "type": "group",
+    "name": "範例理財群組",
+    "url": "https://www.facebook.com/groups/example-finance",
+    "public": false,
+    "enabled": false,
+    "weight": 1.0,
+    "tags": ["理財"],
+    "must_include": false,
+    "last_weight_update": null
+  }
+]

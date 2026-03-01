@@ -40,6 +40,7 @@ import difflib
 import re
 import urllib.parse
 from pathlib import Path
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 import webbrowser
@@ -139,6 +140,14 @@ _AC_VERIFY_RE = re.compile(
     r"確認.*存在|確認.*輸出|assert|expect",
     re.IGNORECASE,
 )
+
+# v4.4+：停用詞（避免抽到泛用字作 keyword）
+_AC_STOPWORDS = {
+    "測試", "通過", "功能", "正常", "優化", "效能", "確認", "完成", "修正", "調整",
+    "the", "a", "an", "to", "of", "and", "or", "in", "on", "for", "with", "by",
+    "test", "tests", "pass", "passed", "ok", "done", "fix", "update", "change",
+    "api", "url", "env", "var", "vars",
+}
 
 
 # ── Plan slug 推斷 ────────────────────────────────────────────────────────────
@@ -442,8 +451,88 @@ def check_ac_triad(ac_line: str) -> dict:
     }
 
 
+def _auto_keyword(ac_text: str) -> Optional[str]:
+    """從 AC 文字抽取有意義的 keyword 用於 grep 驗收（v4.4+）。"""
+    t = re.sub(r"`[^`]+`", " ", ac_text)          # 先移除 code span（避免抓到檔名）
+    t = re.sub(r"\s+", " ", t).strip()
+
+    candidates = re.findall(r"[A-Za-z_][A-Za-z0-9_\-]{2,}|[\u4e00-\u9fff]{2,6}", t)
+
+    for c in candidates:
+        if c.lower() in _AC_STOPWORDS:
+            continue
+        if c in _AC_STOPWORDS:
+            continue
+        if re.match(r"^(新增|修改|移除|補上|補充|改為|定義|重構|建立|加入|刪除)$", c):
+            continue
+        # 跳過中文 token（grep 中文不穩定，回退 placeholder 更安全）
+        if re.fullmatch(r"[\u4e00-\u9fff]{2,6}", c):
+            continue
+        return c
+
+    return None
+
+
+def _extract_hints(ac_text: str) -> dict:
+    """從 AC 文字中抽取 file/what/verify hints（v4.4）。"""
+    t = re.sub(r"\s+", " ", ac_text).strip()
+
+    file_hint = None
+    # 優先抓帶副檔名的 code span（避免抓到整段 shell 指令）
+    m = re.search(r"`([^`]+\.(js|py|md|json|html|ts|sh|yaml|yml))`", t, re.IGNORECASE)
+    if m:
+        file_hint = m.group(1)
+    else:
+        m = re.search(r"(\S+\.(js|py|md|json|html|ts|sh|yaml|yml))", t, re.IGNORECASE)
+        if m:
+            file_hint = m.group(1)
+        else:
+            m = re.search(r"(\.claude/\S+|src/\S+|docs/\S+)", t)
+            if m:
+                file_hint = m.group(1)
+
+    verify_hint = None
+    m = re.search(r"(驗收[:：]\s*`?[^`]+`?)", t)
+    if m:
+        verify_hint = re.sub(r"\s+", " ", m.group(1)).strip()
+    else:
+        m = re.search(r"\b(grep|pytest|node\s+-e|tail|cat|npm\s+test|yarn\s+test)\b.*", t, re.IGNORECASE)
+        if m:
+            verify_hint = m.group(0)[:80]
+
+    what_hint = None
+    m = re.search(r"(新增|修改|移除|補上|補充|改為|定義|重構|建立|加入|刪除)\S{0,30}", t)
+    if m:
+        what_hint = m.group(0)
+
+    return {"file": file_hint, "verify": verify_hint, "what": what_hint}
+
+
+def _build_ac_suggestion(ac_text: str, missing: list[str]) -> str:
+    """依缺漏三件套生成可貼回的修正 AC 建議句（v4.4+）。"""
+    hints = _extract_hints(ac_text)
+
+    file_part = hints["file"] or "<SPECIFY_FILE>"
+    what_part = hints["what"] or "<SPECIFY_CHANGE>"
+
+    verify_part = hints["verify"]
+
+    if ("VERIFY" in missing) or (not verify_part):
+        kw = _auto_keyword(ac_text)
+        if kw:
+            verify_part = f'驗收：`grep -n -- "{kw}" {file_part}` 有輸出'
+        else:
+            verify_part = "驗收：`<SPECIFY_COMMAND>` 看到 `<EXPECTED_OUTPUT>`"
+    else:
+        if not verify_part.startswith("驗收"):
+            verify_part = f"驗收：`{verify_part}`"
+
+    suggestion = f"- [ ] 在 `{file_part}` {what_part}，{verify_part}"
+    return re.sub(r"\s+", " ", suggestion).strip()
+
+
 def validate_acceptance_criteria(plan_text: str) -> dict:
-    """驗收條件三件套 preflight（v4.3）。返回 {"ok": bool, "issues": list[str]}。"""
+    """驗收條件三件套 preflight（v4.4+）。返回 {"ok": bool, "issues": list[str]}。"""
     acs = extract_acceptance_criteria(plan_text)
 
     if not acs:
@@ -463,11 +552,9 @@ def validate_acceptance_criteria(plan_text: str) -> dict:
 
         if missing:
 
-            short = re.sub(r"\s+", " ", ac)[:80]
-
-            issues.append(
-                f"AC #{i} 缺少 {', '.join(missing)}：{short}"
-            )
+            t = re.sub(r"\s+", " ", ac).strip()
+            issues.append(f"AC #{i} 缺少 {', '.join(missing)}：{t[:80]}")
+            issues.append(f"SUGGESTION: {_build_ac_suggestion(ac, missing)}")
 
     return {
         "ok": len(issues) == 0,

@@ -1,0 +1,70 @@
+{
+  "schema_version": "1",
+  "version": "4.2",
+  "plan_slug": "social-digest",
+  "round": 1,
+  "stage": "GATE_BLOCKED",
+  "verdict": "NEEDS_REVISION",
+  "preflight_passed": true,
+  "gate_passed": false,
+  "personas": [
+    "engineer",
+    "skeptic"
+  ],
+  "verdicts_by_persona": {
+    "engineer": "NEEDS_REVISION",
+    "skeptic": "NEEDS_REVISION"
+  },
+  "failed_personas": [
+    "engineer"
+  ],
+  "ui": {
+    "icon": "🛑",
+    "color": "red",
+    "label": "Gate Blocked",
+    "short": "GATE-BLOCK"
+  },
+  "artifacts": {
+    "dashboard": "docs/reviews/social-digest/DASHBOARD.md",
+    "diff": "docs/reviews/social-digest/round01-diff.md",
+    "summary": "docs/reviews/social-digest/round01-diff-summary.md",
+    "reviews": {
+      "engineer": "docs/reviews/social-digest/review-20260301-224006-round01-engineer.md",
+      "skeptic": "docs/reviews/social-digest/review-20260301-224006-round01-skeptic.md"
+    },
+    "reviews_dir": "docs/reviews/social-digest",
+    "timeline": "docs/reviews/social-digest/TIMELINE.md",
+    "status_html": "docs/reviews/social-digest/STATUS.html",
+    "timeline_jsonl": "docs/reviews/social-digest/timeline.jsonl",
+    "vscode_file_uri": "vscode://file/Users/suweicheng/projects/my-project/docs/reviews/social-digest/DASHBOARD.md"
+  },
+  "imp_matrix": {
+    "prev_open_count": 0,
+    "responded_count": 0,
+    "not_addressed_count": 0,
+    "responded_any_count": 0,
+    "not_addressed_any_count": 0
+  },
+  "imp_matrix_by_persona": {
+    "engineer": {
+      "responded": 0,
+      "not_addressed": 0
+    },
+    "skeptic": {
+      "responded": 0,
+      "not_addressed": 0
+    }
+  },
+  "imp_matrix_detail": {
+    "prev_open_imps": [],
+    "by_imp": {}
+  },
+  "timing_sec": {
+    "diff": 0.0,
+    "review": 7.94,
+    "summary": 7.42,
+    "total": 15.36
+  },
+  "updated_at": "2026-03-01T22:40:22+08:00",
+  "message": "blocked by post-review gate: engineer"
+}

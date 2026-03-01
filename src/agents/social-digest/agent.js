@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 /**
- * social-digest Agent — CLI 入口（M2）
+ * social-digest Agent — CLI 入口（M2, 更新至 Phase 1 完整 pipeline）
  *
  * 用法：
- *   node agent.js run                    # 正常執行（IMAP + AI + Email）
+ *   node agent.js run                    # 正常執行（IMAP + Email）
  *   node agent.js run --dry-run          # 不寄信，產出 latest.html preview
  *   node agent.js run --backfill-hours 24  # 擴大 internalDate 視窗補漏
  *   node agent.js status                 # 顯示上次 run 狀態
  *   node agent.js db-stats               # 顯示資料庫統計
  *   node agent.js help                   # 顯示說明
+ *
+ * Pipeline（Phase 1）：
+ *   IMAP 收信（M4, TODO: 連線）
+ *   → Email Parser（M6）
+ *   → Deduplicator（M7）
+ *   → Rule Filter（M8）
+ *   → Post Scorer（M10）
+ *   → Email Publisher（M9）+ Run Snapshot（M9.5）
+ *   → 告警（M11）
+ *   → 更新水位線
  */
 
 'use strict';
@@ -38,7 +48,7 @@ function loadConfig() {
 
 const config = loadConfig();
 
-// ── Logger（輕量版，依賴 market-digest shared logger 的風格）─────────────────
+// ── Logger ────────────────────────────────────────────────────────────────────
 
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 const logLevel = LOG_LEVELS[config.logging?.level || 'info'] ?? 1;
@@ -76,7 +86,11 @@ function saveLatest(data) {
   fs.writeFileSync(latestJsonPath, JSON.stringify(data, null, 2), 'utf8');
 }
 
-// ── run 主流程（Phase 1 骨架，子模組 Phase 2 接入）──────────────────────────────
+function loadRules() {
+  return JSON.parse(fs.readFileSync(path.join(AGENT_ROOT, 'data/rules.json'), 'utf8'));
+}
+
+// ── run 主流程 ─────────────────────────────────────────────────────────────────
 
 async function run(args) {
   const dryRun = args.includes('--dry-run');
@@ -84,18 +98,24 @@ async function run(args) {
   const backfillHours = backfillIdx >= 0 ? parseInt(args[backfillIdx + 1], 10) || 24 : null;
 
   const runId = newRunId();
-  log('info', `開始 run ${runId}`, {
-    dryRun,
-    backfillHours: backfillHours ?? 'none',
-  });
+  log('info', `開始 run ${runId}`, { dryRun, backfillHours: backfillHours ?? 'none' });
 
-  // ── 載入基礎模組 ─────────────────────────────────────────────────────────
+  // ── 載入模組 ─────────────────────────────────────────────────────────────
   const { getDB } = require('./src/shared/db');
   const { SourceManager } = require('./src/shared/source-manager');
+  const { parseEmails } = require('./src/processors/email-parser');
+  const { dedup } = require('./src/processors/deduplicator');
+  const { applyRules, buildSourceMap } = require('./src/processors/rule-filter');
+  const { scorePosts, assignSections } = require('./src/processors/post-scorer');
+  const { buildDigestEmail, buildRunSnapshot, sendDigest, calcShortcode } = require('./src/publishers/email-publisher');
+  const alerter = require('./src/shared/alerter');
+  // imap-collector 待 M4 實作連線邏輯後解除注解
+  // const imapCollector = require('./src/collectors/imap-collector');
 
-  const dbPath = path.join(AGENT_ROOT, config.db?.path || 'data/social-digest.db');
   const db = getDB(AGENT_ROOT, config.db?.path);
   const sm = new SourceManager(path.join(AGENT_ROOT, 'data/sources.json'));
+  const rules = loadRules();
+  const prev = loadLatest();
 
   db.startRun(runId);
 
@@ -111,49 +131,192 @@ async function run(args) {
     post_extract_ok_rate: null,
     high_conf_rate: null,
     l2_success_rate: null,
+    template_fp_stats: null,
+    rules_version: rules.version || null,
     errors: [],
   };
 
-  // ── Phase 1 Stub：等待 M4+ 接入 ──────────────────────────────────────────
-  // 各步驟以 try/catch 包覆，保證部分失敗不影響後續步驟
-  const enabledSources = sm.getEnabled();
-  log('info', `載入群組來源`, { count: enabledSources.length });
+  const allAlerts = [];
 
-  if (enabledSources.length === 0) {
-    log('warn', '沒有啟用的群組來源，請先編輯 data/sources.json');
+  try {
+    // ── Step 1：IMAP 收信（M4 - 連線邏輯 TODO）──────────────────────────────
+    // Phase 1 骨架：直接跳過 IMAP，從 DB 取未送出的貼文（適用於手動插入測試資料）
+    // 實際連線邏輯在 imap-collector.js 完成後替換
+    log('info', 'Step 1: IMAP 收信（TODO: 連線實作）');
+    const emails = [];  // TODO: await imapCollector.collect(config.imap, prev, backfillHours)
+    stats.mail_count = emails.length;
+
+    // 收信告警
+    const collectAlerts = alerter.checkCollect(emails.length);
+    allAlerts.push(...collectAlerts);
+    alerter.printAlerts(collectAlerts, (level, msg) => log(level.toLowerCase(), msg));
+
+    // ── Step 2：Email 解析（M6）+ 去重（M7）────────────────────────────────
+    log('info', 'Step 2: Email 解析 + 去重');
+    let newPosts = [];
+
+    if (emails.length > 0) {
+      const parseResult = parseEmails(emails);
+      stats.email_parse_ok_rate = parseResult.stats.email_parse_ok_rate;
+      stats.post_extract_ok_rate = parseResult.stats.post_extract_ok_rate;
+      stats.high_conf_rate = parseResult.stats.high_conf_rate;
+      stats.template_fp_stats = parseResult.stats.template_fp_stats;
+
+      // 解析品質告警
+      const parseAlerts = alerter.checkParseQuality(
+        { ...parseResult.stats, template_fp_stats: parseResult.stats.template_fp_stats },
+        prev,
+        rules.alerts
+      );
+      allAlerts.push(...parseAlerts);
+      alerter.printAlerts(parseAlerts, (level, msg) => log(level.toLowerCase(), msg));
+
+      // 去重並插入新貼文
+      const dedupResult = dedup(db, parseResult.posts);
+      newPosts = dedupResult.newPosts;
+      stats.new_post_count = newPosts.length;
+
+      log('info', '解析完成', {
+        emails: emails.length,
+        parsed_posts: parseResult.posts.length,
+        new_posts: newPosts.length,
+        dup_skipped: dedupResult.stats.input - dedupResult.stats.new,
+      });
+    }
+
+    // ── Step 3：取未送出貼文（從 DB）──────────────────────────────────────
+    log('info', 'Step 3: 取未送出貼文');
+    const unsentPosts = db.getUnsentPosts(500);
+    stats.post_count = unsentPosts.length;
+    log('info', `未送出貼文：${unsentPosts.length} 篇`);
+
+    if (unsentPosts.length === 0) {
+      log('info', '無未送出貼文，跳過後續步驟');
+    } else {
+      // ── Step 4：Rule Filter（M8）────────────────────────────────────────
+      log('info', 'Step 4: Rule Filter');
+      const sourceMap = buildSourceMap(sm.getEnabled());
+      const filteredPosts = applyRules(unsentPosts, rules, sourceMap);
+
+      const mustCount = filteredPosts.filter(p => p.rule_section === 'must_include').length;
+      const muteCount = filteredPosts.filter(p => p.mute_keyword_hit).length;
+      log('info', 'Rule Filter 完成', { must_include: mustCount, muted: muteCount });
+
+      // ── Step 5：Post Scorer（M10）────────────────────────────────────────
+      log('info', 'Step 5: Post Scorer');
+      const topicSigCounts = db.getRecentTopicSignatures(rules.novelty?.topic_signature_window_hours || 24);
+      const sourceSigCounts = db.getRecentSourceSignatures(rules.novelty?.source_signature_window_days || 7);
+
+      const scoredPosts = scorePosts(filteredPosts, rules, sourceMap, topicSigCounts, sourceSigCounts);
+      const rankedPosts = assignSections(scoredPosts, rules);
+
+      const topPicks = rankedPosts.filter(p => p.section === 'top_picks');
+      const everythingElse = rankedPosts.filter(p => p.section === 'everything_else');
+      const overflow = rankedPosts.filter(p => p.section === 'overflow');
+      stats.top_picks_count = topPicks.length;
+      stats.sent_count = topPicks.length + everythingElse.length;
+
+      log('info', '排序完成', {
+        top_picks: topPicks.length,
+        everything_else: everythingElse.length,
+        overflow: overflow.length,
+      });
+
+      // ── Step 6：Shortcode 加工（M9.5 前置）──────────────────────────────
+      const rankedWithSc = rankedPosts.map(p => ({
+        ...p,
+        shortcode: calcShortcode(p.id),
+      }));
+
+      // ── Step 7：決策快照（M9.5）──────────────────────────────────────────
+      const quotaBreakdown = {
+        must_include: rankedWithSc.filter(p => p.rule_section === 'must_include' && p.section === 'top_picks').length,
+        ai: rankedWithSc.filter(p => p.section === 'top_picks' && p.importance_score != null).length,
+        rule: rankedWithSc.filter(p => p.section === 'top_picks' && p.importance_score == null && p.rule_section !== 'must_include').length,
+      };
+      const snapshot = buildRunSnapshot(runId, rankedWithSc, quotaBreakdown);
+      const snapshotPath = path.join(runtimePath, `run-${runId}.json`);
+      fs.mkdirSync(runtimePath, { recursive: true });
+      fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), 'utf8');
+      log('debug', `決策快照已儲存：${snapshotPath}`);
+
+      // ── Step 8：Email Publisher（M9）─────────────────────────────────────
+      log('info', 'Step 8: Email Publisher');
+      const digestConfig = {
+        topPicksMax: rules.top_picks_max || 20,
+        everythingElseMax: rules.everything_else_max || 60,
+        subjectPrefix: config.digest?.subjectPrefix || '[SocialDigest]',
+      };
+      const runStatsForEmail = {
+        run_id: runId,
+        email_parse_ok_rate: stats.email_parse_ok_rate,
+        post_extract_ok_rate: stats.post_extract_ok_rate,
+        high_conf_rate: stats.high_conf_rate,
+        l2_success_rate: stats.l2_success_rate,
+      };
+      const { subject, html, text } = buildDigestEmail(rankedWithSc, digestConfig, runStatsForEmail);
+
+      // 儲存 latest.html（dry-run 也存）
+      const latestHtmlPath = path.join(runtimePath, 'latest.html');
+      fs.writeFileSync(latestHtmlPath, html, 'utf8');
+      log('info', `latest.html 已儲存：${latestHtmlPath}`);
+
+      if (!dryRun) {
+        // 發信（含重試一次）
+        let sendResult = await sendDigest(config.smtp, subject, html, text, false);
+
+        if (!sendResult.ok) {
+          log('warn', `首次發信失敗，重試中：${sendResult.error}`);
+          sendResult = await sendDigest(config.smtp, subject, html, text, false);
+
+          if (!sendResult.ok) {
+            const smtpAlert = alerter.checkSmtpFailed(sendResult.error, true);
+            allAlerts.push(smtpAlert);
+            alerter.printAlerts([smtpAlert], (level, msg) => log(level.toLowerCase(), msg));
+            stats.errors.push({ code: 'SMTP_FAILED', error: sendResult.error });
+          }
+        }
+
+        if (sendResult.ok) {
+          log('info', '發信成功', { messageId: sendResult.messageId || '-' });
+          // 標記已送出
+          const sentIds = rankedWithSc
+            .filter(p => p.section !== 'overflow')
+            .map(p => p.id);
+          db.markSent(sentIds);
+        }
+      } else {
+        log('info', '[dry-run] 不寄信，latest.html 已產出');
+      }
+    }
+
+  } catch (err) {
+    log('error', `Pipeline 執行失敗：${err.message}`);
+    stats.errors.push({ code: 'PIPELINE_ERROR', error: err.message });
+    if (process.env.LOG_LEVEL === 'debug') {
+      process.stderr.write(err.stack + '\n');
+    }
   }
 
-  // TODO (M4): IMAP 收信
-  // const imapCollector = require('./src/collectors/imap-collector');
-  // const { emails, watermark } = await imapCollector.collect(config.imap, loadLatest(), backfillHours);
-
-  // TODO (M5/M6): URL normalizer + Email parser
-  // TODO (M7): 去重（deduplicator）
-  // TODO (M8): Rule filter
-  // TODO (M10): Post scorer
-  // TODO (M13, Phase 2): AI summarizer
-  // TODO (M9): Email publisher
-
-  // ── 完成：更新 latest.json 水位線 ─────────────────────────────────────────
-  // 只在成功跑完才更新水位線（不在中途更新）
-  const prev = loadLatest();
+  // ── 完成：更新 latest.json + finishRun ──────────────────────────────────
   const ended = new Date().toISOString();
   stats.ended_at = ended;
 
-  const rules = JSON.parse(fs.readFileSync(path.join(AGENT_ROOT, 'data/rules.json'), 'utf8'));
-  stats.rules_version = rules.version || null;
-
-  db.finishRun(runId, stats);
+  db.finishRun(runId, {
+    ...stats,
+    errors: stats.errors.length > 0 ? stats.errors : null,
+    template_fp_stats: stats.template_fp_stats || null,
+  });
 
   const nextLatest = {
-    // 水位線三件套（Phase 1 骨架保持上一次的值）
+    // 水位線三件套（只有 IMAP 連線成功且整批完成才更新；Phase 1 骨架保持上次值）
     imap_last_uid: prev.imap_last_uid ?? null,
     imap_last_internal_date: prev.imap_last_internal_date ?? null,
     imap_last_message_id: prev.imap_last_message_id ?? null,
     // 執行狀態
     last_run_id: runId,
     last_run_at: ended,
-    last_run_status: 'ok',
+    last_run_status: stats.errors.length > 0 ? 'error' : 'ok',
     mail_count: stats.mail_count,
     post_count: stats.post_count,
     new_post_count: stats.new_post_count,
@@ -165,17 +328,19 @@ async function run(args) {
   };
   saveLatest(nextLatest);
 
-  if (dryRun) {
-    log('info', '[dry-run] 完成，未寄信（latest.html TODO M9）');
-  } else {
-    log('info', `run 完成`, {
-      run_id: runId,
-      new_posts: stats.new_post_count,
-      sent: stats.sent_count,
-    });
+  // 全部告警 summary
+  if (allAlerts.length > 0) {
+    log('warn', `本次 run 共 ${allAlerts.length} 個告警（ERROR: ${allAlerts.filter(a => a.level === 'ERROR').length}，WARN: ${allAlerts.filter(a => a.level === 'WARN').length}）`);
   }
 
-  return { ok: true, run_id: runId, stats };
+  log('info', dryRun ? '[dry-run] 完成' : 'run 完成', {
+    run_id: runId,
+    new_posts: stats.new_post_count,
+    sent: stats.sent_count,
+    top_picks: stats.top_picks_count,
+  });
+
+  return { ok: stats.errors.length === 0, run_id: runId, stats, alerts: allAlerts };
 }
 
 // ── status ────────────────────────────────────────────────────────────────────
@@ -210,6 +375,10 @@ function help() {
     '  db-stats               — 顯示資料庫統計',
     '  help                   — 顯示此說明',
     '',
+    'Pipeline（Phase 1）：',
+    '  IMAP 收信 → Email 解析 → 去重 → Rule Filter → Post Scorer → Email Publisher',
+    '  （IMAP 連線 TODO：M4 骨架已就緒，等待 imapflow 實作）',
+    '',
     '環境變數（需設定於 .env 或 shell）：',
     '  GMAIL_IMAP_USER        — Gmail 帳號',
     '  GMAIL_IMAP_PASSWORD    — Gmail App Password',
@@ -219,6 +388,10 @@ function help() {
     '  OPENAI_API_KEY         — AI 摘要用（Phase 2）',
     '  IMAP_LABEL             — Gmail label 名稱（預設 FB-Groups）',
     '  LOG_LEVEL              — debug / info / warn / error',
+    '',
+    'VPS Cron 設定（每日台灣時間 07:00 = UTC 23:00）：',
+    '  0 23 * * * XDG_RUNTIME_DIR=/run/user/$(id -u) cd ~/clawd/agents/social-digest && /home/clawbot/.nvm/versions/node/v22.22.0/bin/node agent.js run >> logs/cron.log 2>&1',
+    '  （加入前先 mkdir -p ~/clawd/agents/social-digest/logs）',
   ].join('\n');
 }
 

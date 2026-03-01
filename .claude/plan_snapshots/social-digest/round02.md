@@ -1,87 +1,17 @@
 # OpenClaw 晨報系統（social-digest agent）
 
-<!-- 2026-03-01 定稿 v9 -->
+<!-- 2026-03-01 定稿 v8 -->
 
 ## 目標
 
 每天自動收集 Facebook 群組新貼文 → AI 分類摘要排序 → 07:00 寄出 Email 晨報。使用者只需閱讀 Email，點連結回 FB 看全文，**零封號風險**。
 
-**量化成功指標（Phase 1 基礎）：**
+**量化成功指標：**
 - `email_parse_ok_rate` ≥ 90%（每日至少 9 成 FB 通知信可解析出貼文 URL）
 - `post_extract_ok_rate` ≥ 80%（解析出的貼文具備 url + snippet）
 - `must_include_in_digest_rate` = 100%（必看群組永遠出現在 digest）
 - 每日 digest 寄出成功（SMTP 無錯誤，latest.html 產出）
 - VPS cron 每日 07:00 台灣時間自動執行（UTC 23:00）
-
-**AI 排序量化指標（Phase 2 啟用後）：**
-- `NDCG@20` ≥ 0.6（兩週後，排序品質主指標；< 0.4 觸發 Kill Switch）
-- `NS`（North Star）= (pin×3 + good×2 + click×1) / top_picks_count，持續上升
-- `CTR_top / CTR_all` ≥ 1.5（AI Top Picks 點擊率至少 1.5x 整體均值）
-- `ai_confidence=HIGH` 比例 ≥ 60%（模型穩定度指標）
-
-**里程碑產出物摘要（M1~M12）：**
-- M1：`tools/fb-groups-export.js`（瀏覽器 console script，可匯出群組 JSON）
-- M2：`src/agents/social-digest/` 骨架（agent.js + config.json + 完整目錄結構）
-- M3：`social-digest.db`（SQLite，posts/ai_results/feedback/runs 四表建立完成）
-- M4：`imap-collector.js`（IMAP 水位線三件套，成功連線 Gmail label）
-- M5：`url-normalizer.js`（正規化 + 去 tracking params + sha256 主鍵）
-- M6：`email-parser.js`（三層解析，輸出 confidence + template_fp + 三段成功率）
-- M7：`deduplicator.js`（sha256(canonical_url) 主鍵去重，Message-ID 雙重確認）
-- M8：`rule-filter.js`（must_include 保底 60，黑名單降權）
-- M9：`email-publisher.js`（nodemailer text+html，Top Picks + Everything Else）
-- M9.5：`run-{run_id}.json`（決策快照，含每筆 post 完整分數拆解）
-- M10：`post-scorer.js`（關鍵字×權重 + novelty 兩層降權）
-- M11：告警邏輯（IMAP 0 封/parse_ok 低/SMTP 失敗 → stderr log）
-- M12：`tools/deploy.sh` 新增 social-digest + VPS cron `0 23 * * *`
-
-## 範圍與非目標
-
-**範圍（In Scope）：**
-- Facebook 群組通知 email → IMAP 收信 → 解析 → AI 摘要 → Email digest
-- 公開群組/粉專的 L2 OG meta 抓取（零風險 HTTP GET）
-- 回饋閉環（GOOD/MUTE/PIN 回覆 + click 追蹤）
-- Phase 1（本輪）：M1~M12，不含 AI 摘要
-
-**非目標（Out of Scope）：**
-- 不使用任何需登入 Facebook 的方式（Playwright/Selenium/headless browser）
-- 不使用 Facebook Graph API（已廢除）
-- 不做 FB 貼文回覆或互動
-- 不做即時通知（只做每日批次）
-- Phase 2（AI/回饋）和 Phase 3（A/B）不在本輪驗收範圍
-
-## 風險摘要
-
-| 風險 | probability | impact | 緩解措施 | 驗證方式 |
-|------|-------------|--------|---------|---------|
-| Facebook 改變通知 email 格式 | 30% / 年 | 高（pipeline 中斷） | template_fp 指紋監控，high_conf_rate < 70% 告警 | `high_conf_rate` 告警閾值驗證 |
-| Gmail IMAP 連線不穩 | 10% / 月 | 高（當日漏抓） | lookback_minutes=120 保險、Message-ID 去重 | `imap_last_uid` 每次 run 更新 |
-| SMTP 寄信失敗 | 5% / 月 | 中（延誤晨報） | retry 1 次、stderr log 告警 | `grep SMTP_FAIL logs/` 輸出 0 |
-| AI API 費用超支 | 20% / 月 | 低（成本） | daily cap MAX_POSTS=200，超過仍產 digest | `runs.post_count` <= 200 |
-| VPS 記憶體不足（2GB） | 5% / 月 | 中（OOM crash） | 批次處理、SQLite 輕量、不用 embedding | `ps aux` node < 200MB |
-
-## 驗收標準摘要
-
-**功能驗收（Phase 1 / M1~M12）：**
-- [ ] `--dry-run` 產出 `latest.html` 含「Top Picks」字串
-- [ ] `run` 成功寄出 digest email（Top Picks + Everything Else 兩段）
-- [ ] `--backfill-hours 24` 補漏且不重複
-- [ ] VPS cron 每日 07:00 台灣時間自動執行
-- [ ] 水位線三件套（imap_last_uid / imap_last_internal_date / imap_last_message_id）成功後才更新
-- [ ] must_include 群組永遠出現在 Top Picks
-
-**品質門檻：**
-- `email_parse_ok_rate` ≥ 90%，`post_extract_ok_rate` ≥ 80%
-- 去重後無大量重複，L2 fetch 成功率 ≥ 30%
-- 排序 deterministic，告警正常觸發
-
-## Decision Log 摘要
-
-- **2026-03-01**：選擇 IMAP + 無登入 HTTP GET。理由：Facebook API 廢除，Playwright 封號風險高。
-- **2026-03-01**：水位線三件套（UID + internalDate + Message-ID）取代 SINCE:yesterday。理由：防邊界漏抓，成功才更新保安全。
-- **2026-03-01**：去重主鍵 `sha256(canonical_url)`。理由：FB post_id 不唯一，URL 正規化後最穩定。
-- **2026-03-01**：AI 是排序器不是篩選器。理由：防漏，使用者不焦慮。
-- **2026-03-01**：SQLite Phase 1 就建（posts/ai_results/feedback/runs）。理由：去重+週報基礎+AI快取一次到位。
-- **2026-03-01**：Digest 兩段式（Top Picks 完整 + Everything Else 縮短）。理由：使用者不怕漏又省時間。
 
 ## Context
 

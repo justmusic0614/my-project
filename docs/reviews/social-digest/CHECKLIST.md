@@ -1,46 +1,11 @@
-# Review Dashboard — social-digest
+# Implementation Checklist
 
-> Round: 06
-> Verdict: APPROVED
-> Personas: engineer, skeptic
-> Updated: 2026-03-01 23:04:02
+> 最後更新：2026-03-01 23:04 | 當前輪次：Round 06 | VERDICT：APPROVED
+> stable IDs 跨輪保留，status 每輪更新
+> 格式：[ ] = 待處理 | ✅ = 已完成 | ⚠️ = 部分完成
 
-## Pipeline
-
-`[0-G] ✅  [Review] ✅  [Actionable Gate] ✅  [Commit] ✅`
-
-## Artifacts
-
-- Diff: docs/reviews/social-digest/round06-diff.md
-- Summary: docs/reviews/social-digest/round06-diff-summary.md
-- Reviews:
-  - engineer: docs/reviews/social-digest/review-20260301-230349-round06-engineer.md
-  - skeptic: docs/reviews/social-digest/review-20260301-230349-round06-skeptic.md
-
-## Verdict by Persona
-
-- engineer: APPROVED
-- skeptic: APPROVED
-
-## IMP Response Matrix (vs previous round)
-
-- ⚠️ IMP-001 — not addressed
-- ⚠️ IMP-002 — not addressed
-- ⚠️ IMP-003 — not addressed
-- ⚠️ IMP-004 — not addressed
-- ⚠️ IMP-005 — not addressed
-- ⚠️ IMP-006 — not addressed
-- ⚠️ IMP-007 — not addressed
-- ⚠️ IMP-008 — not addressed
-- ⚠️ IMP-009 — not addressed
-- ⚠️ IMP-010 — not addressed
-- ⚠️ IMP-011 — not addressed
-- ✅ IMP-012 — responded
-- ✅ IMP-013 — responded
-- ✅ IMP-014 — responded
-
-## Checklist Snapshot (top 20)
-
+| ID | 項目 | Status | 輪次 | Evidence |
+|----|------|--------|------|----------|
 | IMP-001 | The plan lacks a clear and quantifiable goal. The current go | ✅ | R04 | - |
 | IMP-002 | The risk assessment is incomplete. It does not provide a pro | ✅ | R04 | - |
 | IMP-003 | Add a clear and quantifiable goal in the "目標" section, speci | ✅ | R04 | - |
@@ -59,8 +24,11 @@
 | IMP-016 | 在「驗收標準」補充 M5 的測試案例，驗收：每個里程碑有 pass/fail 條件 | [ ] | R06 | - |
 | IMP-017 | 在「驗收標準」補充 M6 的測試案例，驗收：每個里程碑有 pass/fail 條件 | [ ] | R06 | - |
 
-## Gate Notes
+---
 
-- 0-G preflight: PASS
-- Post-review gate: PASS
-- Timing: diff=0.0s  review=6.31s  summary=6.65s  total=12.96s
+## 說明
+
+- **ID**：`IMP-NNN`（由 OpenAI review 解析，跨輪 stable）
+- **Status**：由腳本自動更新（APPROVED 時標 ✅）
+- **Evidence**：指向文件章節或測試結果
+- **輪次**：最後一次被更新的輪次

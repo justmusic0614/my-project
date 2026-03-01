@@ -1,0 +1,20 @@
+{
+  "round": 6,
+  "status": "APPROVED",
+  "last_complexity": 550,
+  "last_round_ts": "20260301-230349",
+  "last_timing": {
+    "diff": 0.0,
+    "review": 6.31,
+    "summary": 6.65,
+    "total": 12.96
+  },
+  "last_round_files": {
+    "reviews": {
+      "engineer": "docs/reviews/social-digest/review-20260301-230349-round06-engineer.md",
+      "skeptic": "docs/reviews/social-digest/review-20260301-230349-round06-skeptic.md"
+    },
+    "diff": "docs/reviews/social-digest/round06-diff.md",
+    "summary": "docs/reviews/social-digest/round06-diff-summary.md"
+  }
+}

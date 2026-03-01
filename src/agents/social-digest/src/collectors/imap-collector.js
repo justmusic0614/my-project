@@ -17,13 +17,13 @@
  *   listMailboxes(imapConfig)                       → Promise<string[]>
  *   verifyMailbox(imapConfig, mailbox)              → Promise<boolean>
  *
- * 依賴：imapflow（已安裝）
+ * 依賴：imapflow, mailparser
  */
 
 'use strict';
 
-// TODO: const { ImapFlow } = require('imapflow');
-// TODO: const { simpleParser } = require('mailparser');  // 若需要解析 raw message
+const { ImapFlow } = require('imapflow');
+const { simpleParser } = require('mailparser');
 
 // ── 型別定義（JSDoc） ────────────────────────────────────────────────────────
 
@@ -68,6 +68,32 @@
  * @property {string}         stats.mailbox   — 實際使用的 mailbox 名稱
  */
 
+// ── ImapFlow client factory ──────────────────────────────────────────────────
+
+/**
+ * 建立 ImapFlow client 實例
+ * @param {ImapConfig} imapConfig
+ * @returns {ImapFlow}
+ */
+function createClient(imapConfig) {
+  return new ImapFlow({
+    host: imapConfig.host,
+    port: imapConfig.port,
+    secure: imapConfig.secure !== false,
+    auth: {
+      user: imapConfig.user,
+      pass: imapConfig.password,
+    },
+    logger: false,
+    emitLogs: false,
+    tls: {
+      rejectUnauthorized: true,
+    },
+    connectTimeout: imapConfig.connectionTimeout || 15000,
+    greetingTimeout: imapConfig.connectionTimeout || 15000,
+  });
+}
+
 // ── 主要 API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -79,50 +105,118 @@
  * @returns {Promise<CollectResult>}
  */
 async function collect(imapConfig, latestJson, backfillHours = 24) {
-  // TODO: 實際 IMAP 連線與收信邏輯
-  //
-  // 流程概要：
-  // 1. 連線
-  //    const client = new ImapFlow({ host, port, auth: { user, pass }, logger: false });
-  //    await client.connect();
-  //
-  // 2. 選擇 mailbox
-  //    const mailbox = resolveMailbox(imapConfig);
-  //    await client.mailboxOpen(mailbox, { readOnly: true });
-  //
-  // 3. 計算搜尋起始時間
-  //    const since = calcSinceDate(latestJson, imapConfig.lookbackMinutes, backfillHours);
-  //
-  // 4. IMAP SEARCH
-  //    const uids = await client.search({ since, from: 'facebookmail.com' });
-  //    // 由新到舊排序（UID 遞減），但最終回傳時由舊到新
-  //
-  // 5. 逐封抓取（BODY.PEEK[]）
-  //    for await (const msg of client.fetch(uids, { source: true, uid: true, internalDate: true })) {
-  //      const parsed = await simpleParser(msg.source);
-  //      ...
-  //    }
-  //
-  // 6. Message-ID 去重
-  //    const knownIds = new Set([latestJson.imap_last_message_id].filter(Boolean));
-  //    const deduped = fetched.filter(e => !knownIds.has(e.messageId));
-  //
-  // 7. 計算新水位線（取最新 internalDate 的那封）
-  //    const sorted = [...deduped].sort((a, b) => new Date(a.internalDate) - new Date(b.internalDate));
-  //    const newest = sorted[sorted.length - 1];
-  //    const newWatermark = {
-  //      imap_last_uid: newest?.uid ?? latestJson.imap_last_uid,
-  //      imap_last_internal_date: newest?.internalDate ?? latestJson.imap_last_internal_date,
-  //      imap_last_message_id: newest?.messageId ?? latestJson.imap_last_message_id,
-  //    };
-  //
-  // 8. 斷線
-  //    await client.logout();
-  //
-  // 9. 回傳（成功後才更新水位線，由呼叫端負責寫入 latest.json）
-  //    return { emails: sorted, newWatermark, stats: { fetched: uids.length, deduped: sorted.length, mailbox } };
+  const client = createClient(imapConfig);
+  const mailbox = resolveMailbox(imapConfig);
 
-  throw new Error('imap-collector: collect() 尚未實作（TODO）');
+  try {
+    // 1. 連線
+    await client.connect();
+
+    // 2. 開啟 mailbox（readOnly，不改變 flag）
+    const mbInfo = await client.mailboxOpen(mailbox, { readOnly: true });
+    if (!mbInfo) {
+      throw new Error(`無法開啟 mailbox: ${mailbox}`);
+    }
+
+    // 3. 計算搜尋起始時間
+    const since = calcSinceDate(latestJson, imapConfig.lookbackMinutes || 120, backfillHours);
+
+    // 4. IMAP SEARCH（from facebookmail.com + since date）
+    const searchCriteria = {
+      since,
+      from: 'facebookmail.com',
+    };
+    let uids;
+    try {
+      uids = await client.search(searchCriteria, { uid: true });
+    } catch (searchErr) {
+      // search 失敗可能是 mailbox 為空
+      if (searchErr.message && searchErr.message.includes('Nothing to fetch')) {
+        uids = [];
+      } else {
+        throw searchErr;
+      }
+    }
+
+    if (!uids || uids.length === 0) {
+      // 無搜尋結果
+      await client.logout();
+      return {
+        emails: [],
+        newWatermark: {
+          imap_last_uid: latestJson.imap_last_uid ?? null,
+          imap_last_internal_date: latestJson.imap_last_internal_date ?? null,
+          imap_last_message_id: latestJson.imap_last_message_id ?? null,
+        },
+        stats: { fetched: 0, deduped: 0, mailbox },
+      };
+    }
+
+    // 5. 批次抓取（fetchAll 安全不鎖連線）
+    const messages = await client.fetchAll(uids, {
+      source: true,
+      uid: true,
+      internalDate: true,
+      envelope: true,
+    }, { uid: true });
+
+    // 6. 解析每封信
+    const fetched = [];
+    for (const msg of messages) {
+      try {
+        const emailData = await parseMessage(msg);
+        fetched.push(emailData);
+      } catch (parseErr) {
+        // 單封解析失敗不影響整批
+        process.stderr.write(`⚠️  [imap-collector] 解析失敗 (uid=${msg.uid}): ${parseErr.message}\n`);
+      }
+    }
+
+    // 7. Message-ID 去重（避免 lookback overlap 重複抓取）
+    const knownIds = new Set(
+      [latestJson.imap_last_message_id].filter(Boolean)
+    );
+    const deduped = fetched.filter(e => {
+      if (!e.messageId) return true;  // 無 Message-ID 的不去重（罕見）
+      if (knownIds.has(e.messageId)) return false;
+      knownIds.add(e.messageId);  // 同批次內也去重
+      return true;
+    });
+
+    // 8. 由舊到新排序（以 internalDate 為主，UID 為次）
+    deduped.sort((a, b) => {
+      const da = new Date(a.internalDate).getTime();
+      const db = new Date(b.internalDate).getTime();
+      if (da !== db) return da - db;
+      return (a.uid || 0) - (b.uid || 0);
+    });
+
+    // 9. 計算新水位線（取最新 internalDate 的那封）
+    const newest = deduped.length > 0 ? deduped[deduped.length - 1] : null;
+    const newWatermark = {
+      imap_last_uid: newest?.uid ?? latestJson.imap_last_uid ?? null,
+      imap_last_internal_date: newest?.internalDate ?? latestJson.imap_last_internal_date ?? null,
+      imap_last_message_id: newest?.messageId ?? latestJson.imap_last_message_id ?? null,
+    };
+
+    // 10. 斷線
+    await client.logout();
+
+    return {
+      emails: deduped,
+      newWatermark,
+      stats: {
+        fetched: uids.length,
+        deduped: deduped.length,
+        mailbox,
+      },
+    };
+
+  } catch (err) {
+    // 確保連線被關閉
+    try { await client.logout(); } catch { /* ignore */ }
+    throw err;
+  }
 }
 
 /**
@@ -132,14 +226,16 @@ async function collect(imapConfig, latestJson, backfillHours = 24) {
  * @returns {Promise<string[]>} mailbox 名稱清單
  */
 async function listMailboxes(imapConfig) {
-  // TODO:
-  // const client = new ImapFlow({ ... });
-  // await client.connect();
-  // const list = await client.list();
-  // await client.logout();
-  // return list.map(m => m.path);
-
-  throw new Error('imap-collector: listMailboxes() 尚未實作（TODO）');
+  const client = createClient(imapConfig);
+  try {
+    await client.connect();
+    const list = await client.list();
+    await client.logout();
+    return list.map(m => m.path);
+  } catch (err) {
+    try { await client.logout(); } catch { /* ignore */ }
+    throw err;
+  }
 }
 
 /**
@@ -151,14 +247,35 @@ async function listMailboxes(imapConfig) {
  * @returns {Promise<boolean>}
  */
 async function verifyMailbox(imapConfig, mailbox) {
-  // TODO:
-  // const boxes = await listMailboxes(imapConfig);
-  // return boxes.includes(mailbox);
-
-  throw new Error('imap-collector: verifyMailbox() 尚未實作（TODO）');
+  const boxes = await listMailboxes(imapConfig);
+  return boxes.includes(mailbox);
 }
 
-// ── 內部工具函式（骨架） ─────────────────────────────────────────────────────
+// ── 內部工具函式 ─────────────────────────────────────────────────────────────
+
+/**
+ * 解析單封 IMAP message 為 EmailData 格式。
+ * 使用 mailparser simpleParser 取得 html/text body。
+ *
+ * @param {Object} msg — imapflow fetchAll 回傳的 message 物件
+ * @returns {Promise<EmailData>}
+ */
+async function parseMessage(msg) {
+  // msg.source 是 Buffer（RFC822 raw email）
+  const parsed = await simpleParser(msg.source);
+
+  return {
+    messageId: parsed.messageId || msg.envelope?.messageId || null,
+    subject: parsed.subject || msg.envelope?.subject || '',
+    from: parsed.from?.text || (msg.envelope?.from?.[0]?.address) || '',
+    html: parsed.html || '',
+    text: parsed.text || '',
+    internalDate: msg.internalDate
+      ? new Date(msg.internalDate).toISOString()
+      : new Date().toISOString(),
+    uid: msg.uid || null,
+  };
+}
 
 /**
  * 根據水位線 + lookbackMinutes 計算 IMAP SEARCH SINCE 日期。
@@ -180,14 +297,16 @@ function calcSinceDate(latestJson, lookbackMinutes, backfillHours) {
 
 /**
  * 根據 mailboxType 解析實際要 open 的 mailbox 路徑。
- * Gmail label 的 IMAP 路徑格式：`[Gmail]/...` 或直接 label 名稱（取決於設定）。
+ * Gmail label 的 IMAP 路徑格式：直接用 label 名稱（imapflow 處理 namespace）。
  *
  * @param {ImapConfig} imapConfig
  * @returns {string}
  */
 function resolveMailbox(imapConfig) {
   if (imapConfig.mailboxType === 'gmail_label') {
-    // Gmail label 直接用 label 名稱（imapflow 會處理 namespace）
+    // Gmail label 直接用 label 名稱
+    // 如果 label 在 IMAP 中的路徑不同（如 [Gmail]/...），
+    // 使用者應透過 listMailboxes() 確認後設定正確的 label 值
     return imapConfig.label;
   }
   // Standard mailbox（如 INBOX）
@@ -200,7 +319,9 @@ module.exports = {
   collect,
   listMailboxes,
   verifyMailbox,
-  // 暴露內部工具供測試 / 未來實作使用
+  // 暴露內部工具供測試 / 偵錯使用
   _calcSinceDate: calcSinceDate,
   _resolveMailbox: resolveMailbox,
+  _parseMessage: parseMessage,
+  _createClient: createClient,
 };

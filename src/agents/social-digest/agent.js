@@ -109,8 +109,7 @@ async function run(args) {
   const { scorePosts, assignSections } = require('./src/processors/post-scorer');
   const { buildDigestEmail, buildRunSnapshot, sendDigest, calcShortcode } = require('./src/publishers/email-publisher');
   const alerter = require('./src/shared/alerter');
-  // imap-collector 待 M4 實作連線邏輯後解除注解
-  // const imapCollector = require('./src/collectors/imap-collector');
+  const imapCollector = require('./src/collectors/imap-collector');
 
   const db = getDB(AGENT_ROOT, config.db?.path);
   const sm = new SourceManager(path.join(AGENT_ROOT, 'data/sources.json'));
@@ -137,13 +136,37 @@ async function run(args) {
   };
 
   const allAlerts = [];
+  let newWatermark = null;
 
   try {
-    // ── Step 1：IMAP 收信（M4 - 連線邏輯 TODO）──────────────────────────────
-    // Phase 1 骨架：直接跳過 IMAP，從 DB 取未送出的貼文（適用於手動插入測試資料）
-    // 實際連線邏輯在 imap-collector.js 完成後替換
-    log('info', 'Step 1: IMAP 收信（TODO: 連線實作）');
-    const emails = [];  // TODO: await imapCollector.collect(config.imap, prev, backfillHours)
+    // ── Step 1：IMAP 收信（M4）───────────────────────────────────────────────
+    log('info', 'Step 1: IMAP 收信');
+    let emails = [];
+
+    // 檢查 IMAP 必要設定
+    if (!config.imap.user || !config.imap.password) {
+      log('warn', 'IMAP 未設定帳密（GMAIL_IMAP_USER / GMAIL_IMAP_PASSWORD），跳過收信');
+      stats.errors.push({ code: 'IMAP_NO_CREDENTIALS', error: '未設定 IMAP 帳密' });
+    } else {
+      try {
+        const collectResult = await imapCollector.collect(
+          config.imap,
+          prev,
+          backfillHours || 24
+        );
+        emails = collectResult.emails;
+        newWatermark = collectResult.newWatermark;
+        log('info', 'IMAP 收信完成', {
+          fetched: collectResult.stats.fetched,
+          deduped: collectResult.stats.deduped,
+          mailbox: collectResult.stats.mailbox,
+        });
+      } catch (imapErr) {
+        log('error', `IMAP 收信失敗：${imapErr.message}`);
+        stats.errors.push({ code: 'IMAP_ERROR', error: imapErr.message });
+      }
+    }
+
     stats.mail_count = emails.length;
 
     // 收信告警
@@ -309,10 +332,10 @@ async function run(args) {
   });
 
   const nextLatest = {
-    // 水位線三件套（只有 IMAP 連線成功且整批完成才更新；Phase 1 骨架保持上次值）
-    imap_last_uid: prev.imap_last_uid ?? null,
-    imap_last_internal_date: prev.imap_last_internal_date ?? null,
-    imap_last_message_id: prev.imap_last_message_id ?? null,
+    // 水位線三件套：只有 IMAP 成功回傳 newWatermark 才更新，否則保持上次值
+    imap_last_uid: newWatermark?.imap_last_uid ?? prev.imap_last_uid ?? null,
+    imap_last_internal_date: newWatermark?.imap_last_internal_date ?? prev.imap_last_internal_date ?? null,
+    imap_last_message_id: newWatermark?.imap_last_message_id ?? prev.imap_last_message_id ?? null,
     // 執行狀態
     last_run_id: runId,
     last_run_at: ended,

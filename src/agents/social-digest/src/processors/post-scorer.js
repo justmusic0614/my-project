@@ -45,39 +45,86 @@ const REPUTABLE_DOMAINS = new Set([
   'nature.com',
 ]);
 
-// ── AI 分數校正（Phase 2 介面，Phase 1 不呼叫） ─────────────────────────────
+// ── AI 分數校正（Phase 2） ───────────────────────────────────────────────────
+
+/**
+ * LOW confidence cap：非 must_include 的 LOW confidence post → cap 70
+ * DB 存 raw score，cap 在 scorer 端執行。
+ *
+ * @param {number} rawScore - AI 原始 importance_score
+ * @param {string} confidence - 'HIGH' | 'MED' | 'LOW'
+ * @param {boolean} isMustInclude - rule_section === 'must_include'
+ * @returns {number} capped score
+ */
+function _capLowConfidence(rawScore, confidence, isMustInclude) {
+  if (confidence === 'LOW' && !isMustInclude) {
+    return Math.min(rawScore, 70);
+  }
+  return rawScore;
+}
+
+/**
+ * Winsorize：截斷 5% / 95% 極端值
+ * B6 edge case：若 winsorize 後 hi <= lo → 不 winsorize，返回原陣列
+ *
+ * @param {number[]} sorted - 已排序的分數陣列
+ * @returns {number[]} winsorized 陣列
+ */
+function _winsorize(sorted) {
+  if (sorted.length < 4) return sorted; // 太少無法有意義的 winsorize
+
+  const lo = _percentile(sorted, 5);
+  const hi = _percentile(sorted, 95);
+
+  // B6: hi <= lo → skip winsorize
+  if (hi <= lo) return sorted;
+
+  return sorted.map(v => Math.max(lo, Math.min(hi, v)));
+}
 
 /**
  * AI 分數校正（Score Calibration）
  * 取 P50/P80 線性拉伸，使分布固定在穩定錨點。
+ * 含 winsorize 5%/95% + 門檻 30（Review #3）
  *
- * @param {number[]} rawScores — AI 輸出的 importance_score 陣列
- * @returns {{ p50: number, p80: number, calibrate: (s: number) => number }}
- *   - calibrate(s)：回傳校正後的分數（若無法校正回傳 null）
+ * @param {number[]} rawScores — AI 輸出的 importance_score 陣列（raw，未 cap）
+ * @returns {{ p50: number, p80: number, calibrate: (s: number, fallback?: number) => number }}
+ *   - calibrate(s, fallback)：回傳校正後的分數
+ *   - C3: 若無法校正，回傳 fallback（= importance_score_capped），不回傳 null
  */
 function calcCalibratedScore(rawScores) {
-  if (!rawScores || rawScores.length < 10) {
-    // 樣本太少，無法校正
-    return { p50: null, p80: null, calibrate: () => null };
+  if (!rawScores || rawScores.length < 30) {
+    // 樣本太少（門檻 30），不做分位數校正
+    // C3 fallback: calibrated_score = importance_score_capped
+    return {
+      p50: null,
+      p80: null,
+      skipped: true,
+      calibrate: (_s, fallback) => fallback ?? _s,
+    };
   }
 
   const sorted = [...rawScores].sort((a, b) => a - b);
-  const p50 = _percentile(sorted, 50);
-  const p80 = _percentile(sorted, 80);
+  const winsorized = _winsorize(sorted);
+
+  const p50 = _percentile(winsorized, 50);
+  const p80 = _percentile(winsorized, 80);
 
   if (p80 === p50) {
-    // 分數全一樣，無法除以 0 → 跳過校正，加輕微 jitter
+    // 分數全一樣，無法除以 0 → skip 校正
     return {
       p50,
       p80,
-      calibrate: (s) => Math.min(100, Math.max(0, s + (Math.random() - 0.5) * 2)),
+      skipped: true,
+      calibrate: (_s, fallback) => fallback ?? _s,
     };
   }
 
   return {
     p50,
     p80,
-    calibrate: (s) => {
+    skipped: false,
+    calibrate: (s, _fallback) => {
       const calibrated = ((s - p50) / (p80 - p50)) * 30 + 50;
       return Math.min(100, Math.max(0, Math.round(calibrated)));
     },
@@ -89,12 +136,15 @@ function calcCalibratedScore(rawScores) {
 /**
  * 對 posts[] 計算評分，回傳帶有 score 欄位的新陣列（由高到低排序）。
  *
- * @param {Array}  posts           — rule-filter 輸出的 posts（含 rule_boost）
+ * Phase 2：若 post 有 AI importance_score → 用 capped → calibrated 做排序 key。
+ * 若無 AI 結果 → 用 Phase 1 rule-based score。
+ *
+ * @param {Array}  posts           — rule-filter 輸出的 posts（含 rule_boost, LEFT JOIN ai_results）
  * @param {Object} rules           — rules.json
  * @param {Object} sourceMap       — { normalizedUrl → source }（同 rule-filter 格式）
  * @param {Object} topicSigCounts  — db.getRecentTopicSignatures() 的結果（tagsJson → count）
  * @param {Object} sourceSigCounts — db.getRecentSourceSignatures() 的結果（key → count）
- * @returns {Array} 帶有 score 的貼文陣列（由高到低排序）
+ * @returns {Array} 帶有 score + calibrated_score 的貼文陣列（由高到低排序）
  */
 function scorePosts(posts, rules, sourceMap, topicSigCounts = {}, sourceSigCounts = {}) {
   const noveltyRules = rules.novelty || {};
@@ -104,6 +154,14 @@ function scorePosts(posts, rules, sourceMap, topicSigCounts = {}, sourceSigCount
   const noveltyExemptKws = (rules.novelty_exempt_keywords || []).map(k => k.toLowerCase());
   const mustKeywords = (rules.must_keywords || []).map(k => k.toLowerCase());
 
+  // 收集所有 AI raw scores 用於校正
+  const aiRawScores = posts
+    .filter(p => p.importance_score != null)
+    .map(p => p.importance_score);
+
+  // 建立校正器（門檻 30 + winsorize）
+  const calibrator = calcCalibratedScore(aiRawScores);
+
   const scored = posts.map(post => {
     const weight = _getWeight(post, sourceMap);
     const keywordBonus = _calcKeywordBonus(post, mustKeywords);
@@ -112,7 +170,7 @@ function scorePosts(posts, rules, sourceMap, topicSigCounts = {}, sourceSigCount
       topicPenalty, sourcePenalty, noNoveltyGroups, noveltyExemptKws
     );
 
-    // Phase 2 分數：(base + keyword_bonus + rule_boost) × weight + novelty_penalty + 6 個新訊號
+    // Phase 1 rule-based score
     const ruleBoost = post.rule_boost ?? 0;
     const raw = (50 + keywordBonus + ruleBoost) * weight
       + noveltyPenalty
@@ -124,18 +182,31 @@ function scorePosts(posts, rules, sourceMap, topicSigCounts = {}, sourceSigCount
       + _calcSourceTrustPenalty(post, sourceMap);
     const score = Math.min(100, Math.max(0, Math.round(raw)));
 
+    // Phase 2：AI calibrated_score
+    let calibrated_score;
+    if (post.importance_score != null) {
+      const isMustInclude = post.rule_section === 'must_include';
+      const capped = _capLowConfidence(post.importance_score, post.ai_confidence, isMustInclude);
+      // C3: calibrate 回傳校正值或 capped fallback（永不為 null）
+      calibrated_score = calibrator.calibrate(post.importance_score, capped);
+    } else {
+      // 無 AI 結果 → calibrated_score = rule-based score
+      calibrated_score = score;
+    }
+
     return {
       ...post,
       group_weight: weight,
       keyword_bonus: keywordBonus,
       novelty_penalty: noveltyPenalty,
       score,
-      calibrated_score: null,  // Phase 2 接入 AI 後填入
+      calibrated_score,
     };
   });
 
-  // deterministic 排序：score desc → first_seen_at desc → id asc
+  // deterministic 排序：calibrated_score desc → score desc → first_seen_at desc → id asc
   scored.sort((a, b) => {
+    if (b.calibrated_score !== a.calibrated_score) return b.calibrated_score - a.calibrated_score;
     if (b.score !== a.score) return b.score - a.score;
     if (a.first_seen_at && b.first_seen_at) {
       if (b.first_seen_at > a.first_seen_at) return 1;
@@ -399,6 +470,8 @@ module.exports = {
   assignSections,
   calcCalibratedScore,
   // 內部函式供測試使用
+  _capLowConfidence,
+  _winsorize,
   _calcKeywordBonus,
   _calcNoveltyPenalty,
   _percentile,

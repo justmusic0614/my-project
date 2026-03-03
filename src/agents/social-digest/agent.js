@@ -112,6 +112,8 @@ async function run(args) {
   const imapCollector = require('./src/collectors/imap-collector');
   const { createClient: createHttpClient } = require('./src/collectors/http-client');
   const hnCollector = require('./src/collectors/hn-collector');
+  const rssCollector = require('./src/collectors/rss-collector');
+  const githubCollector = require('./src/collectors/github-collector');
 
   const db = getDB(AGENT_ROOT, config.db?.path);
   const sm = new SourceManager(path.join(AGENT_ROOT, 'data/sources.json'));
@@ -146,6 +148,7 @@ async function run(args) {
   const allAlerts = [];
   let newWatermark = null;
   const webWatermarkUpdates = {};
+  let feedCacheUpdates = {};
   const disabledUpdates = {};
   const recoveredKeys = [];
 
@@ -199,8 +202,30 @@ async function run(args) {
       const hnSources = sm.getEnabledByType('hackernews');
       if (hnSources.length > 0) {
         webCollectors.push({
-          name: 'hackernews',
+          name: hnCollector.COLLECTOR_TYPE,
           fn: () => hnCollector.collect(hnSources, config.collectors.hackernews, prevWatermarks, prevDisabled),
+        });
+      }
+    }
+
+    // RSS Collector
+    if (config.collectors?.rss?.enabled) {
+      const rssSources = sm.getEnabledByType('rss');
+      if (rssSources.length > 0) {
+        webCollectors.push({
+          name: rssCollector.COLLECTOR_TYPE,
+          fn: () => rssCollector.collect(rssSources, config.collectors.rss, prevWatermarks, prevDisabled, prev.feed_cache || {}),
+        });
+      }
+    }
+
+    // GitHub Releases Collector
+    if (config.collectors?.github_releases?.enabled) {
+      const ghSources = sm.getEnabledByType('github_releases');
+      if (ghSources.length > 0) {
+        webCollectors.push({
+          name: githubCollector.COLLECTOR_TYPE_RELEASES,
+          fn: () => githubCollector.collectReleases(ghSources, config.collectors.github_releases, prevWatermarks, prevDisabled),
         });
       }
     }
@@ -221,6 +246,11 @@ async function run(args) {
 
           // 合併 watermark（key-level，只更新成功的 key）
           Object.assign(webWatermarkUpdates, cr.watermark);
+
+          // 合併 feedCacheUpdates（僅 rss collector 有此欄位）
+          if (cr.feedCacheUpdates) {
+            Object.assign(feedCacheUpdates, cr.feedCacheUpdates);
+          }
 
           // 合併 disabled
           for (const d of (cr.disabled || [])) {
@@ -378,6 +408,7 @@ async function run(args) {
         topPicksMax: rules.top_picks_max || 20,
         everythingElseMax: rules.everything_else_max || 60,
         subjectPrefix: config.digest?.subjectPrefix || '[SocialDigest]',
+        topPicksCapPerSource: config.digest?.topPicksCapPerSource ?? 3,
       };
       const runStatsForEmail = {
         run_id: runId,
@@ -456,6 +487,16 @@ async function run(args) {
     }
   }
 
+  // Health Score log（cron 可視性）
+  const healthLines = Object.entries(stats.collector_stats || {}).map(([type, s]) => {
+    if (!s) return `  ${type}: DISABLED`;
+    const disabledCount = Object.keys(mergedDisabled).filter(k => k.startsWith(type + ':')).length;
+    return `  ${type}: ${s.ok ? 'OK' : 'FAIL'} (fetched=${s.fetched} new=${s.new} disabled=${disabledCount})`;
+  });
+  if (healthLines.length > 0) {
+    log('info', `Health Score:\n${healthLines.join('\n')}`);
+  }
+
   const nextLatest = {
     // 水位線三件套：只有 IMAP 成功回傳 newWatermark 才更新，否則保持上次值
     imap_last_uid: newWatermark?.imap_last_uid ?? prev.imap_last_uid ?? null,
@@ -477,6 +518,14 @@ async function run(args) {
     web_watermarks: mergedWatermarks,
     collector_stats: stats.collector_stats,
     disabled_sources: mergedDisabled,
+    // feed_cache：只允許 rss:* keys（defensive filter）
+    // 304 Not Modified：不覆蓋原本 ETag（feedCacheUpdates 不含該 key）
+    feed_cache: {
+      ...(prev.feed_cache || {}),
+      ...Object.fromEntries(
+        Object.entries(feedCacheUpdates).filter(([k]) => k.startsWith('rss:'))
+      ),
+    },
   };
   saveLatest(nextLatest);
 

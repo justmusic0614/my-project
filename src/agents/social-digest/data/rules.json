@@ -1,5 +1,5 @@
 {
-  "version": "2026-03-01.1",
+  "version": "2026-03-03.1",
   "_comment": "修改此檔必須遞增 version（格式 YYYY-MM-DD.N）",
 
   "top_picks_max": 20,
@@ -38,6 +38,17 @@
     "good": 0.1,
     "pin": 0.2,
     "mute": -0.2
+  },
+
+  "keyword_packs": {
+    "ai": {
+      "keywords": ["GPT", "LLM", "agent", "Claude", "Gemini", "transformer", "diffusion", "fine-tun"],
+      "bonus": 5
+    },
+    "finance": {
+      "keywords": ["Fed", "CPI", "inflation", "rate hike", "earnings", "ETF", "recession"],
+      "bonus": 3
+    }
   },
 
   "alerts": {

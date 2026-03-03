@@ -28,6 +28,23 @@
 
 'use strict';
 
+// ── Phase 2：可信域名白名單 ──────────────────────────────────────────────────
+
+const REPUTABLE_DOMAINS = new Set([
+  'openai.com',
+  'anthropic.com',
+  'deepmind.google',
+  'research.google',
+  'blog.google',
+  'arxiv.org',
+  'huggingface.co',
+  'github.com',
+  'techcrunch.com',
+  'theverge.com',
+  'wired.com',
+  'nature.com',
+]);
+
 // ── AI 分數校正（Phase 2 介面，Phase 1 不呼叫） ─────────────────────────────
 
 /**
@@ -95,9 +112,16 @@ function scorePosts(posts, rules, sourceMap, topicSigCounts = {}, sourceSigCount
       topicPenalty, sourcePenalty, noNoveltyGroups, noveltyExemptKws
     );
 
-    // Phase 1 分數：(base + keyword_bonus + rule_boost) × weight + novelty_penalty
+    // Phase 2 分數：(base + keyword_bonus + rule_boost) × weight + novelty_penalty + 6 個新訊號
     const ruleBoost = post.rule_boost ?? 0;
-    const raw = (50 + keywordBonus + ruleBoost) * weight + noveltyPenalty;
+    const raw = (50 + keywordBonus + ruleBoost) * weight
+      + noveltyPenalty
+      + _calcSourceTypeBoost(post)
+      + _calcDomainRepBoost(post)
+      + _calcKeywordPackBonus(post, rules)
+      + _calcRecencyCurve(post)
+      + _calcLanguageHint(post, sourceMap)
+      + _calcSourceTrustPenalty(post, sourceMap);
     const score = Math.min(100, Math.max(0, Math.round(raw)));
 
     return {
@@ -229,6 +253,145 @@ function _percentile(sortedArr, p) {
   return sortedArr[lo] + (sortedArr[hi] - sortedArr[lo]) * (idx - lo);
 }
 
+// ── Phase 2 新訊號 ───────────────────────────────────────────────────────────
+
+/**
+ * 訊號 1：source_type_boost
+ * hackernews +5, github_releases +8, rss +3, others 0
+ */
+function _calcSourceTypeBoost(post) {
+  switch (post.source) {
+    case 'hackernews': return 5;
+    case 'github_releases': return 8;
+    case 'rss': return 3;
+    default: return 0;
+  }
+}
+
+/**
+ * 訊號 2：domain_reputation_boost
+ * URL host 在 REPUTABLE_DOMAINS 白名單 +5
+ */
+function _calcDomainRepBoost(post) {
+  if (!post.url) return 0;
+  try {
+    const { URL: NodeURL } = require('url');
+    const host = new NodeURL(post.url).hostname.replace(/^www\./, '');
+    return REPUTABLE_DOMAINS.has(host) ? 5 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 訊號 3：keyword_pack_bonus
+ * rules.keyword_packs 命中 → 各 pack 的 bonus 加總
+ */
+function _calcKeywordPackBonus(post, rules) {
+  const packs = rules.keyword_packs;
+  if (!packs || typeof packs !== 'object') return 0;
+  const text = [post.title || '', post.snippet || ''].join(' ');
+  let total = 0;
+  for (const pack of Object.values(packs)) {
+    if (!pack.keywords || !pack.bonus) continue;
+    for (const kw of pack.keywords) {
+      if (text.includes(kw)) {
+        total += pack.bonus;
+        break; // 每個 pack 只加一次
+      }
+    }
+  }
+  return total;
+}
+
+/**
+ * 訊號 4：recency_curve
+ * 24h 內 +5, 48h 內 +3, 72h 內 0, 更舊 -5
+ */
+function _calcRecencyCurve(post) {
+  if (!post.published_at) return 0;
+  const pubDate = new Date(post.published_at);
+  if (isNaN(pubDate.getTime())) return 0;
+  const hoursAgo = (Date.now() - pubDate.getTime()) / 3600000;
+  if (hoursAgo <= 24) return 5;
+  if (hoursAgo <= 48) return 3;
+  if (hoursAgo <= 72) return 0;
+  return -5;
+}
+
+/**
+ * 訊號 5：language_hint
+ * 比對文章語言與 source 設定語言
+ * 一致 +2, 不一致 -3, 無 source 語言設定 0
+ *
+ * CJK 字元比例 > 15% → 判定為 zh
+ */
+function _calcLanguageHint(post, sourceMap) {
+  // 找 source 語言設定（sourceMap 是 url → source，web 來源沒有 group_url）
+  // 改用 post.source + group_name 反查 sourceMap 中的 language
+  // sourceMap 格式是 { normalizedUrl → source }，web post 的 group_url 為 null
+  // 直接從 post 的 raw template_fp 解析較複雜，改用輕量方式：
+  // 若 sourceMap 任一 value 的 id 能對應 raw.source_id，取其 language
+  if (!sourceMap) return 0;
+
+  let sourceLang = null;
+  // 嘗試從 template_fp 解析 source_id
+  let sourceId = null;
+  if (post.template_fp) {
+    try {
+      const raw = JSON.parse(post.template_fp);
+      sourceId = raw.source_id || null;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (sourceId) {
+    for (const src of Object.values(sourceMap)) {
+      if (src.id === sourceId && src.language) {
+        sourceLang = src.language;
+        break;
+      }
+    }
+  }
+
+  if (!sourceLang) return 0;
+
+  // 偵測文章語言（CJK 比例）
+  const text = [post.title || '', post.snippet || ''].join(' ');
+  const cjkCount = (text.match(/[\u3000-\u9fff\uf900-\ufaff]/g) || []).length;
+  const ratio = text.length > 0 ? cjkCount / text.length : 0;
+  const detectedLang = ratio > 0.15 ? 'zh' : 'en';
+
+  return detectedLang === sourceLang ? 2 : -3;
+}
+
+/**
+ * 訊號 6：source_trust_penalty
+ * sourceConfig.trust === 'low' → -5
+ * 透過 template_fp 反查 source_id → sourceMap
+ */
+function _calcSourceTrustPenalty(post, sourceMap) {
+  if (!sourceMap || !post.template_fp) return 0;
+
+  let sourceId = null;
+  try {
+    const raw = JSON.parse(post.template_fp);
+    sourceId = raw.source_id || null;
+  } catch {
+    return 0;
+  }
+
+  if (!sourceId) return 0;
+
+  for (const src of Object.values(sourceMap)) {
+    if (src.id === sourceId && src.trust === 'low') {
+      return -5;
+    }
+  }
+  return 0;
+}
+
 // ── 模組匯出 ─────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -239,4 +402,10 @@ module.exports = {
   _calcKeywordBonus,
   _calcNoveltyPenalty,
   _percentile,
+  _calcSourceTypeBoost,
+  _calcDomainRepBoost,
+  _calcKeywordPackBonus,
+  _calcRecencyCurve,
+  _calcLanguageHint,
+  _calcSourceTrustPenalty,
 };

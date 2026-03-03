@@ -41,7 +41,8 @@
     "topPicksMax": 20,
     "everythingElseMax": 60,
     "subjectPrefix": "[SocialDigest]",
-    "sendDryRunHtml": true
+    "sendDryRunHtml": true,
+    "topPicksCapPerSource": 3
   },
 
   "http": {
@@ -55,8 +56,8 @@
   "collectors": {
     "l1_imap": { "enabled": true },
     "hackernews": { "enabled": true, "maxItems": 30, "safetyWindowMinutes": 180 },
-    "rss": { "enabled": false, "maxItemsPerFeed": 20, "maxAgeHours": 336, "safetyWindowMinutes": 180 },
-    "github_releases": { "enabled": false, "token": "${GITHUB_TOKEN:-}", "maxReleasesPerRepo": 3, "safetyWindowMinutes": 180 },
+    "rss": { "enabled": true, "maxItemsPerFeed": 5, "maxAgeHours": 336, "safetyWindowMinutes": 180, "concurrency": 3 },
+    "github_releases": { "enabled": true, "token": "${GITHUB_TOKEN:-}", "maxReleasesPerRepo": 3, "safetyWindowMinutes": 180 },
     "github_trending": { "enabled": false, "token": "${GITHUB_TOKEN:-}", "minStars": 50, "createdWithinDays": 7 }
   },
 

@@ -116,8 +116,21 @@ function buildRunSnapshot(runId, rankedPosts, quotaBreakdown = {}) {
  * @returns {{ html: string, text: string, subject: string }}
  */
 function buildDigestEmail(rankedPosts, digestConfig, runStats) {
-  const topPicks = rankedPosts.filter(p => p.section === 'top_picks');
-  const everythingElse = rankedPosts.filter(p => p.section === 'everything_else');
+  const capPerSource = digestConfig.topPicksCapPerSource ?? 3;
+
+  // Top Picks source caps（同一 source 最多 capPerSource 篇）
+  // 溢出項目降到 Everything Else（保留原始分數，不丟棄）
+  const { capped: topPicksCapped, overflow: capOverflow } = _applySourceCaps(
+    rankedPosts.filter(p => p.section === 'top_picks'),
+    capPerSource
+  );
+
+  // Everything Else = 原本 EE + caps 溢出（保留原始分數）
+  const everythingElseBase = rankedPosts.filter(p => p.section === 'everything_else');
+  const everythingElseMerged = [...everythingElseBase, ...capOverflow];
+
+  const topPicks = topPicksCapped;
+  const everythingElse = everythingElseMerged;
   const overflow = rankedPosts.filter(p => p.section === 'overflow');
   const totalCount = rankedPosts.length;
 
@@ -188,11 +201,13 @@ function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runSt
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 680px; margin: 0 auto; padding: 20px; color: #333; line-height: 1.5; }
   h1 { font-size: 1.2em; border-bottom: 2px solid #1877f2; padding-bottom: 8px; color: #1877f2; }
   h2 { font-size: 1em; color: #555; margin-top: 28px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+  h3 { font-size: 0.9em; color: #888; margin-top: 16px; margin-bottom: 4px; }
   .post { margin: 16px 0; padding: 12px; border-left: 3px solid #1877f2; background: #f8f9fa; border-radius: 4px; }
   .post-header { font-weight: bold; color: #222; margin-bottom: 6px; }
   .post-score { display: inline-block; background: #1877f2; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.85em; margin-right: 6px; }
   .post-group { color: #1877f2; font-weight: 600; }
   .post-author { color: #666; font-size: 0.9em; }
+  .source-label { display: inline-block; background: #e8f0fe; color: #1a56db; padding: 1px 5px; border-radius: 3px; font-size: 0.78em; font-weight: 600; margin-right: 4px; font-family: monospace; }
   .shortcode { color: #aaa; font-size: 0.8em; font-family: monospace; }
   .snippet { color: #444; margin: 6px 0; font-size: 0.95em; }
   .summary { color: #333; margin: 6px 0; }
@@ -216,11 +231,17 @@ function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runSt
     lines.push(_postToHtml(post, 'top_picks'));
   }
 
-  // ── Everything Else ────────────────────────────────────────────────────────
+  // ── Everything Else（按 category 分段）─────────────────────────────────────
   if (everythingElse.length > 0) {
     lines.push(`<h2>📋 Everything Else（${everythingElse.length} 則）</h2>`);
-    for (const post of everythingElse) {
-      lines.push(_postToHtmlEE(post));
+    const segments = _segmentPosts(everythingElse);
+    for (const { label, posts: segPosts } of segments) {
+      if (segPosts.length > 0) {
+        lines.push(`<h3>${label}（${segPosts.length}）</h3>`);
+        for (const post of segPosts) {
+          lines.push(_postToHtmlEE(post));
+        }
+      }
     }
   }
 
@@ -237,6 +258,7 @@ function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runSt
 
 function _postToHtml(post, section) {
   const score = post.calibrated_score ?? post.score ?? 0;
+  const sourceLabel = _getSourceLabel(post.source);
   const group = _esc(post.group_name || post.group_url || '未知群組');
   const author = post.author ? `— ${_esc(post.author)}` : '';
   const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
@@ -247,6 +269,7 @@ function _postToHtml(post, section) {
   return `<div class="post">
   <div class="post-header">
     <span class="post-score">⭐${score}</span>
+    <span class="source-label">${sourceLabel}</span>
     <span class="post-group">${group}</span>
     <span class="post-author">${author}</span>
     <span class="shortcode">${sc}</span>
@@ -258,6 +281,7 @@ function _postToHtml(post, section) {
 }
 
 function _postToHtmlEE(post) {
+  const sourceLabel = _getSourceLabel(post.source);
   const group = _esc(post.group_name || post.group_url || '未知群組');
   const author = post.author ? `— ${_esc(post.author)}` : '';
   const snippet = post.snippet ? `— ${_esc(post.snippet.slice(0, 80))}` : '';
@@ -265,6 +289,7 @@ function _postToHtmlEE(post) {
   const url = post.url;
 
   return `<div class="ee-post">
+  <span class="source-label">${sourceLabel}</span>
   <span class="post-group">${group}</span> <span class="post-author">${author}</span>
   <span class="snippet">${snippet}</span>
   <span class="shortcode">${sc}</span>
@@ -298,13 +323,14 @@ function _buildText(topPicks, everythingElse, overflow, totalCount, today, runSt
   lines.push('═'.repeat(40));
   for (const post of topPicks) {
     const score = post.calibrated_score ?? post.score ?? 0;
+    const label = _getSourceLabel(post.source);
     const group = post.group_name || post.group_url || '未知群組';
     const author = post.author ? ` — ${post.author}` : '';
     const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
     const content = post.summary || post.snippet || '';
     const tags = _parseTags(post.tags_json);
 
-    lines.push(`[⭐${score}] ${group}${author} ${sc}`);
+    lines.push(`[⭐${score}] ${label} ${group}${author} ${sc}`);
     if (content) lines.push(content);
     if (tags.length) lines.push(tags.join(' '));
     lines.push(`🔗 ${post.url}`);
@@ -313,15 +339,21 @@ function _buildText(topPicks, everythingElse, overflow, totalCount, today, runSt
 
   if (everythingElse.length > 0) {
     lines.push(`📋 EVERYTHING ELSE（${everythingElse.length} 則）`);
-    lines.push('─'.repeat(40));
-    for (const post of everythingElse) {
-      const group = post.group_name || post.group_url || '未知群組';
-      const author = post.author ? ` — ${post.author}` : '';
-      const snippet = post.snippet ? ` — ${post.snippet.slice(0, 80)}` : '';
-      const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
-      lines.push(`${group}${author}${snippet} ${sc} ${post.url}`);
+    const segments = _segmentPosts(everythingElse);
+    for (const { label: segLabel, posts: segPosts } of segments) {
+      if (segPosts.length > 0) {
+        lines.push(`── ${segLabel}（${segPosts.length}）`);
+        for (const post of segPosts) {
+          const srcLabel = _getSourceLabel(post.source);
+          const group = post.group_name || post.group_url || '未知群組';
+          const author = post.author ? ` — ${post.author}` : '';
+          const snippet = post.snippet ? ` — ${post.snippet.slice(0, 80)}` : '';
+          const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
+          lines.push(`${srcLabel} ${group}${author}${snippet} ${sc} ${post.url}`);
+        }
+        lines.push('');
+      }
     }
-    lines.push('');
   }
 
   if (overflow.length > 0) {
@@ -335,6 +367,66 @@ function _buildText(topPicks, everythingElse, overflow, totalCount, today, runSt
   lines.push('Phase 2 回覆支援：回信輸入 GOOD #短碼 / MUTE #短碼（即將上線）');
 
   return lines.join('\n');
+}
+
+// ── Publisher 輔助函式 ────────────────────────────────────────────────────────
+
+/**
+ * 來源標籤：post.source → [FB] / [HN] / [RSS] / [GH]
+ */
+function _getSourceLabel(source) {
+  switch (source) {
+    case 'l1_imap': return '[FB]';
+    case 'hackernews': return '[HN]';
+    case 'rss': return '[RSS]';
+    case 'github_releases': return '[GH]';
+    case 'github_trending': return '[GH]';
+    default: return '[??]';
+  }
+}
+
+/**
+ * Everything Else 按 source category 分段
+ * 順序：FB Groups → Hacker News → RSS & GitHub
+ */
+function _segmentPosts(posts) {
+  const fb = posts.filter(p => p.source === 'l1_imap');
+  const hn = posts.filter(p => p.source === 'hackernews');
+  const rssGh = posts.filter(p => p.source === 'rss' || p.source === 'github_releases' || p.source === 'github_trending');
+
+  return [
+    { label: 'FB Groups', posts: fb },
+    { label: 'Hacker News', posts: hn },
+    { label: 'RSS & GitHub', posts: rssGh },
+  ];
+}
+
+/**
+ * Top Picks source caps
+ * 同一 source 最多 capPerSource 篇進 Top Picks
+ * 溢出項目保留原始分數移入 overflow（降至 Everything Else）
+ *
+ * @param {Array} topPicks — section=top_picks 的 posts（已按 score 排序）
+ * @param {number} capPerSource — 每個 source 最多幾篇
+ * @returns {{ capped: Array, overflow: Array }}
+ */
+function _applySourceCaps(topPicks, capPerSource) {
+  const sourceCounts = {};
+  const capped = [];
+  const overflow = [];
+
+  for (const post of topPicks) {
+    const src = post.source || 'unknown';
+    const count = sourceCounts[src] || 0;
+    if (count < capPerSource) {
+      capped.push(post);
+      sourceCounts[src] = count + 1;
+    } else {
+      overflow.push(post);
+    }
+  }
+
+  return { capped, overflow };
 }
 
 // ── 工具函式 ─────────────────────────────────────────────────────────────────
@@ -375,4 +467,7 @@ module.exports = {
   _buildText,
   _esc,
   _parseTags,
+  _getSourceLabel,
+  _segmentPosts,
+  _applySourceCaps,
 };

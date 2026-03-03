@@ -9,11 +9,12 @@
     "status": "node agent.js status"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.4",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^16.6.1",
     "imapflow": "^1.2.10",
     "mailparser": "^3.9.3",
-    "@sendgrid/mail": "^8.1.4",
+    "openai": "^4.104.0",
     "rss-parser": "^3.13.0"
   }
 }

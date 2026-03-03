@@ -18,7 +18,7 @@
  *   shortcode = base32(sha256(post_id)).slice(0,4).toUpperCase()
  *   純展示用（Phase 1），Phase 2 加上回覆解析。
  *
- * 依賴：nodemailer（npm install nodemailer）
+ * 依賴：@sendgrid/mail（npm install @sendgrid/mail）
  */
 
 'use strict';
@@ -26,7 +26,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-// nodemailer 由 sendDigest() 動態 require（避免無 smtp 設定時 crash）
+// @sendgrid/mail 由 sendDigest() 動態 require（避免無 SENDGRID_API_KEY 時 crash）
 
 // ── Stable Token 短碼 ─────────────────────────────────────────────────────────
 
@@ -137,10 +137,10 @@ function buildDigestEmail(rankedPosts, digestConfig, runStats) {
   return { subject, html, text };
 }
 
-// ── nodemailer 發信 ───────────────────────────────────────────────────────────
+// ── SendGrid 發信 ─────────────────────────────────────────────────────────────
 
 /**
- * 發送 digest email
+ * 發送 digest email（透過 SendGrid API，走 HTTPS port 443）
  *
  * @param {Object} smtpConfig — config.smtp（from agent's config.json）
  * @param {string} subject
@@ -154,29 +154,28 @@ async function sendDigest(smtpConfig, subject, html, text, dryRun = false) {
     return { ok: true, dry_run: true };
   }
 
-  const nodemailer = require('nodemailer');
+  const sgMail = require('@sendgrid/mail');
 
-  const transporter = nodemailer.createTransport({
-    host: smtpConfig.host,
-    port: smtpConfig.port,
-    secure: smtpConfig.secure || false,
-    auth: {
-      user: smtpConfig.user,
-      pass: smtpConfig.password,
-    },
-  });
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) {
+    return { ok: false, error: 'SENDGRID_API_KEY not set' };
+  }
+
+  sgMail.setApiKey(apiKey);
 
   try {
-    const info = await transporter.sendMail({
+    const [response] = await sgMail.send({
       from: smtpConfig.from || smtpConfig.user,
       to: smtpConfig.recipient,
       subject,
       html,
       text,
     });
-    return { ok: true, messageId: info.messageId };
+    const messageId = response?.headers?.['x-message-id'] || '-';
+    return { ok: true, messageId };
   } catch (err) {
-    return { ok: false, error: err.message };
+    const detail = err.response?.body?.errors?.[0]?.message || err.message;
+    return { ok: false, error: detail };
   }
 }
 

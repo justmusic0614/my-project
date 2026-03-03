@@ -49,6 +49,8 @@ CREATE INDEX IF NOT EXISTS idx_posts_group_url ON posts(group_url);
 CREATE INDEX IF NOT EXISTS idx_posts_first_seen_at ON posts(first_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_sent_at ON posts(sent_at);
 CREATE INDEX IF NOT EXISTS idx_posts_raw_email_message_id ON posts(raw_email_message_id);
+CREATE INDEX IF NOT EXISTS idx_posts_source ON posts(source);
+CREATE INDEX IF NOT EXISTS idx_posts_source_first_seen ON posts(source, first_seen_at DESC);
 
 CREATE TABLE IF NOT EXISTS ai_results (
   post_id TEXT PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,

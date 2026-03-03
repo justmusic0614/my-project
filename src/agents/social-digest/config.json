@@ -45,11 +45,19 @@
   },
 
   "http": {
-    "timeout": 5000,
-    "maxRedirects": 2,
+    "connectTimeout": 5000,
+    "readTimeout": 15000,
+    "maxResponseSize": 2097152,
     "userAgent": "social-digest/1.0",
-    "concurrency": 2,
-    "throttleMs": 300
+    "concurrency": 3
+  },
+
+  "collectors": {
+    "l1_imap": { "enabled": true },
+    "hackernews": { "enabled": true, "maxItems": 30, "safetyWindowMinutes": 180 },
+    "rss": { "enabled": false, "maxItemsPerFeed": 20, "maxAgeHours": 336, "safetyWindowMinutes": 180 },
+    "github_releases": { "enabled": false, "token": "${GITHUB_TOKEN:-}", "maxReleasesPerRepo": 3, "safetyWindowMinutes": 180 },
+    "github_trending": { "enabled": false, "token": "${GITHUB_TOKEN:-}", "minStars": 50, "createdWithinDays": 7 }
   },
 
   "db": {

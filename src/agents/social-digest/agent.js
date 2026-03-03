@@ -10,15 +10,15 @@
  *   node agent.js db-stats               # 顯示資料庫統計
  *   node agent.js help                   # 顯示說明
  *
- * Pipeline（Phase 1）：
- *   IMAP 收信（M4, TODO: 連線）
- *   → Email Parser（M6）
- *   → Deduplicator（M7）
- *   → Rule Filter（M8）
- *   → Post Scorer（M10）
- *   → Email Publisher（M9）+ Run Snapshot（M9.5）
- *   → 告警（M11）
- *   → 更新水位線
+ * Pipeline：
+ *   Step 1:  IMAP 收信
+ *   Step 1b: Web Collection（HN, RSS, GitHub — Phase 1: HN only）
+ *   Step 2:  Email 解析 + 去重（含 web posts 合併）
+ *   Step 3:  取未送出貼文
+ *   Step 4:  Rule Filter
+ *   Step 5:  Post Scorer
+ *   Step 6-8: Shortcode + Snapshot + Email Publisher
+ *   → 更新水位線（IMAP + web_watermarks + collector_stats + disabled_sources）
  */
 
 'use strict';
@@ -110,6 +110,8 @@ async function run(args) {
   const { buildDigestEmail, buildRunSnapshot, sendDigest, calcShortcode } = require('./src/publishers/email-publisher');
   const alerter = require('./src/shared/alerter');
   const imapCollector = require('./src/collectors/imap-collector');
+  const { createClient: createHttpClient } = require('./src/collectors/http-client');
+  const hnCollector = require('./src/collectors/hn-collector');
 
   const db = getDB(AGENT_ROOT, config.db?.path);
   const sm = new SourceManager(path.join(AGENT_ROOT, 'data/sources.json'));
@@ -117,6 +119,11 @@ async function run(args) {
   const prev = loadLatest();
 
   db.startRun(runId);
+
+  // 初始化 HTTP client（web collectors 共用）
+  if (config.http) {
+    createHttpClient(config.http);
+  }
 
   const stats = {
     run_id: runId,
@@ -133,10 +140,14 @@ async function run(args) {
     template_fp_stats: null,
     rules_version: rules.version || null,
     errors: [],
+    collector_stats: {},
   };
 
   const allAlerts = [];
   let newWatermark = null;
+  const webWatermarkUpdates = {};
+  const disabledUpdates = {};
+  const recoveredKeys = [];
 
   try {
     // ── Step 1：IMAP 收信（M4）───────────────────────────────────────────────
@@ -174,6 +185,90 @@ async function run(args) {
     allAlerts.push(...collectAlerts);
     alerter.printAlerts(collectAlerts, (level, msg) => log(level.toLowerCase(), msg));
 
+    // ── Step 1b：Web Collection ────────────────────────────────────────────
+    log('info', 'Step 1b: Web Collection');
+    let webPosts = [];
+    const prevDisabled = prev.disabled_sources || {};
+    const prevWatermarks = prev.web_watermarks || {};
+
+    // 收集所有啟用的 web collectors
+    const webCollectors = [];
+
+    // HN Collector
+    if (config.collectors?.hackernews?.enabled) {
+      const hnSources = sm.getEnabledByType('hackernews');
+      if (hnSources.length > 0) {
+        webCollectors.push({
+          name: 'hackernews',
+          fn: () => hnCollector.collect(hnSources, config.collectors.hackernews, prevWatermarks, prevDisabled),
+        });
+      }
+    }
+
+    // 並行執行所有 web collectors
+    if (webCollectors.length > 0) {
+      const results = await Promise.allSettled(
+        webCollectors.map(c => c.fn())
+      );
+
+      for (let i = 0; i < results.length; i++) {
+        const collectorName = webCollectors[i].name;
+        const result = results[i];
+
+        if (result.status === 'fulfilled') {
+          const cr = result.value;
+          webPosts.push(...cr.posts);
+
+          // 合併 watermark（key-level，只更新成功的 key）
+          Object.assign(webWatermarkUpdates, cr.watermark);
+
+          // 合併 disabled
+          for (const d of (cr.disabled || [])) {
+            disabledUpdates[d.source_key] = {
+              until: d.until,
+              reason: d.reason,
+              since: prevDisabled[d.source_key]?.since || new Date().toISOString(),
+              consecutive: d.consecutive,
+            };
+          }
+
+          // 合併 recovered
+          recoveredKeys.push(...(cr.recovered || []));
+
+          // collector stats
+          stats.collector_stats[collectorName] = cr.stats;
+
+          log('info', `[${collectorName}] 完成`, {
+            ok: cr.stats.ok,
+            fetched: cr.stats.fetched,
+            parsed: cr.stats.parsed,
+            filtered: cr.stats.filtered,
+            posts: cr.posts.length,
+            skipped_disabled: cr.stats.skipped_disabled,
+            duration_ms: cr.stats.duration_ms,
+          });
+        } else {
+          log('error', `[${collectorName}] collector crash: ${result.reason?.message || result.reason}`);
+          stats.collector_stats[collectorName] = {
+            ok: false,
+            fetched: 0,
+            parsed: 0,
+            filtered: 0,
+            new: 0,
+            errors: [{ code: 'COLLECTOR_CRASH', error: result.reason?.message || String(result.reason) }],
+            duration_ms: 0,
+          };
+          stats.errors.push({
+            code: 'WEB_COLLECTOR_ERROR',
+            collector: collectorName,
+            error: result.reason?.message || String(result.reason),
+          });
+        }
+      }
+
+      log('info', 'Web Collection 完成', { total_web_posts: webPosts.length });
+    }
+
     // ── Step 2：Email 解析（M6）+ 去重（M7）────────────────────────────────
     log('info', 'Step 2: Email 解析 + 去重');
     let newPosts = [];
@@ -204,6 +299,20 @@ async function run(args) {
         parsed_posts: parseResult.posts.length,
         new_posts: newPosts.length,
         dup_skipped: dedupResult.stats.input - dedupResult.stats.new,
+      });
+    }
+
+    // Web posts 去重（走同一 dedup pipeline）
+    if (webPosts.length > 0) {
+      const webDedupResult = dedup(db, webPosts);
+      const webNewCount = webDedupResult.newPosts.length;
+      stats.new_post_count += webNewCount;
+      newPosts.push(...webDedupResult.newPosts);
+
+      log('info', 'Web posts 去重完成', {
+        input: webPosts.length,
+        new: webNewCount,
+        dup_skipped: webPosts.length - webNewCount,
       });
     }
 
@@ -331,6 +440,22 @@ async function run(args) {
     template_fp_stats: stats.template_fp_stats || null,
   });
 
+  // web_watermarks: key-level merge（只更新成功的 key，保留其餘）
+  const mergedWatermarks = { ...(prev.web_watermarks || {}), ...webWatermarkUpdates };
+
+  // disabled_sources: 合併 disabled + 清除 recovered + 清理過期
+  const mergedDisabled = { ...(prev.disabled_sources || {}), ...disabledUpdates };
+  for (const key of recoveredKeys) {
+    delete mergedDisabled[key];
+  }
+  // 清理過期的 disabled entries
+  const now = new Date();
+  for (const [key, entry] of Object.entries(mergedDisabled)) {
+    if (new Date(entry.until) <= now) {
+      delete mergedDisabled[key];
+    }
+  }
+
   const nextLatest = {
     // 水位線三件套：只有 IMAP 成功回傳 newWatermark 才更新，否則保持上次值
     imap_last_uid: newWatermark?.imap_last_uid ?? prev.imap_last_uid ?? null,
@@ -348,6 +473,10 @@ async function run(args) {
     post_extract_ok_rate: stats.post_extract_ok_rate,
     high_conf_rate: stats.high_conf_rate,
     l2_success_rate: stats.l2_success_rate,
+    // Web collector 狀態
+    web_watermarks: mergedWatermarks,
+    collector_stats: stats.collector_stats,
+    disabled_sources: mergedDisabled,
   };
   saveLatest(nextLatest);
 

@@ -71,6 +71,22 @@ class SourceManager {
   }
 
   /**
+   * 按 type 過濾啟用的來源
+   * @param {string} type — collector type（如 'hackernews', 'rss'）
+   */
+  getEnabledByType(type) {
+    return this.getEnabled().filter(s => s.type === type);
+  }
+
+  /**
+   * 以短 id 查找 source
+   * @param {string} id — sources.json 的短 id
+   */
+  getById(id) {
+    return this.sources.find(s => s.id === id) || null;
+  }
+
+  /**
    * 以 URL 查詢 source（用於貼文標注）
    */
   findByUrl(url) {

@@ -1,14 +1,905 @@
 [
   {
-    "_comment": "範例群組，請用 tools/fb-groups-export.js 替換為實際清單",
-    "type": "group",
-    "name": "範例理財群組",
-    "url": "https://www.facebook.com/groups/example-finance",
+    "type": "l1_imap",
+    "name": "OpenClaw 中文社群",
+    "url": "https://www.facebook.com/groups/3238547836318385",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI",
+      "OpenClaw"
+    ],
+    "must_include": true,
+    "id": "fb_3238547836318385"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Vibe Coding x AI 創作實戰小聚 x 轉職 AI 開創自由",
+    "url": "https://www.facebook.com/groups/markincome",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI",
+      "Vibe Coding"
+    ],
+    "must_include": true,
+    "id": "fb_markincome"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Vibe Coding is Life",
+    "url": "https://www.facebook.com/groups/vibecodinglife",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI",
+      "Vibe Coding"
+    ],
+    "must_include": true,
+    "id": "fb_vibecodinglife"
+  },
+  {
+    "type": "l1_imap",
+    "name": "GenAI & Agentic AI 論壇",
+    "url": "https://www.facebook.com/groups/aigctw",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_aigctw"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Generative AI 技術交流中心",
+    "url": "https://www.facebook.com/groups/gaitech",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_gaitech"
+  },
+  {
+    "type": "l1_imap",
+    "name": "OpenClaw(Clawdbot.Moltbot) 龍蝦助理中文社團",
+    "url": "https://www.facebook.com/groups/1971161090129755",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI",
+      "OpenClaw"
+    ],
+    "must_include": true,
+    "id": "fb_1971161090129755"
+  },
+  {
+    "type": "l1_imap",
+    "name": "自動化交流中心 (Zapier, Make, Coze, Dify 等)",
+    "url": "https://www.facebook.com/groups/867695991881036",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI",
+      "自動化"
+    ],
+    "must_include": true,
+    "id": "fb_867695991881036"
+  },
+  {
+    "type": "l1_imap",
+    "name": "AI咒語公社",
+    "url": "https://www.facebook.com/groups/3208727879422567",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_3208727879422567"
+  },
+  {
+    "type": "l1_imap",
+    "name": "AI 工具研究社",
+    "url": "https://www.facebook.com/groups/875848350348215",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_875848350348215"
+  },
+  {
+    "type": "l1_imap",
+    "name": "AI好好用：ChatGPT、Midjourney、Stable Diffusion交流",
+    "url": "https://www.facebook.com/groups/aiforselling",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_aiforselling"
+  },
+  {
+    "type": "l1_imap",
+    "name": "ChatGPT Taiwan",
+    "url": "https://www.facebook.com/groups/chatgpt.tw",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_chatgpt.tw"
+  },
+  {
+    "type": "l1_imap",
+    "name": "ChatGPT 生活運用",
+    "url": "https://www.facebook.com/groups/2152027081656284",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_2152027081656284"
+  },
+  {
+    "type": "l1_imap",
+    "name": "ChatGPT應用社群",
+    "url": "https://www.facebook.com/groups/aigcapplied",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_aigcapplied"
+  },
+  {
+    "type": "l1_imap",
+    "name": "AI: Artificial Intelligence",
+    "url": "https://www.facebook.com/groups/698593531630485",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI"
+    ],
+    "must_include": true,
+    "id": "fb_698593531630485"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Nano Banana Pro + Gemini 3 and ALL AI生成式藝術小小詠唱師",
+    "url": "https://www.facebook.com/groups/592850912909945",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "AI",
+      "生成藝術"
+    ],
+    "must_include": true,
+    "id": "fb_592850912909945"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Python Taiwan",
+    "url": "https://www.facebook.com/groups/pythontw",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "程式"
+    ],
+    "must_include": true,
+    "id": "fb_pythontw"
+  },
+  {
+    "type": "l1_imap",
+    "name": "程式交易 Taiwan",
+    "url": "https://www.facebook.com/groups/quantpass",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "程式",
+      "理財"
+    ],
+    "must_include": true,
+    "id": "fb_quantpass"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Heptabase學習討論區 | 卡片盒筆記",
+    "url": "https://www.facebook.com/groups/heptabase",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "工具",
+      "筆記"
+    ],
+    "must_include": true,
+    "id": "fb_heptabase"
+  },
+  {
+    "type": "l1_imap",
+    "name": "科技工作講想要年薪300萬俱樂部",
+    "url": "https://www.facebook.com/groups/5907243396002432",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "科技",
+      "職涯"
+    ],
+    "must_include": true,
+    "id": "fb_5907243396002432"
+  },
+  {
+    "type": "l1_imap",
+    "name": "我們都是蘋果人！iPhone/Mac討論區",
+    "url": "https://www.facebook.com/groups/applealmond",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "科技",
+      "Apple"
+    ],
+    "must_include": true,
+    "id": "fb_applealmond"
+  },
+  {
+    "type": "l1_imap",
+    "name": "單身狗投資討論區",
+    "url": "https://www.facebook.com/groups/390808758741901",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財"
+    ],
+    "must_include": false,
+    "id": "fb_390808758741901"
+  },
+  {
+    "type": "l1_imap",
+    "name": "美股投資紀錄",
+    "url": "https://www.facebook.com/groups/beyondfang",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財"
+    ],
+    "must_include": false,
+    "id": "fb_beyondfang"
+  },
+  {
+    "type": "l1_imap",
+    "name": "科技財經午報俱樂部",
+    "url": "https://www.facebook.com/groups/139949514756442",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財"
+    ],
+    "must_include": false,
+    "id": "fb_139949514756442"
+  },
+  {
+    "type": "l1_imap",
+    "name": "金融保險考題討論區",
+    "url": "https://www.facebook.com/groups/149973164615324",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財"
+    ],
+    "must_include": false,
+    "id": "fb_149973164615324"
+  },
+  {
+    "type": "l1_imap",
+    "name": "ETF買下全世界",
+    "url": "https://www.facebook.com/groups/ETF.TW",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財"
+    ],
+    "must_include": false,
+    "id": "fb_ETF.TW"
+  },
+  {
+    "type": "l1_imap",
+    "name": "MM總體經濟投資討論群",
+    "url": "https://www.facebook.com/groups/1270886413061187",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財"
+    ],
+    "must_include": false,
+    "id": "fb_1270886413061187"
+  },
+  {
+    "type": "l1_imap",
+    "name": "讀書會：一個投機者的告白、投資最重要的事、原則、高手的養成",
+    "url": "https://www.facebook.com/groups/172361086852319",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "理財",
+      "讀書"
+    ],
+    "must_include": false,
+    "id": "fb_172361086852319"
+  },
+  {
+    "type": "l1_imap",
+    "name": "好想住飯店 好康.踩雷不藏私",
+    "url": "https://www.facebook.com/groups/ilhh.tw",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活",
+      "旅遊"
+    ],
+    "must_include": false,
+    "id": "fb_ilhh.tw"
+  },
+  {
+    "type": "l1_imap",
+    "name": "NETFLIX 新台灣討論區(非官方)",
+    "url": "https://www.facebook.com/groups/235385084142732",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活",
+      "影視"
+    ],
+    "must_include": false,
+    "id": "fb_235385084142732"
+  },
+  {
+    "type": "l1_imap",
+    "name": "沖繩 彭大家族自助錦囊",
+    "url": "https://www.facebook.com/groups/OKASOS",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "旅遊"
+    ],
+    "must_include": false,
+    "id": "fb_OKASOS"
+  },
+  {
+    "type": "l1_imap",
+    "name": "小一聯盟",
+    "url": "https://www.facebook.com/groups/9198a",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_9198a"
+  },
+  {
+    "type": "l1_imap",
+    "name": "民生社區大小事",
+    "url": "https://www.facebook.com/groups/954459197945644",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活"
+    ],
+    "must_include": false,
+    "id": "fb_954459197945644"
+  },
+  {
+    "type": "l1_imap",
+    "name": "民生社區~吃喝玩樂",
+    "url": "https://www.facebook.com/groups/MinSheng123",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活"
+    ],
+    "must_include": false,
+    "id": "fb_MinSheng123"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Fun心在台北社團管理團隊",
+    "url": "https://www.facebook.com/groups/1768595016748419",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活"
+    ],
+    "must_include": false,
+    "id": "fb_1768595016748419"
+  },
+  {
+    "type": "l1_imap",
+    "name": "巴菲特的團購網",
+    "url": "https://www.facebook.com/groups/154329568076987",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活",
+      "團購"
+    ],
+    "must_include": false,
+    "id": "fb_154329568076987"
+  },
+  {
+    "type": "l1_imap",
+    "name": "臺北市私立三民幼兒園 線上讀書會",
+    "url": "https://www.facebook.com/groups/508311966521119",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_508311966521119"
+  },
+  {
+    "type": "l1_imap",
+    "name": "瑞安街新開的店-天使團購",
+    "url": "https://www.facebook.com/groups/227367808728339",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活",
+      "團購"
+    ],
+    "must_include": false,
+    "id": "fb_227367808728339"
+  },
+  {
+    "type": "l1_imap",
+    "name": "+1剁手指招待會所",
+    "url": "https://www.facebook.com/groups/322651594755366",
+    "public": false,
+    "enabled": true,
+    "weight": 1,
+    "tags": [
+      "生活",
+      "團購"
+    ],
+    "must_include": false,
+    "id": "fb_322651594755366"
+  },
+  {
+    "type": "l1_imap",
+    "name": "登峰口說-讓我們說得像阿斗仔",
+    "url": "https://www.facebook.com/groups/390573997619526",
     "public": false,
     "enabled": false,
-    "weight": 1.0,
-    "tags": ["理財"],
+    "weight": 1,
+    "tags": [
+      "學習"
+    ],
     "must_include": false,
-    "last_weight_update": null
+    "id": "fb_390573997619526"
+  },
+  {
+    "type": "l1_imap",
+    "name": "雞蓉鎢絲",
+    "url": "https://www.facebook.com/groups/282389015108930",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_282389015108930"
+  },
+  {
+    "type": "l1_imap",
+    "name": "名古屋旅遊情報",
+    "url": "https://www.facebook.com/groups/nagoya.trip",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "旅遊"
+    ],
+    "must_include": false,
+    "id": "fb_nagoya.trip"
+  },
+  {
+    "type": "l1_imap",
+    "name": "全國打掃阿姨俱樂部",
+    "url": "https://www.facebook.com/groups/714626015345333",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_714626015345333"
+  },
+  {
+    "type": "l1_imap",
+    "name": "北海道 彭大家族自助錦囊",
+    "url": "https://www.facebook.com/groups/spksos",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "旅遊"
+    ],
+    "must_include": false,
+    "id": "fb_spksos"
+  },
+  {
+    "type": "l1_imap",
+    "name": "卡片盒筆記實戰課 學員交流社團",
+    "url": "https://www.facebook.com/groups/zettelkasten",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "工具",
+      "筆記"
+    ],
+    "must_include": false,
+    "id": "fb_zettelkasten"
+  },
+  {
+    "type": "l1_imap",
+    "name": "在家自學社群",
+    "url": "https://www.facebook.com/groups/homeschooltw",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_homeschooltw"
+  },
+  {
+    "type": "l1_imap",
+    "name": "陪伴小孩學英文",
+    "url": "https://www.facebook.com/groups/218542622359591",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_218542622359591"
+  },
+  {
+    "type": "l1_imap",
+    "name": "英文學習團",
+    "url": "https://www.facebook.com/groups/241258242683967",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "學習"
+    ],
+    "must_include": false,
+    "id": "fb_241258242683967"
+  },
+  {
+    "type": "l1_imap",
+    "name": "小窩裡｜親子生活選物",
+    "url": "https://www.facebook.com/groups/256747928168069",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_256747928168069"
+  },
+  {
+    "type": "l1_imap",
+    "name": "P圖公社~華人最大圓夢社團",
+    "url": "https://www.facebook.com/groups/hanaleeptugongse",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_hanaleeptugongse"
+  },
+  {
+    "type": "l1_imap",
+    "name": "收納狂的日常",
+    "url": "https://www.facebook.com/groups/our.storage.diary",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "生活"
+    ],
+    "must_include": false,
+    "id": "fb_our.storage.diary"
+  },
+  {
+    "type": "l1_imap",
+    "name": "電動滑板車資訊分享平台",
+    "url": "https://www.facebook.com/groups/347369125660810",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_347369125660810"
+  },
+  {
+    "type": "l1_imap",
+    "name": "親子教育分享討論區",
+    "url": "https://www.facebook.com/groups/140516982786609",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_140516982786609"
+  },
+  {
+    "type": "l1_imap",
+    "name": "戰國布武【朕的江山戰國篇】討論小组",
+    "url": "https://www.facebook.com/groups/2041857029194241",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "遊戲"
+    ],
+    "must_include": false,
+    "id": "fb_2041857029194241"
+  },
+  {
+    "type": "l1_imap",
+    "name": "小Bee森森享樂趣",
+    "url": "https://www.facebook.com/groups/2033252446692162",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_2033252446692162"
+  },
+  {
+    "type": "l1_imap",
+    "name": "民生國小故事組",
+    "url": "https://www.facebook.com/groups/220077864699867",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "親子"
+    ],
+    "must_include": false,
+    "id": "fb_220077864699867"
+  },
+  {
+    "type": "l1_imap",
+    "name": "全球亞麻 - 面試/工作机会 - 交流版",
+    "url": "https://www.facebook.com/groups/484458285872980",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "職涯"
+    ],
+    "must_include": false,
+    "id": "fb_484458285872980"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Taiwan Tech & Startup Jobs - Yourator",
+    "url": "https://www.facebook.com/groups/yourator.career",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "職涯"
+    ],
+    "must_include": false,
+    "id": "fb_yourator.career"
+  },
+  {
+    "type": "l1_imap",
+    "name": "garden日韓代購",
+    "url": "https://www.facebook.com/groups/135571875427754",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_135571875427754"
+  },
+  {
+    "type": "l1_imap",
+    "name": "導演大叔的Art潮玩藝術空間 +Toy Salon",
+    "url": "https://www.facebook.com/groups/569391080888828",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_569391080888828"
+  },
+  {
+    "type": "l1_imap",
+    "name": "WSL_女人好好買",
+    "url": "https://www.facebook.com/groups/wslsmartbuy",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_wslsmartbuy"
+  },
+  {
+    "type": "l1_imap",
+    "name": "R.A.E.S Group",
+    "url": "https://www.facebook.com/groups/189927864451794",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_189927864451794"
+  },
+  {
+    "type": "l1_imap",
+    "name": "Y.W美國連線購物",
+    "url": "https://www.facebook.com/groups/1742367839424475",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [],
+    "must_include": false,
+    "id": "fb_1742367839424475"
+  },
+  {
+    "type": "l1_imap",
+    "name": "NTHU CHE 06",
+    "url": "https://www.facebook.com/groups/176575005862638",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "校友"
+    ],
+    "must_include": false,
+    "id": "fb_176575005862638"
+  },
+  {
+    "type": "l1_imap",
+    "name": "國泰政大金融幫",
+    "url": "https://www.facebook.com/groups/596858893669676",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "校友"
+    ],
+    "must_include": false,
+    "id": "fb_596858893669676"
+  },
+  {
+    "type": "l1_imap",
+    "name": "政大金融所聯誼會",
+    "url": "https://www.facebook.com/groups/mab.nccu",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "校友"
+    ],
+    "must_include": false,
+    "id": "fb_mab.nccu"
+  },
+  {
+    "type": "l1_imap",
+    "name": "中正國小",
+    "url": "https://www.facebook.com/groups/316099548408734",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "校友"
+    ],
+    "must_include": false,
+    "id": "fb_316099548408734"
+  },
+  {
+    "type": "l1_imap",
+    "name": "中正國小六年七班",
+    "url": "https://www.facebook.com/groups/256984024322228",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "校友"
+    ],
+    "must_include": false,
+    "id": "fb_256984024322228"
+  },
+  {
+    "type": "l1_imap",
+    "name": "新台北市成功高中320班(2002畢業)",
+    "url": "https://www.facebook.com/groups/159019144134155",
+    "public": false,
+    "enabled": false,
+    "weight": 1,
+    "tags": [
+      "校友"
+    ],
+    "must_include": false,
+    "id": "fb_159019144134155"
+  },
+  {
+    "id": "hn_frontpage",
+    "type": "hackernews",
+    "name": "HN Front Page",
+    "url": "https://hnrss.org/frontpage?count=30&points=50",
+    "enabled": true,
+    "tags": [
+      "Tech",
+      "HN"
+    ]
+  },
+  {
+    "id": "hn_aiml",
+    "type": "hackernews",
+    "name": "HN AI/ML",
+    "url": "https://hnrss.org/newest?q=AI+OR+LLM+OR+agent&count=20&points=20",
+    "enabled": true,
+    "tags": [
+      "AI",
+      "HN"
+    ]
   }
 ]

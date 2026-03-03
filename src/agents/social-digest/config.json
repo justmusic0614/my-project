@@ -61,6 +61,12 @@
     "github_trending": { "enabled": false, "token": "${GITHUB_TOKEN:-}", "minStars": 50, "createdWithinDays": 7 }
   },
 
+  "tracking": {
+    "enabled": false,
+    "host": "${REDIRECT_HOST:-localhost}",
+    "redirectBaseUrl": "${REDIRECT_BASE_URL:-}"
+  },
+
   "db": {
     "path": "${DB_PATH:-data/social-digest.db}"
   },

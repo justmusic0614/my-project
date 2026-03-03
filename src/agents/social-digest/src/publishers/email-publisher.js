@@ -62,13 +62,15 @@ function calcShortcode(postId) {
  * @returns {Object} snapshot 物件
  */
 function buildRunSnapshot(runId, rankedPosts, quotaBreakdown = {}) {
-  const shortcodeMap = {};  // shortcode → post_id
-  const indexMap = {};      // final_rank → post_id
+  const shortcodeMap = {};    // shortcode → post_id
+  const indexMap = {};         // final_rank → post_id
+  const shortcodeUrlMap = {}; // shortcode → url（C4: redirect 不查 DB）
 
   const snapshotPosts = rankedPosts.map(post => {
     const sc = calcShortcode(post.id);
     shortcodeMap[sc] = post.id;
     indexMap[post.final_rank] = post.id;
+    if (post.url) shortcodeUrlMap[sc] = post.url;
 
     return {
       id: post.id,
@@ -100,8 +102,9 @@ function buildRunSnapshot(runId, rankedPosts, quotaBreakdown = {}) {
       ai: quotaBreakdown.ai ?? 0,
       rule: quotaBreakdown.rule ?? 0,
     },
-    shortcode_map: shortcodeMap,  // shortcode → post_id（Phase 2 回覆解析用）
-    index_map: indexMap,           // final_rank → post_id
+    shortcode_map: shortcodeMap,      // shortcode → post_id（Phase 2 回覆解析用）
+    index_map: indexMap,               // final_rank → post_id
+    shortcode_url_map: shortcodeUrlMap, // C4: shortcode → url（redirect 用，不查 DB）
   };
 }
 
@@ -138,7 +141,9 @@ function buildDigestEmail(rankedPosts, digestConfig, runStats) {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
   });
 
-  const subject = `${digestConfig.subjectPrefix || '[SocialDigest]'} ${today}（${topPicks.length} picks + ${everythingElse.length} 則）`;
+  // B3: subject 帶 rid — 回信 Re: 自動帶上，feedback collector 用 regex 擷取
+  const rid = runStats?.run_id || '';
+  const subject = `[SocialDigest ${rid}] ${today}（${topPicks.length} picks + ${everythingElse.length} 則）`;
 
   // 先加 shortcode
   const topPicksWithSc = topPicks.map(p => ({ ...p, shortcode: p.shortcode || calcShortcode(p.id) }));
@@ -301,11 +306,16 @@ function _buildHtmlFooter(runStats) {
   const stats = runStats || {};
   const lines = [
     '<div class="footer">',
-    `<p>run_id: ${_esc(stats.run_id || '-')} | `,
+    `<p>Run: ${_esc(stats.run_id || '-')} | `,
     `parse_ok: ${_pct(stats.email_parse_ok_rate)} | `,
     `high_conf: ${_pct(stats.high_conf_rate)} | `,
     `l2: ${_pct(stats.l2_success_rate)}</p>`,
-    '<p>Phase 2 回覆支援：回信輸入 GOOD #短碼 / MUTE #短碼（即將上線）</p>',
+    '<p style="margin-top:8px;color:#666;font-size:0.85em">',
+    '📩 <b>回信即可回饋</b>（僅需一行）：<br>',
+    '&nbsp;&nbsp;GOOD #A1B2（喜歡）<br>',
+    '&nbsp;&nbsp;PIN&nbsp;&nbsp;#A1B2（置頂/必看）<br>',
+    '&nbsp;&nbsp;MUTE #A1B2（少推同來源）<br>',
+    '&nbsp;&nbsp;也可用序號：GOOD 3,7</p>',
     '</div>',
   ];
   return lines.join('');
@@ -363,8 +373,13 @@ function _buildText(topPicks, everythingElse, overflow, totalCount, today, runSt
 
   const stats = runStats || {};
   lines.push('─'.repeat(40));
-  lines.push(`run_id: ${stats.run_id || '-'} | parse_ok: ${_pct(stats.email_parse_ok_rate)} | high_conf: ${_pct(stats.high_conf_rate)}`);
-  lines.push('Phase 2 回覆支援：回信輸入 GOOD #短碼 / MUTE #短碼（即將上線）');
+  lines.push(`Run: ${stats.run_id || '-'} | parse_ok: ${_pct(stats.email_parse_ok_rate)} | high_conf: ${_pct(stats.high_conf_rate)}`);
+  lines.push('');
+  lines.push('回信即可回饋（僅需一行）：');
+  lines.push('  GOOD #A1B2（喜歡）');
+  lines.push('  PIN  #A1B2（置頂/必看）');
+  lines.push('  MUTE #A1B2（少推同來源）');
+  lines.push('  也可用序號：GOOD 3,7');
 
   return lines.join('\n');
 }

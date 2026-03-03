@@ -100,9 +100,22 @@ CREATE TABLE IF NOT EXISTS runs (
   mute_count INTEGER DEFAULT 0,
   first_click_rank INTEGER,
   time_to_first_click_sec INTEGER,
+  ai_tokens_in INTEGER DEFAULT 0,
+  ai_tokens_out INTEGER DEFAULT 0,
+  ai_flags TEXT,
   rules_version TEXT,
   errors TEXT
 );
+
+CREATE TABLE IF NOT EXISTS kpi_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,
+  snapshot_type TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kpi_snapshots_run_id ON kpi_snapshots(run_id);
 `;
 
 // ── DB Class ─────────────────────────────────────────────────────────────────
@@ -346,6 +359,9 @@ class DB {
         high_conf_rate = @high_conf_rate,
         l2_success_rate = @l2_success_rate,
         template_fp_stats = @template_fp_stats,
+        ai_tokens_in = @ai_tokens_in,
+        ai_tokens_out = @ai_tokens_out,
+        ai_flags = @ai_flags,
         rules_version = @rules_version,
         errors = @errors
       WHERE run_id = @run_id
@@ -364,6 +380,9 @@ class DB {
       template_fp_stats: stats.template_fp_stats
         ? JSON.stringify(stats.template_fp_stats)
         : null,
+      ai_tokens_in: stats.ai_tokens_in ?? 0,
+      ai_tokens_out: stats.ai_tokens_out ?? 0,
+      ai_flags: stats.ai_flags ? JSON.stringify(stats.ai_flags) : null,
       rules_version: stats.rules_version || null,
       errors: stats.errors ? JSON.stringify(stats.errors) : null,
     });
@@ -419,6 +438,95 @@ class DB {
       map[`${r.group_url}::${r.author}`] = r.cnt;
     }
     return map;
+  }
+
+  // ── Post OG Meta（M14） ──────────────────────────────────────────────────
+
+  /**
+   * 更新貼文 OG meta（L2 公開 fetch 結果）
+   * 僅在 confidence=HIGH 且 description 比現有 snippet 長時才覆寫 snippet
+   */
+  updatePostOgMeta(postId, og) {
+    const post = this.getPost(postId);
+    if (!post) return;
+
+    const shouldUpdateSnippet =
+      og.confidence === 'HIGH' &&
+      og.description &&
+      og.description.length > (post.snippet || '').length;
+
+    if (shouldUpdateSnippet) {
+      this.db.prepare(
+        'UPDATE posts SET snippet = ?, l2_fetched_at = ? WHERE id = ?'
+      ).run(og.description, new Date().toISOString(), postId);
+    } else {
+      this.db.prepare(
+        'UPDATE posts SET l2_fetched_at = ? WHERE id = ?'
+      ).run(new Date().toISOString(), postId);
+    }
+  }
+
+  // ── Run Feedback Counts（M15） ─────────────────────────────────────────
+
+  /**
+   * 從 feedback 表聚合回饋數量，更新到 runs 表
+   */
+  updateRunFeedbackCounts(runId) {
+    const row = this.db.prepare(`
+      SELECT
+        SUM(CASE WHEN action = 'click' THEN 1 ELSE 0 END) AS click_count,
+        SUM(CASE WHEN action = 'good' THEN 1 ELSE 0 END) AS good_count,
+        SUM(CASE WHEN action = 'pin' THEN 1 ELSE 0 END) AS pin_count,
+        SUM(CASE WHEN action = 'mute' THEN 1 ELSE 0 END) AS mute_count
+      FROM feedback
+      WHERE run_id = ?
+    `).get(runId);
+
+    if (!row) return;
+
+    this.db.prepare(`
+      UPDATE runs SET
+        click_count = @click_count,
+        good_count = @good_count,
+        pin_count = @pin_count,
+        mute_count = @mute_count
+      WHERE run_id = @run_id
+    `).run({
+      run_id: runId,
+      click_count: row.click_count || 0,
+      good_count: row.good_count || 0,
+      pin_count: row.pin_count || 0,
+      mute_count: row.mute_count || 0,
+    });
+  }
+
+  // ── KPI Snapshots（M16） ───────────────────────────────────────────────
+
+  /**
+   * 插入 KPI 快照
+   * @param {string} runId
+   * @param {string} snapshotType - 'daily' | 'weekly' | 'shadow' | 'baseline'
+   * @param {object} data - KPI 資料
+   */
+  insertKpiSnapshot(runId, snapshotType, data) {
+    this.db.prepare(`
+      INSERT INTO kpi_snapshots (run_id, snapshot_type, data_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(runId, snapshotType, JSON.stringify(data), new Date().toISOString());
+  }
+
+  /**
+   * 查詢 KPI 快照
+   * @param {string} snapshotType
+   * @param {number} limit
+   */
+  getKpiSnapshots(snapshotType, limit = 30) {
+    return this.db.prepare(`
+      SELECT * FROM kpi_snapshots
+      WHERE snapshot_type = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(snapshotType, limit);
   }
 
   // ── Utility ───────────────────────────────────────────────────────────────

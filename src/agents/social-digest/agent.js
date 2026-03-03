@@ -12,13 +12,14 @@
  *
  * Pipeline：
  *   Step 1:  IMAP 收信
- *   Step 1b: Web Collection（HN, RSS, GitHub — Phase 1: HN only）
+ *   Step 1b: Web Collection（HN, RSS, GitHub）
  *   Step 2:  Email 解析 + 去重（含 web posts 合併）
- *   Step 3:  取未送出貼文
+ *   Step 2b: AI Summarizer（M13 — batch AI → upsertAiResult, fail-open）
+ *   Step 3:  取未送出貼文（LEFT JOIN ai_results）
  *   Step 4:  Rule Filter
- *   Step 5:  Post Scorer
+ *   Step 5:  Post Scorer（calibrated_score 整合 AI）
  *   Step 6-8: Shortcode + Snapshot + Email Publisher
- *   → 更新水位線（IMAP + web_watermarks + collector_stats + disabled_sources）
+ *   → 更新水位線 + Kill Switch 檢查
  */
 
 'use strict';
@@ -63,12 +64,31 @@ function log(level, msg, ctx = {}) {
   process.stderr.write(`${icons[level] || ''} [${ts}] [social-digest] ${msg}${ctxStr}\n`);
 }
 
-// ── 生成 run_id ───────────────────────────────────────────────────────────────
+// ── 生成 run_id（D1: makeRunId 唯一生成點）─────────────────────────────────────
 
+const { makeRunId } = require('./src/shared/contracts');
+
+/** @deprecated — 保留給 legacy run record 比對，新 run 一律用 makeRunId() */
 function newRunId() {
   const ts = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
   const rand = crypto.randomBytes(3).toString('hex');
   return `run-${ts}-${rand}`;
+}
+
+/**
+ * 讀取 kill-switch.json runtime flags
+ * @returns {{ ai_enabled: boolean, triggered_at: string|null, reason: string|null, cooldown_until: string|null }}
+ */
+function loadKillSwitch() {
+  const ksPath = path.join(AGENT_ROOT, 'data/runtime/kill-switch.json');
+  if (!fs.existsSync(ksPath)) {
+    return { ai_enabled: true, triggered_at: null, reason: null, cooldown_until: null };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(ksPath, 'utf8'));
+  } catch {
+    return { ai_enabled: true, triggered_at: null, reason: null, cooldown_until: null };
+  }
 }
 
 // ── 狀態管理 ─────────────────────────────────────────────────────────────────
@@ -97,7 +117,7 @@ async function run(args) {
   const backfillIdx = args.indexOf('--backfill-hours');
   const backfillHours = backfillIdx >= 0 ? parseInt(args[backfillIdx + 1], 10) || 24 : null;
 
-  const runId = newRunId();
+  const runId = makeRunId();  // D1: Asia/Taipei YYYYMMDD 唯一生成點
   log('info', `開始 run ${runId}`, { dryRun, backfillHours: backfillHours ?? 'none' });
 
   // ── 載入模組 ─────────────────────────────────────────────────────────────
@@ -107,6 +127,7 @@ async function run(args) {
   const { dedup } = require('./src/processors/deduplicator');
   const { applyRules, buildSourceMap } = require('./src/processors/rule-filter');
   const { scorePosts, assignSections } = require('./src/processors/post-scorer');
+  const { summarizeAll } = require('./src/processors/ai-summarizer');
   const { buildDigestEmail, buildRunSnapshot, sendDigest, calcShortcode } = require('./src/publishers/email-publisher');
   const alerter = require('./src/shared/alerter');
   const imapCollector = require('./src/collectors/imap-collector');
@@ -127,6 +148,11 @@ async function run(args) {
     createHttpClient(config.http);
   }
 
+  // Kill Switch 檢查
+  const killSwitch = loadKillSwitch();
+  const aiConfigEnabled = config.ai?.enabled !== 'false' && config.ai?.enabled !== false;
+  const aiEnabled = aiConfigEnabled && killSwitch.ai_enabled;
+
   const stats = {
     run_id: runId,
     started_at: new Date().toISOString(),
@@ -140,6 +166,14 @@ async function run(args) {
     high_conf_rate: null,
     l2_success_rate: null,
     template_fp_stats: null,
+    ai_tokens_in: 0,
+    ai_tokens_out: 0,
+    ai_flags: {
+      ai_enabled_effective: aiEnabled,
+      ai_batches_attempted: 0,
+      ai_batches_succeeded: 0,
+      kill_switch_active: !killSwitch.ai_enabled,
+    },
     rules_version: rules.version || null,
     errors: [],
     collector_stats: {},
@@ -346,6 +380,39 @@ async function run(args) {
       });
     }
 
+    // ── Step 2b：AI Summarizer（M13）── fail-open ─────────────────────────
+    if (aiEnabled) {
+      log('info', 'Step 2b: AI Summarizer');
+      try {
+        const aiResult = await summarizeAll(db, config);
+        stats.ai_tokens_in = aiResult.stats.ai_tokens_in || 0;
+        stats.ai_tokens_out = aiResult.stats.ai_tokens_out || 0;
+        stats.ai_flags = {
+          ...stats.ai_flags,
+          ai_batches_attempted: aiResult.stats.ai_batches_attempted || 0,
+          ai_batches_succeeded: aiResult.stats.ai_batches_succeeded || 0,
+          ai_coverage: aiResult.stats.ai_coverage || 0,
+          ai_call_cap_hit: aiResult.stats.ai_call_cap_hit || false,
+          ai_budget_halted: aiResult.stats.ai_budget_halted || false,
+        };
+        log('info', 'AI Summarizer 完成', {
+          processed: aiResult.totalProcessed,
+          tokens_in: stats.ai_tokens_in,
+          tokens_out: stats.ai_tokens_out,
+        });
+      } catch (aiErr) {
+        // fail-open：AI 失敗不中斷 pipeline
+        log('warn', `AI Summarizer 失敗（fail-open）：${aiErr.message}`);
+        stats.errors.push({ code: 'AI_ERROR', error: aiErr.message });
+        stats.ai_flags.ai_error = aiErr.message;
+      }
+    } else {
+      log('info', 'Step 2b: AI Summarizer 已停用', {
+        config_enabled: aiConfigEnabled,
+        kill_switch: !killSwitch.ai_enabled,
+      });
+    }
+
     // ── Step 3：取未送出貼文（從 DB）──────────────────────────────────────
     log('info', 'Step 3: 取未送出貼文');
     const unsentPosts = db.getUnsentPosts(500);
@@ -467,6 +534,9 @@ async function run(args) {
 
   db.finishRun(runId, {
     ...stats,
+    ai_tokens_in: stats.ai_tokens_in || 0,
+    ai_tokens_out: stats.ai_tokens_out || 0,
+    ai_flags: stats.ai_flags || null,
     errors: stats.errors.length > 0 ? stats.errors : null,
     template_fp_stats: stats.template_fp_stats || null,
   });

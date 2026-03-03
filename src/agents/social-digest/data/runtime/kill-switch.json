@@ -1,0 +1,9 @@
+{
+  "ai_enabled": true,
+  "triggered_at": null,
+  "reason": null,
+  "kpi_at_trigger": null,
+  "cooldown_until": null,
+  "auto_reenable_after_cooldown": false,
+  "recovery_condition": "手動設 ai_enabled=true 後觀察一週"
+}

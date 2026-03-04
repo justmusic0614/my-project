@@ -31,8 +31,8 @@ const path = require('path');
 // ── Tracking URL 生成 ─────────────────────────────────────────────────────────
 
 /**
- * 生成 HMAC sig（與 redirect-server.js 共用邏輯）
- * sig = hmac-sha256(secret, "${host}|${rid}:${code}").slice(0,16)
+ * 生成 /r click tracking HMAC sig
+ * sig_r = hmac-sha256(secret, "${host}|${rid}:${code}").slice(0,16)
  */
 function _generateSig(secret, host, rid, code) {
   return crypto.createHmac('sha256', secret)
@@ -42,14 +42,19 @@ function _generateSig(secret, host, rid, code) {
 }
 
 /**
+ * 生成 /f feedback HMAC sig（action 納入，防竄改）
+ * sig_f = hmac-sha256(secret, "${host}|${rid}:${code}:${action}").slice(0,16)
+ */
+function _generateFeedbackSig(secret, host, rid, code, action) {
+  return crypto.createHmac('sha256', secret)
+    .update(`${host}|${rid}:${code}:${action}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/**
  * 把原始 URL wrap 成 redirect tracking URL
  * 若 tracking disabled 或缺少必要設定，回傳原始 URL
- *
- * @param {string} originalUrl
- * @param {string} shortcode
- * @param {string} rid
- * @param {object} trackingConfig - { enabled, host, redirectBaseUrl }
- * @returns {string}
  */
 function _wrapTrackingUrl(originalUrl, shortcode, rid, trackingConfig) {
   if (!trackingConfig?.enabled) return originalUrl;
@@ -60,6 +65,32 @@ function _wrapTrackingUrl(originalUrl, shortcode, rid, trackingConfig) {
 
   const sig = _generateSig(secret, host, rid, shortcode);
   return `${base}/r?c=${shortcode}&rid=${rid}&sig=${sig}`;
+}
+
+/**
+ * 產生三個 feedback 按鈕連結 HTML
+ * 若 tracking disabled 或缺少必要設定，回傳空字串
+ */
+function _buildFeedbackButtons(shortcode, rid, trackingConfig) {
+  if (!trackingConfig?.enabled) return '';
+  const base = trackingConfig.redirectBaseUrl;
+  const host = trackingConfig.host;
+  const secret = process.env.REDIRECT_SECRET_CURRENT;
+  if (!base || !host || !secret || !shortcode || !rid) return '';
+
+  const goodSig = _generateFeedbackSig(secret, host, rid, shortcode, 'good');
+  const pinSig  = _generateFeedbackSig(secret, host, rid, shortcode, 'pin');
+  const muteSig = _generateFeedbackSig(secret, host, rid, shortcode, 'mute');
+
+  const goodUrl = `${base}/f?action=good&c=${shortcode}&rid=${rid}&sig=${goodSig}`;
+  const pinUrl  = `${base}/f?action=pin&c=${shortcode}&rid=${rid}&sig=${pinSig}`;
+  const muteUrl = `${base}/f?action=mute&c=${shortcode}&rid=${rid}&sig=${muteSig}`;
+
+  return `<div class="feedback-actions" style="margin-top:4px;font-size:0.82em;">` +
+    `<a href="${_esc(goodUrl)}" style="margin-right:8px;text-decoration:none;">👍 好</a>` +
+    `<a href="${_esc(pinUrl)}" style="margin-right:8px;text-decoration:none;">📌 置頂</a>` +
+    `<a href="${_esc(muteUrl)}" style="text-decoration:none;">🔇 少推</a>` +
+    `</div>`;
 }
 
 // ── Stable Token 短碼 ─────────────────────────────────────────────────────────
@@ -317,6 +348,7 @@ function _postToHtml(post, section, rid = '', trackingConfig = null) {
   ${content ? `<div class="summary">${_esc(content)}</div>` : ''}
   ${tags.length ? `<div class="tags">${tags.map(t => _esc(t)).join(' ')}</div>` : ''}
   <a class="link" href="${_esc(url)}" target="_blank">🔗 原文</a>
+  ${_buildFeedbackButtons(shortcode, rid, trackingConfig)}
 </div>`;
 }
 
@@ -335,6 +367,7 @@ function _postToHtmlEE(post, rid = '', trackingConfig = null) {
   <span class="snippet">${snippet}</span>
   <span class="shortcode">${sc}</span>
   <a href="${_esc(url)}" target="_blank">🔗</a>
+  ${_buildFeedbackButtons(shortcode, rid, trackingConfig)}
 </div>`;
 }
 

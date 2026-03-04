@@ -28,6 +28,40 @@ const fs = require('fs');
 const path = require('path');
 // @sendgrid/mail 由 sendDigest() 動態 require（避免無 SENDGRID_API_KEY 時 crash）
 
+// ── Tracking URL 生成 ─────────────────────────────────────────────────────────
+
+/**
+ * 生成 HMAC sig（與 redirect-server.js 共用邏輯）
+ * sig = hmac-sha256(secret, "${host}|${rid}:${code}").slice(0,16)
+ */
+function _generateSig(secret, host, rid, code) {
+  return crypto.createHmac('sha256', secret)
+    .update(`${host}|${rid}:${code}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/**
+ * 把原始 URL wrap 成 redirect tracking URL
+ * 若 tracking disabled 或缺少必要設定，回傳原始 URL
+ *
+ * @param {string} originalUrl
+ * @param {string} shortcode
+ * @param {string} rid
+ * @param {object} trackingConfig - { enabled, host, redirectBaseUrl }
+ * @returns {string}
+ */
+function _wrapTrackingUrl(originalUrl, shortcode, rid, trackingConfig) {
+  if (!trackingConfig?.enabled) return originalUrl;
+  const base = trackingConfig.redirectBaseUrl;
+  const host = trackingConfig.host;
+  const secret = process.env.REDIRECT_SECRET_CURRENT;
+  if (!base || !host || !secret || !shortcode || !rid) return originalUrl;
+
+  const sig = _generateSig(secret, host, rid, shortcode);
+  return `${base}/r?c=${shortcode}&rid=${rid}&sig=${sig}`;
+}
+
 // ── Stable Token 短碼 ─────────────────────────────────────────────────────────
 
 const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -118,7 +152,7 @@ function buildRunSnapshot(runId, rankedPosts, quotaBreakdown = {}) {
  * @param {Object} runStats    — { run_id, email_parse_ok_rate, high_conf_rate, ... }
  * @returns {{ html: string, text: string, subject: string }}
  */
-function buildDigestEmail(rankedPosts, digestConfig, runStats) {
+function buildDigestEmail(rankedPosts, digestConfig, runStats, trackingConfig = null) {
   const capPerSource = digestConfig.topPicksCapPerSource ?? 3;
 
   // Top Picks source caps（同一 source 最多 capPerSource 篇）
@@ -149,8 +183,8 @@ function buildDigestEmail(rankedPosts, digestConfig, runStats) {
   const topPicksWithSc = topPicks.map(p => ({ ...p, shortcode: p.shortcode || calcShortcode(p.id) }));
   const eeWithSc = everythingElse.map(p => ({ ...p, shortcode: p.shortcode || calcShortcode(p.id) }));
 
-  const html = _buildHtml(topPicksWithSc, eeWithSc, overflow, totalCount, today, runStats);
-  const text = _buildText(topPicksWithSc, eeWithSc, overflow, totalCount, today, runStats);
+  const html = _buildHtml(topPicksWithSc, eeWithSc, overflow, totalCount, today, runStats, rid, trackingConfig);
+  const text = _buildText(topPicksWithSc, eeWithSc, overflow, totalCount, today, runStats, rid, trackingConfig);
 
   return { subject, html, text };
 }
@@ -199,7 +233,7 @@ async function sendDigest(smtpConfig, subject, html, text, dryRun = false) {
 
 // ── HTML 建構 ─────────────────────────────────────────────────────────────────
 
-function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runStats) {
+function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runStats, rid = '', trackingConfig = null) {
   const lines = [];
   lines.push(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -233,7 +267,7 @@ function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runSt
     lines.push('<p style="color:#aaa">今日無 Top Picks</p>');
   }
   for (const post of topPicks) {
-    lines.push(_postToHtml(post, 'top_picks'));
+    lines.push(_postToHtml(post, 'top_picks', rid, trackingConfig));
   }
 
   // ── Everything Else（按 category 分段）─────────────────────────────────────
@@ -244,7 +278,7 @@ function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runSt
       if (segPosts.length > 0) {
         lines.push(`<h3>${label}（${segPosts.length}）</h3>`);
         for (const post of segPosts) {
-          lines.push(_postToHtmlEE(post));
+          lines.push(_postToHtmlEE(post, rid, trackingConfig));
         }
       }
     }
@@ -261,15 +295,16 @@ function _buildHtml(topPicks, everythingElse, overflow, totalCount, today, runSt
   return lines.join('\n');
 }
 
-function _postToHtml(post, section) {
+function _postToHtml(post, section, rid = '', trackingConfig = null) {
   const score = post.calibrated_score ?? post.score ?? 0;
   const sourceLabel = _getSourceLabel(post.source);
   const group = _esc(post.group_name || post.group_url || '未知群組');
   const author = post.author ? `— ${_esc(post.author)}` : '';
-  const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
+  const shortcode = post.shortcode || calcShortcode(post.id);
+  const sc = `[#${shortcode}]`;
   const content = post.summary || post.snippet || '';
   const tags = _parseTags(post.tags_json);
-  const url = post.url;
+  const url = _wrapTrackingUrl(post.url, shortcode, rid, trackingConfig);
 
   return `<div class="post">
   <div class="post-header">
@@ -285,13 +320,14 @@ function _postToHtml(post, section) {
 </div>`;
 }
 
-function _postToHtmlEE(post) {
+function _postToHtmlEE(post, rid = '', trackingConfig = null) {
   const sourceLabel = _getSourceLabel(post.source);
   const group = _esc(post.group_name || post.group_url || '未知群組');
   const author = post.author ? `— ${_esc(post.author)}` : '';
   const snippet = post.snippet ? `— ${_esc(post.snippet.slice(0, 80))}` : '';
-  const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
-  const url = post.url;
+  const shortcode = post.shortcode || calcShortcode(post.id);
+  const sc = `[#${shortcode}]`;
+  const url = _wrapTrackingUrl(post.url, shortcode, rid, trackingConfig);
 
   return `<div class="ee-post">
   <span class="source-label">${sourceLabel}</span>
@@ -323,7 +359,7 @@ function _buildHtmlFooter(runStats) {
 
 // ── 純文字版型 ────────────────────────────────────────────────────────────────
 
-function _buildText(topPicks, everythingElse, overflow, totalCount, today, runStats) {
+function _buildText(topPicks, everythingElse, overflow, totalCount, today, runStats, rid = '', trackingConfig = null) {
   const lines = [];
   lines.push(`📰 社群晨報 ${today}`);
   lines.push(`共 ${totalCount} 篇貼文`);
@@ -336,14 +372,16 @@ function _buildText(topPicks, everythingElse, overflow, totalCount, today, runSt
     const label = _getSourceLabel(post.source);
     const group = post.group_name || post.group_url || '未知群組';
     const author = post.author ? ` — ${post.author}` : '';
-    const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
+    const shortcode = post.shortcode || calcShortcode(post.id);
+    const sc = `[#${shortcode}]`;
     const content = post.summary || post.snippet || '';
     const tags = _parseTags(post.tags_json);
+    const url = _wrapTrackingUrl(post.url, shortcode, rid, trackingConfig);
 
     lines.push(`[⭐${score}] ${label} ${group}${author} ${sc}`);
     if (content) lines.push(content);
     if (tags.length) lines.push(tags.join(' '));
-    lines.push(`🔗 ${post.url}`);
+    lines.push(`🔗 ${url}`);
     lines.push('');
   }
 
@@ -358,8 +396,10 @@ function _buildText(topPicks, everythingElse, overflow, totalCount, today, runSt
           const group = post.group_name || post.group_url || '未知群組';
           const author = post.author ? ` — ${post.author}` : '';
           const snippet = post.snippet ? ` — ${post.snippet.slice(0, 80)}` : '';
-          const sc = `[#${post.shortcode || calcShortcode(post.id)}]`;
-          lines.push(`${srcLabel} ${group}${author}${snippet} ${sc} ${post.url}`);
+          const eeShortcode = post.shortcode || calcShortcode(post.id);
+          const sc = `[#${eeShortcode}]`;
+          const eeUrl = _wrapTrackingUrl(post.url, eeShortcode, rid, trackingConfig);
+          lines.push(`${srcLabel} ${group}${author}${snippet} ${sc} ${eeUrl}`);
         }
         lines.push('');
       }

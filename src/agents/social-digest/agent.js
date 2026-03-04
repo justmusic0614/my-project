@@ -484,7 +484,8 @@ async function run(args) {
         high_conf_rate: stats.high_conf_rate,
         l2_success_rate: stats.l2_success_rate,
       };
-      const { subject, html, text } = buildDigestEmail(rankedWithSc, digestConfig, runStatsForEmail);
+      const trackingConfig = config.tracking || null;
+      const { subject, html, text } = buildDigestEmail(rankedWithSc, digestConfig, runStatsForEmail, trackingConfig);
 
       // 儲存 latest.html（dry-run 也存）
       const latestHtmlPath = path.join(runtimePath, 'latest.html');

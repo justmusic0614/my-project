@@ -1,8 +1,9 @@
-// Two-Stage Summarize — 用 Anthropic API 生成三版市場摘要
-// Stage 1 (Haiku)：快速對所有新聞打 P0-P3 優先級，成本極低
-// Stage 2 (Sonnet)：對 Top 10 精煉 → 30秒版 / 2分鐘版 / 話術版
+// Two-Stage Summarize — 生成三版市場摘要（透過 llm-client 統一路由）
+// Stage 1 (screening)：快速對所有新聞打 P0-P3 優先級，成本極低
+// Stage 2 (analysis)：對 Top 10 精煉 → 30秒版 / 2分鐘版 / 話術版
 
-const https = require('https');
+const path = require('path');
+const llmClient = require(path.join(__dirname, '../../../kanban-dashboard/server/services/llm-client'));
 const { createLogger } = require('../shared/logger');
 const costLedger = require('./cost-ledger');
 
@@ -10,12 +11,9 @@ const logger = createLogger('two-stage-summarize');
 
 class TwoStageSummarizer {
   constructor(config = {}) {
-    this.apiKey = process.env.ANTHROPIC_API_KEY;
-    this.baseUrl = 'api.anthropic.com';
-    this.apiVersion = '2023-06-01';
-    this.stage1Model = config.stage1Model || 'claude-haiku-4-5-20251001';
-    this.stage2Model = config.stage2Model || 'claude-sonnet-4-5-20250929';
-    this.enabled = !!(this.apiKey);
+    this.enabled = true;
+    this.stage1AgentId = 'market-digest-screening';
+    this.stage2AgentId = 'market-digest-analysis';
   }
 
   /**
@@ -94,8 +92,8 @@ ${allNews.map((n, i) => `${i + 1}. ${n}`).join('\n')}
 
 按照 P0→P1→P2→P3 順序排列，同一優先級內按重要性排序。`;
 
-    const response = await this._callAPI(this.stage1Model, prompt, 1500);
-    costLedger.recordLlmUsage('haiku', response.usage);
+    const response = await this._callAPI(this.stage1AgentId, prompt, 1500);
+    costLedger.recordLlmUsage('screening', response.usage);
 
     try {
       const parsed = JSON.parse(this._extractJson(response.content));
@@ -133,8 +131,8 @@ ${newsText}
   "clientPitch": "話術版，用跟客戶面對面說話的自然語氣，完整 2-3 段，附關鍵數字，結尾給出短期操作建議"
 }`;
 
-    const response = await this._callAPI(this.stage2Model, prompt, 2000);
-    costLedger.recordLlmUsage('sonnet', response.usage);
+    const response = await this._callAPI(this.stage2AgentId, prompt, 2000);
+    costLedger.recordLlmUsage('analysis', response.usage);
 
     try {
       const parsed = JSON.parse(this._extractJson(response.content));
@@ -203,56 +201,16 @@ ${newsText}
   }
 
   /**
-   * 呼叫 Anthropic API
+   * 呼叫 LLM API（透過 llm-client 統一路由）
+   * @param {string} agentId - 對應 llm-config.json 的 agentModels key
+   * @param {string} prompt
+   * @param {number} maxTokens
    */
-  async _callAPI(model, prompt, maxTokens = 1000) {
-    const body = JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    return new Promise((resolve, reject) => {
-      const options = {
-        hostname: this.baseUrl,
-        port: 443,
-        path: '/v1/messages',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': this.apiVersion,
-          'Content-Length': Buffer.byteLength(body)
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              const parsed = JSON.parse(data);
-              resolve({
-                content: parsed.content[0].text,
-                usage: parsed.usage || {}
-              });
-            } catch (e) {
-              reject(new Error(`Anthropic JSON parse error: ${e.message}`));
-            }
-          } else {
-            reject(new Error(`Anthropic API ${res.statusCode}: ${data.slice(0, 300)}`));
-          }
-        });
-      });
-
-      req.on('error', reject);
-      req.setTimeout(60000, () => {
-        req.destroy();
-        reject(new Error('Anthropic API timeout (60s)'));
-      });
-      req.write(body);
-      req.end();
+  async _callAPI(agentId, prompt, maxTokens = 1000) {
+    return llmClient.callLLM(prompt, {
+      agentId,
+      maxTokens,
+      source: 'market-digest'
     });
   }
 

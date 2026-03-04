@@ -66,11 +66,12 @@
       }
     }
   ],
-  "lastUpdated": "2026-02-14T12:35:44.333Z",
+  "lastUpdated": "2026-03-05T04:00:00.000Z",
   "agentModels": {
     "deploy-monitor": "gpt-4o-mini",
-    "optimization-advisor": "claude-sonnet-4-5-20250929",
-    "knowledge-digest": "claude-sonnet-4-5-20250929",
-    "market-digest": "claude-sonnet-4-5-20250929"
+    "optimization-advisor": "gpt-4o",
+    "knowledge-digest": "gpt-4o-mini",
+    "market-digest-screening": "gpt-4o-mini",
+    "market-digest-analysis": "gpt-4o"
   }
 }

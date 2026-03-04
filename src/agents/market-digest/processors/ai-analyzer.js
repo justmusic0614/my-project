@@ -21,18 +21,12 @@
 
 'use strict';
 
-const Anthropic = require('@anthropic-ai/sdk');
+const path = require('path');
+const llmClient = require(path.join(__dirname, '../../../kanban-dashboard/server/services/llm-client'));
 const { createLogger } = require('../shared/logger');
 const costLedger = require('../shared/cost-ledger');
 
 const logger = createLogger('processor:ai-analyzer');
-
-// Claude 模型 ID（與 config.json anthropic 區塊對齊）
-const MODELS = {
-  haiku:  'claude-haiku-4-5-20251001',
-  sonnet: 'claude-sonnet-4-5-20250929',
-  sonnet46: 'claude-sonnet-4-6-20250514'
-};
 
 // 產業白名單（美股+台股重點產業，AI 提取時需至少匹配 1 個關鍵字）
 const INDUSTRY_WHITELIST = [
@@ -87,14 +81,9 @@ const INDUSTRY_BLACKLIST = [
 
 class AIAnalyzer {
   constructor(config = {}) {
-    this.apiKey      = process.env.ANTHROPIC_API_KEY || '';
-    this.enabled     = !!this.apiKey;
-    this.stage1Model = config.stage1Model || MODELS.haiku;
-    this.stage2Model = config.stage2Model || MODELS.sonnet;
-
-    if (this.enabled) {
-      this.client = new Anthropic({ apiKey: this.apiKey });
-    }
+    this.enabled = true;
+    this.stage1AgentId = 'market-digest-screening';
+    this.stage2AgentId = 'market-digest-analysis';
   }
 
   /**
@@ -192,8 +181,8 @@ ${newsList}
 
 按 P0→P1→P2→P3 排序，同優先級內按重要性降序。`;
 
-    const response = await this._callAPI(this.stage1Model, prompt, 2000);
-    this._recordUsage('haiku', response.usage, newsItems.length);
+    const response = await this._callAPI(this.stage1AgentId, prompt, 2000);
+    this._recordUsage('screening', response.usage, newsItems.length);
 
     let ranked;
     try {
@@ -262,8 +251,8 @@ ${newsList}
 - industryThemes 提取 2-3 個當日最熱門產業，優先選擇台股相關（台積電、鴻海等供應鏈）
 - keyInsights 要有操作參考價值`;
 
-    const response = await this._callAPI(this.stage2Model, prompt, 1500);
-    this._recordUsage('sonnet', response.usage, topNews.length);
+    const response = await this._callAPI(this.stage2AgentId, prompt, 1500);
+    this._recordUsage('analysis', response.usage, topNews.length);
 
     try {
       const parsed = JSON.parse(this._extractJson(response.content));
@@ -379,22 +368,17 @@ ${newsList}
   }
 
   /**
-   * 呼叫 Anthropic API（使用官方 SDK）
+   * 呼叫 LLM API（透過 llm-client 統一路由）
+   * @param {string} agentId - 對應 llm-config.json 的 agentModels key
+   * @param {string} prompt
+   * @param {number} maxTokens
    */
-  async _callAPI(model, prompt, maxTokens = 1000) {
-    const message = await this.client.messages.create({
-      model,
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }]
+  async _callAPI(agentId, prompt, maxTokens = 1000) {
+    return llmClient.callLLM(prompt, {
+      agentId,
+      maxTokens,
+      source: 'market-digest'
     });
-
-    return {
-      content: message.content[0].text,
-      usage: {
-        input_tokens:  message.usage.input_tokens,
-        output_tokens: message.usage.output_tokens
-      }
-    };
   }
 
   /**
@@ -433,11 +417,6 @@ ${newsList}
    * @returns {Promise<{mainThesis:string, playbook:string, crossAssetNarrative:string, skipped:boolean}>}
    */
   async analyzeSundayTactical(phaseResult, weeklyContext) {
-    if (!this.apiKey) {
-      logger.warn('Sunday Tactical: no API key, skipping AI analysis');
-      return { mainThesis: '', playbook: '', crossAssetNarrative: '', skipped: true };
-    }
-
     const prompt = `你是一位專業的市場策略師。根據以下量化數據，為交易者撰寫下週作戰框架。
 
 ## Market Phase
@@ -459,18 +438,10 @@ ${JSON.stringify(weeklyContext, null, 2)}
 - 使用繁體中文`;
 
     try {
-      const client = new Anthropic({ apiKey: this.apiKey });
-      const response = await client.messages.create({
-        model: MODELS.sonnet46,
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }]
-      });
+      const response = await this._callAPI(this.stage2AgentId, prompt, 1024);
+      this._recordUsage('analysis', response.usage, 0);
 
-      const text = response.content?.[0]?.text || '';
-      this._recordUsage(MODELS.sonnet46, response.usage, 0);
-
-      const jsonStr = this._extractJSON(text);
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(this._extractJson(response.content));
 
       return {
         mainThesis: parsed.mainThesis || '',

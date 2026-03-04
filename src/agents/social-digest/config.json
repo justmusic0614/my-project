@@ -62,9 +62,9 @@
   },
 
   "tracking": {
-    "enabled": false,
-    "host": "${REDIRECT_HOST:-localhost}",
-    "redirectBaseUrl": "${REDIRECT_BASE_URL:-}"
+    "enabled": true,
+    "host": "${REDIRECT_HOST:-159.65.136.0:3100}",
+    "redirectBaseUrl": "${REDIRECT_BASE_URL:-http://159.65.136.0:3100}"
   },
 
   "db": {

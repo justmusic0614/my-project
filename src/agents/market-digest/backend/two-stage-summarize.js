@@ -3,7 +3,7 @@
 // Stage 2 (analysis)：對 Top 10 精煉 → 30秒版 / 2分鐘版 / 話術版
 
 const path = require('path');
-const llmClient = require(path.join(__dirname, '../../../kanban-dashboard/server/services/llm-client'));
+const llmClient = require(path.join(__dirname, '../../kanban-dashboard/server/services/llm-client'));
 const { createLogger } = require('../shared/logger');
 const costLedger = require('./cost-ledger');
 

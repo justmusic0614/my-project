@@ -22,7 +22,7 @@
 'use strict';
 
 const path = require('path');
-const llmClient = require(path.join(__dirname, '../../../kanban-dashboard/server/services/llm-client'));
+const llmClient = require(path.join(__dirname, '../../kanban-dashboard/server/services/llm-client'));
 const { createLogger } = require('../shared/logger');
 const costLedger = require('../shared/cost-ledger');
 

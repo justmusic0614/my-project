@@ -170,15 +170,20 @@ class FMPCollector extends BaseCollector {
 
     // EOD 官方收盤（^GSPC / ^IXIC / ^DJI）
     // FMP /historical-price-eod/full 返回直接陣列：[{symbol, date, close, changePercent, ...}]
+    // 注意：FMP 的 changePercent 欄位有時方向錯誤，改為自行計算（今日 close - 前日 close）
     for (const r of eodResults) {
       if (r.status !== 'fulfilled') continue;
       const arr = r.value;
       if (!Array.isArray(arr) || arr.length === 0) continue;
       const latest = arr[0]; // FMP 按日期降序，第一筆為最新交易日
+      const prev   = arr[1]; // 前一個交易日
+      const changePct = (prev && prev.close > 0)
+        ? ((latest.close - prev.close) / prev.close) * 100
+        : latest.changePercent; // fallback：無前日數據時沿用 FMP 欄位
       result[latest.symbol] = {
         symbol:           latest.symbol,
         price:            latest.close,
-        changePercentage: latest.changePercent
+        changePercentage: changePct
       };
     }
 

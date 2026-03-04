@@ -273,6 +273,14 @@ function startServer(port = 3100) {
         return;
       }
 
+      // Step 2b: Prefetch 防護（在驗章前攔截，scanner 不帶正確 sig）
+      if (isPrefetch(req)) {
+        stats.feedback_prefetch_skipped++;
+        res.writeHead(200, FEEDBACK_HEADERS);
+        res.end(JSON.stringify({ ok: true, skipped: 'prefetch' }));
+        return;
+      }
+
       // Step 3: HMAC 驗章（sig_f 含 action）
       if (!verifyFeedbackSig(sig, trackingHost, rid, code, action)) {
         stats.redirect_invalid_sig++;
@@ -305,15 +313,7 @@ function startServer(port = 3100) {
         return;
       }
 
-      // Step 6: Prefetch 防護
-      if (isPrefetch(req)) {
-        stats.feedback_prefetch_skipped++;
-        res.writeHead(200, FEEDBACK_HEADERS);
-        res.end(JSON.stringify({ ok: true, skipped: 'prefetch' }));
-        return;
-      }
-
-      // Step 7: Dedup（同 rid:post_id:action 10 分鐘內只算一次）
+      // Step 6: Dedup（同 rid:post_id:action 10 分鐘內只算一次）
       const recentF = db.db.prepare(`
         SELECT 1 FROM feedback
         WHERE run_id = ? AND post_id = ? AND action = ?
@@ -328,7 +328,7 @@ function startServer(port = 3100) {
         return;
       }
 
-      // Step 8: Transaction — INSERT feedback + UPDATE source weight
+      // Step 7: Transaction — INSERT feedback + UPDATE source weight
       const delta = action === 'pin' ? 0.2 : action === 'good' ? 0.1 : -0.2;
 
       try {

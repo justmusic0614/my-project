@@ -374,11 +374,13 @@ ${newsList}
    * @param {number} maxTokens
    */
   async _callAPI(agentId, prompt, maxTokens = 1000) {
-    return llmClient.callLLM(prompt, {
+    const result = await llmClient.callLLM(prompt, {
       agentId,
       maxTokens,
       source: 'market-digest'
     });
+    // llmClient 回傳 { text, usage, cost }；ai-analyzer 內部使用 response.content
+    return { content: result.text, usage: result.usage };
   }
 
   /**

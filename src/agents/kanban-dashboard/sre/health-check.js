@@ -299,18 +299,17 @@ function registerKanbanDashboardChecks(healthCheck) {
     }
   }, { critical: true, timeout: 6000 });
 
-  // 3. 檢查 Telegram Poller 進程（取代原 cloudflare-tunnel + webhook-url 檢查）
+  // 3. 檢查 openclaw-gateway Telegram 服務
+  // 注意：telegram-poller 已停用（2026-03-09），Telegram 由 openclaw-gateway 內建 plugin 接管
+  // 透過 /api/telegram/health endpoint 驗證 bot 連通性（critical: false，gateway 重啟時短暫不健康屬正常）
   healthCheck.register('telegram-poller', async () => {
     try {
       const processes = await getPm2List();
       const poller = processes.find(p => p.name === 'telegram-poller');
 
-      if (!poller) {
-        throw new Error('telegram-poller process not found in PM2');
-      }
-
-      if (poller.pm2_env.status !== 'online') {
-        throw new Error(`telegram-poller status: ${poller.pm2_env.status}`);
+      // telegram-poller 已停用 — 不再是必要進程，跳過檢查
+      if (!poller || poller.pm2_env.status !== 'online') {
+        return { status: 'disabled', note: 'Telegram handled by openclaw-gateway' };
       }
 
       return {
@@ -322,7 +321,7 @@ function registerKanbanDashboardChecks(healthCheck) {
     } catch (err) {
       throw new Error(`Poller check failed: ${err.message}`);
     }
-  }, { critical: true, timeout: 6000 });
+  }, { critical: false, timeout: 6000 });
 
   // 4. 檢查 VPS 系統負載（動態 threshold = CPU 核心數 × 2，自動適應升級）
   healthCheck.register('system-load', async () => {

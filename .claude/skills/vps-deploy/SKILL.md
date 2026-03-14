@@ -50,6 +50,19 @@ disable-model-invocation: true
    - 可用 agents：`kanban-dashboard`, `market-digest`, `security-patrol`, `knowledge-digest`, `deploy-monitor`, `shared`, `all`
 3. 驗證：健康檢查 + 日誌確認
 
+## VPS 同步後驗證步驟
+
+每次 `git show origin/main:src/... > agents/...` 同步後，必須：
+
+1. **模組 load 驗證**：
+   ```bash
+   node -e "require('./agents/market-digest/backend/llm-client')"
+   # 無錯誤才繼續
+   ```
+2. **欄位對齊確認**：caller 使用的欄位名（如 `.text`）和 callee 回傳欄位名（如 `.content`）是否一致
+3. **env var 確認**：`printenv | grep -E "OPENAI|FMP|SENDGRID"` 確認已 export
+4. **smoke test**：`node agents/[agent]/agent.js --dry-run 2>&1 | tail -20`
+
 ## 參考資料
 
 - [references/environments.md](references/environments.md) — Local / VPS / cron 三種環境差異表

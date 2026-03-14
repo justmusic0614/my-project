@@ -45,6 +45,7 @@ HOME=/home/clawbot
 # 23:00  07:00  Security Patrol 巡邏
 # 23:30  07:30  Market Digest Phase 2 (台股+RSS, 週一-五) ← 最重
 # +每10分  全天  Market Digest Health Check (偏移 2 分鐘)
+# +每20分  01-21 OpenClaw Memory Health Check (偏移 7 分鐘)
 # ============================================================
 
 # ── Market Digest ────────────────────────────────────────────────
@@ -87,6 +88,13 @@ HOME=/home/clawbot
 
 # SRE 日報（UTC 03:00 = 台北 11:00，整合技術債報告）
 0 3 * * * nice -n 10 ~/clawd/agents/security-patrol/sre/patrol-wrapper.sh report >> ~/clawd/agents/security-patrol/logs/cron-report.log 2>&1
+
+# ── OpenClaw Infrastructure ────────────────────────────────────────
+
+# Memory Health Check（每 20 分鐘，:07/:27/:47，避開 market-digest :02/:12/... 偏移）
+# 自動偵測 memory_search 故障（sqlite DB handle 異常）並執行 openclaw memory index --force 修復
+# 限 UTC 01-21，避開 21:30-01:00 市場資料收集高峰
+7,27,47 1-21 * * * flock -n /tmp/hc-memory.lock timeout 180 ~/clawd/sre/memory-health-check.sh >> ~/clawd/logs/memory-health-$(date +\%Y-\%m-\%d).log 2>&1
 
 # ── System ────────────────────────────────────────────────────────
 

@@ -42,3 +42,17 @@ src/agents/kanban-dashboard/data/
 # Claude Code local files
 CLAUDE.local.md
 _backup_before_refactor/
+
+# Claude Code 內部狀態（非工作產出）
+.claude/cost.jsonl
+.claude/plan_snapshots/
+.claude/review_states/
+.claude/status_line.txt
+
+# Review loop 自動生成
+docs/reviews/
+docs/plans/
+
+# Agent 動態生成資料
+src/agents/*/data/runtime/
+src/agents/*/data/*.db

@@ -56,3 +56,6 @@ docs/plans/
 # Agent 動態生成資料
 src/agents/*/data/runtime/
 src/agents/*/data/*.db
+
+# Brain parser 輸出
+data/

@@ -55,7 +55,7 @@
       "optimization-advisor"
     ],
     "services": [
-      "clawdbot-gateway"
+      "openclaw-gateway"
     ],
     "system": {
       "logs": true,

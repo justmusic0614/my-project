@@ -337,7 +337,7 @@ if (require.main === module) {
   node benchmark.js <service>
 
 示例：
-  node benchmark.js clawdbot-gateway
+  node benchmark.js openclaw-gateway
   node benchmark.js knowledge-digest
     `);
     process.exit(1);

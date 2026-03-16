@@ -16,13 +16,13 @@ timestamp() {
 }
 
 # 檢查最近 1 小時的崩潰
-CRASHES=$(journalctl --user -u clawdbot-gateway.service --since "1 hour ago" | grep -c "Unhandled promise rejection" || echo "0")
+CRASHES=$(journalctl --user -u openclaw-gateway.service --since "1 hour ago" | grep -c "Unhandled promise rejection" || echo "0")
 
 if [ "$CRASHES" -gt 0 ]; then
   echo "[$(timestamp)] 發現 $CRASHES 次崩潰（最近 1 小時）"
   
   # 提取崩潰詳情（轉義換行符）
-  LAST_CRASH=$(journalctl --user -u clawdbot-gateway.service --since "1 hour ago" | grep -A5 "Unhandled promise rejection" | tail -10 | tr '\n' ' ' | tr '"' "'")
+  LAST_CRASH=$(journalctl --user -u openclaw-gateway.service --since "1 hour ago" | grep -A5 "Unhandled promise rejection" | tail -10 | tr '\n' ' ' | tr '"' "'")
   
   # 記錄到 JSONL
   printf '{"timestamp":"%s","crashes":%d,"details":"%s"}\n' \

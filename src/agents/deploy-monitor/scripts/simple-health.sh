@@ -16,7 +16,7 @@ echo "📊 服务健康状态"
 echo ""
 
 # 分别检查每个服务
-for service in market-digest knowledge-digest security-patrol clawdbot-gateway; do
+for service in market-digest knowledge-digest security-patrol openclaw-gateway; do
   RESULT=$(node deploy.js health "$service" 2>/dev/null)
   HEALTHY=$(echo "$RESULT" | jq -r '.healthy')
   TYPE=$(echo "$RESULT" | jq -r '.type')

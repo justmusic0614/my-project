@@ -48,9 +48,9 @@
     "git": false,
     "npm": false
   },
-  "clawdbot-gateway": {
+  "openclaw-gateway": {
     "type": "systemd",
-    "service": "clawdbot-gateway.service",
+    "service": "openclaw-gateway.service",
     "git": false,
     "npm": false
   }

@@ -26,7 +26,7 @@
 - market-digest
 - knowledge-digest
 - security-patrol
-- clawdbot-gateway
+- openclaw-gateway
 - deploy-monitor
 
 ### 系統層面

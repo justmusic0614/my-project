@@ -1191,11 +1191,11 @@ clawdbot message send --channel telegram --target REDACTED_CHAT_ID --message "�
 
 **修復：**
 ```bash
-# 檢查 clawdbot-gateway 狀態
-systemctl --user status clawdbot-gateway
+# 檢查 openclaw-gateway 狀態
+systemctl --user status openclaw-gateway
 
 # 重啟 gateway
-systemctl --user restart clawdbot-gateway
+systemctl --user restart openclaw-gateway
 ```
 
 ---

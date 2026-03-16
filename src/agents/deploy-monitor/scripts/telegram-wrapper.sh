@@ -125,6 +125,6 @@ case "$ACTION" in
     echo "  - market-digest"
     echo "  - knowledge-digest"
     echo "  - security-patrol"
-    echo "  - clawdbot-gateway"
+    echo "  - openclaw-gateway"
     ;;
 esac

@@ -39,7 +39,7 @@
    - 異常門檻：>85%
 
 8. **Process 狀態**
-   - clawdbot-gateway
+   - openclaw-gateway
    - node processes
    - 異常門檻：任一 process 未執行
 
@@ -119,7 +119,7 @@ tail -f logs/push.log
     "memory_usage_percent": 85    // Memory 使用率門檻
   },
   "processes": [
-    "clawdbot-gateway",           // 監控的 processes
+    "openclaw-gateway",           // 監控的 processes
     "node"
   ]
 }

@@ -30,9 +30,9 @@
         "script": "node patrol.js status"
       }
     },
-    "clawdbot-gateway": {
+    "openclaw-gateway": {
       "type": "systemd",
-      "service": "clawdbot-gateway.service",
+      "service": "openclaw-gateway.service",
       "path": null,
       "git": false,
       "npm": false,

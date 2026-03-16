@@ -122,11 +122,11 @@ fi
 echo "" >> "$REPORT_FILE"
 echo "[6] Checking for errors in logs..." >> "$REPORT_FILE"
 
-ERROR_COUNT=$(journalctl --user -u clawdbot-gateway --since "2 hours ago" 2>/dev/null | grep -i "error\|exception\|failed" | wc -l)
+ERROR_COUNT=$(journalctl --user -u openclaw-gateway --since "2 hours ago" 2>/dev/null | grep -i "error\|exception\|failed" | wc -l)
 
 if [ "$ERROR_COUNT" -gt 10 ]; then
   echo "⚠️  WARNING: Found $ERROR_COUNT errors in logs (last 2h)" >> "$REPORT_FILE"
-  journalctl --user -u clawdbot-gateway --since "2 hours ago" 2>/dev/null | grep -i "error\|exception\|failed" | tail -5 >> "$REPORT_FILE"
+  journalctl --user -u openclaw-gateway --since "2 hours ago" 2>/dev/null | grep -i "error\|exception\|failed" | tail -5 >> "$REPORT_FILE"
 else
   echo "✅ Log health OK (< 10 errors in 2h)" >> "$REPORT_FILE"
 fi

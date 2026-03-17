@@ -624,6 +624,209 @@ function stats() {
 }
 
 // ============================================================
+// Brain Ingest
+// ============================================================
+
+function slugifyTag(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function brainEntryId(docId, chunkOrder) {
+  return crypto.createHash('sha1').update(`${docId}::${chunkOrder}`).digest('hex').slice(0, 16);
+}
+
+function truncate(str, maxLen) {
+  if (str.length <= maxLen) return str.padEnd(maxLen);
+  return str.slice(0, maxLen - 1) + '…';
+}
+
+async function ingestBrain(chunksFile, opts = {}) {
+  const { yes = false, dryRun = false, rawTags = '' } = opts;
+
+  // dry-run 優先
+  const effectiveDryRun = dryRun;
+
+  // 讀取 chunks.json
+  let chunksData;
+  try {
+    chunksData = JSON.parse(fs.readFileSync(chunksFile, 'utf8'));
+  } catch (e) {
+    console.error(`❌ 無法讀取 ${chunksFile}：${e.message}`);
+    process.exit(1);
+  }
+
+  const docId = chunksData.document_id || '';
+  const docTitle = chunksData.title || docId;
+  const docMeta = chunksData.metadata || {};
+  const sourceUrl = docMeta.source_url || docMeta.url || '';
+  const sourceFile = chunksFile;
+  const parserVersion = chunksData.parser_version || '';
+  const chunks = chunksData.chunks || [];
+
+  if (chunks.length === 0) {
+    console.log('⚠️  chunks.json 無章節資料');
+    process.exit(0);
+  }
+
+  // 嘗試讀取 graph.json（取三元組數量）
+  const chunksPath = require('path').resolve(chunksFile);
+  const graphFile = chunksPath
+    .replace(/[/\\]chunks[/\\]/, '/graph/')
+    .replace(/\.chunks\.json$/, '.graph.json');
+  let graphTriplesCount = 0;
+  let graphFilePath = null;
+  if (fs.existsSync(graphFile)) {
+    try {
+      const g = JSON.parse(fs.readFileSync(graphFile, 'utf8'));
+      graphTriplesCount = g.edge_count || (g.triples || []).length;
+      graphFilePath = graphFile;
+    } catch (_) {}
+  }
+
+  // 正規化 user tags
+  const normalizedUserTags = [...new Set(
+    rawTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+  )];
+
+  // 讀取現有 store（建立 id → entry map）
+  const existingEntries = readAllEntries();
+  const existingMap = new Map(existingEntries.map(e => [e.id, e]));
+
+  // 計算每個 chunk 的動作
+  const plan = chunks.map((chunk, i) => {
+    const chunkOrder = i;
+    const id = brainEntryId(docId, chunkOrder);
+    const sectionSlug = slugifyTag(chunk.section) || `section-${chunkOrder}`;
+    const wordCount = (chunk.text || '').split(/\s+/).filter(Boolean).length;
+
+    const tags = [...normalizedUserTags, 'brain-digest', `section:${sectionSlug}`];
+
+    const entry = {
+      id,
+      title: `${docTitle || docId} — ${chunk.section}`,
+      source: sourceUrl || 'brain-parser',
+      content: chunk.text || '',
+      tags,
+      type: 'brain-chunk',
+      status: 'processed',
+      metadata: {
+        doc_id: docId,
+        parser_version: parserVersion,
+        section: chunk.section,
+        section_slug: sectionSlug,
+        chunk_order: chunkOrder,
+        char_count: chunk.char_count || (chunk.text || '').length,
+        word_count: wordCount,
+        source_file: sourceFile,
+        source_url: sourceUrl || null,
+        ingest_version: '1',
+        graph_triples_count: graphTriplesCount,
+        graph_file: graphFilePath,
+        ai_summarized: true
+      }
+    };
+
+    const existing = existingMap.get(id);
+    let action;
+    if (!existing) {
+      action = 'add';
+      entry.created_at = timestamp();
+      entry.updated_at = timestamp();
+    } else if (existing.content === entry.content) {
+      action = 'skip';
+      entry.created_at = existing.created_at;
+      entry.updated_at = existing.updated_at;
+    } else {
+      action = 'update';
+      entry.created_at = existing.created_at;  // 保留原 created_at
+      entry.updated_at = timestamp();
+    }
+
+    return { entry, action, section: chunk.section, charCount: chunk.char_count || 0 };
+  });
+
+  const counts = { add: 0, update: 0, skip: 0 };
+  plan.forEach(p => counts[p.action]++);
+  const totalChars = plan.reduce((s, p) => s + p.charCount, 0);
+
+  // 印預覽表格
+  console.log('\n📥 Brain Ingest 預覽');
+  console.log('━'.repeat(54));
+  console.log(`來源: ${docTitle || docId}`);
+  console.log(`章節: ${chunks.length} 個 | 總字數: ${totalChars.toLocaleString()} 字`);
+  console.log('');
+  console.log(`  # │ ${'章節'.padEnd(24)} │ ${'字數'.padStart(5)} │ 動作`);
+  console.log(` ───┼─${'─'.repeat(24)}─┼──────┼──────`);
+  plan.forEach((p, i) => {
+    const secLabel = truncate(p.section, 24);
+    const charStr = String(p.charCount).padStart(5);
+    const actionLabel = { add: '新增', update: '更新', skip: '跳過' }[p.action];
+    console.log(`  ${String(i + 1).padStart(1)} │ ${secLabel} │ ${charStr} │ ${actionLabel}`);
+  });
+  console.log('━'.repeat(54));
+  console.log(`新增: ${counts.add} | 更新: ${counts.update} | 跳過: ${counts.skip}`);
+  console.log('');
+
+  // dry-run：只預覽，不詢問，不寫入
+  if (effectiveDryRun) {
+    console.log('（dry-run 模式，不寫入）');
+    return;
+  }
+
+  // 詢問確認（除非 --yes）
+  if (!yes) {
+    const confirmed = await new Promise(resolve => {
+      const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+      rl.question('確認存入知識庫？(y/N): ', answer => {
+        rl.close();
+        resolve(answer.trim() === 'y' || answer.trim() === 'Y');
+      });
+    });
+    if (!confirmed) {
+      console.log('已取消。');
+      return;
+    }
+  }
+
+  // 無需寫入的情況
+  if (counts.add === 0 && counts.update === 0) {
+    console.log('（全部跳過，無需寫入）');
+    return;
+  }
+
+  // 執行 upsert
+  const toWrite = plan.filter(p => p.action !== 'skip');
+  let updatedEntries = [...existingEntries];
+
+  toWrite.forEach(p => {
+    if (p.action === 'add') {
+      updatedEntries.push(p.entry);
+    } else {
+      // update：替換
+      const idx = updatedEntries.findIndex(e => e.id === p.entry.id);
+      if (idx >= 0) updatedEntries[idx] = p.entry;
+    }
+  });
+
+  writeAllEntries(updatedEntries);
+  console.log(`\nIngest complete:`);
+  console.log(`  added:   ${counts.add}`);
+  console.log(`  updated: ${counts.update}`);
+  console.log(`  skipped: ${counts.skip}`);
+
+  // 條件式 reindex
+  console.log('\nTriggering memory reindex...');
+  try {
+    execSync('openclaw memory index --force', { stdio: 'inherit' });
+    console.log('✔ memory index updated');
+  } catch (e) {
+    console.error('✖ memory index failed (exit code ' + (e.status || '?') + ')');
+    console.error('Digest entries were saved successfully.');
+    console.error('Manual retry: openclaw memory index --force');
+  }
+}
+
+// ============================================================
 // CLI 入口
 // ============================================================
 
@@ -681,6 +884,18 @@ if (require.main === module) {
         stats();
         break;
 
+      case 'ingest': {
+        if (!args[1]) { console.log('❌ 請提供 brain-chunks.json 路徑：node digest.js ingest <chunks.json>'); process.exit(1); }
+        const hasYes = args.includes('--yes');
+        const hasDryRun = args.includes('--dry-run');
+        await ingestBrain(args[1], {
+          yes: hasYes,
+          dryRun: hasDryRun,
+          rawTags: getFlag('tags') || ''
+        });
+        break;
+      }
+
       default:
         console.log(`
 Knowledge Digest Agent v2
@@ -688,6 +903,7 @@ Knowledge Digest Agent v2
 指令：
   add-url  <URL>        [--tags=t1,t2] [--title="標題"]   新增 URL（AI 摘要）
   add-note "<內容>"     [--tags=t1,t2] [--title="標題"]   新增筆記
+  ingest   <chunks.json> [--yes] [--dry-run] [--tags=t1,t2]  從 brain-parser 輸出匯入
   query                 [--keyword=詞] [--tags=t] [--days=N] 查詢（含相關筆記）
   daily-review                                              每日複習（3 則加權隨機）
   inbox                                                     收件匣（待處理筆記）
@@ -696,6 +912,11 @@ Knowledge Digest Agent v2
   semantic-search "<問題>"                                  語意搜尋
   weekly                                                    週報
   stats                                                     統計
+
+ingest 模式：
+  （預設）  預覽 → 詢問確認 → 寫入 → reindex
+  --yes     預覽 → 不詢問 → 寫入 → reindex
+  --dry-run 預覽 only，不詢問、不寫入、不 reindex
         `);
     }
   })().catch(err => {

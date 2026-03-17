@@ -32,7 +32,7 @@ class ArchivePublisher {
     this.dailyPath   = config.dailyPath   || path.join(this.basePath, 'daily-brief');
     this.weeklyPath  = config.weeklyPath  || path.join(this.basePath, 'weekly-report');
     this.gitEnabled  = config.gitEnabled !== false; // 預設開啟
-    this.gitWorkDir  = config.gitWorkDir  || path.join(__dirname, '..', '..', '..', '..');
+    this.gitWorkDir  = config.gitWorkDir  || this._findGitRoot();
     this.retentionDays = config.retentionDays || RETENTION_DAYS;
 
     this._ensureDirs();
@@ -157,6 +157,20 @@ class ArchivePublisher {
       if (purged > 0) logger.info(`purged ${purged} old files from ${dir}`);
     } catch (err) {
       logger.warn(`purge failed: ${err.message}`);
+    }
+  }
+
+  _findGitRoot() {
+    try {
+      return execSync('git rev-parse --show-toplevel', { cwd: __dirname, encoding: 'utf8', stdio: 'pipe' }).trim();
+    } catch {
+      // fallback：往上找到包含 .git 的目錄
+      let dir = __dirname;
+      for (let i = 0; i < 6; i++) {
+        dir = path.dirname(dir);
+        if (fs.existsSync(path.join(dir, '.git'))) return dir;
+      }
+      return path.join(__dirname, '..'); // 最後 fallback：market-digest 根目錄
     }
   }
 

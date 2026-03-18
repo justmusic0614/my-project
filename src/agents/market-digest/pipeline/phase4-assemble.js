@@ -347,11 +347,21 @@ function _saveResult(result) {
 }
 
 function _getMarketContext(dateStr) {
+  let getCalendarGuard;
   try {
-    const { getCalendarGuard } = require('../processors/calendar-guard');
-    return getCalendarGuard().getMarketContext(dateStr);
+    ({ getCalendarGuard } = require('../shared/calendar-guard'));
   } catch (err) {
-    logger.warn(`failed to get market context for ${dateStr}: ${err.message}`);
+    logger.warn('[phase4][calendar-guard] load failed: ' + err.message);
+    getCalendarGuard = () => null;
+  }
+
+  try {
+    const guard = getCalendarGuard();
+    return guard && typeof guard.getMarketContext === 'function'
+      ? guard.getMarketContext(dateStr)
+      : null;
+  } catch (err) {
+    logger.warn(`[phase4][calendar-guard] getMarketContext failed for ${dateStr}: ${err.message}`);
     return null;
   }
 }

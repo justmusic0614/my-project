@@ -130,6 +130,7 @@ async function run(args) {
   const { summarizeAll } = require('./src/processors/ai-summarizer');
   const { buildDigestEmail, buildRunSnapshot, sendDigest, calcShortcode } = require('./src/publishers/email-publisher');
   const alerter = require('./src/shared/alerter');
+  const { emitAlert } = require('../../core/alert-system');
   const imapCollector = require('./src/collectors/imap-collector');
   const { createClient: createHttpClient } = require('./src/collectors/http-client');
   const hnCollector = require('./src/collectors/hn-collector');
@@ -212,6 +213,14 @@ async function run(args) {
       } catch (imapErr) {
         log('error', `IMAP 收信失敗：${imapErr.message}`);
         stats.errors.push({ code: 'IMAP_ERROR', error: imapErr.message });
+        emitAlert({
+          key: 'collector-fail:social-digest:imap',
+          type: 'collector-fail',
+          source: 'social-digest',
+          component: 'imap',
+          title: 'IMAP 收信失敗',
+          data: { error: imapErr.message }
+        }).catch(() => {});
       }
     }
 
@@ -327,6 +336,14 @@ async function run(args) {
             collector: collectorName,
             error: result.reason?.message || String(result.reason),
           });
+          emitAlert({
+            key: `collector-fail:social-digest:${collectorName}`,
+            type: 'collector-fail',
+            source: 'social-digest',
+            component: collectorName,
+            title: `${collectorName} collector crash`,
+            data: { error: result.reason?.message || String(result.reason) }
+          }).catch(() => {});
         }
       }
 

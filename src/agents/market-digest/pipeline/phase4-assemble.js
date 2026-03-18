@@ -29,6 +29,7 @@ const TelegramPublisher   = require('../publishers/telegram-publisher');
 const ArchivePublisher    = require('../publishers/archive-publisher');
 const AlertPublisher      = require('../publishers/alert-publisher');
 const { analyzeRiskOff }  = require('../analyzers/risk-off-analyzer');
+const { emitAlert }       = require('../../../core/alert-system');
 
 const logger = createLogger('pipeline:phase4');
 
@@ -97,6 +98,14 @@ async function runPhase4(config = {}) {
   if (isFullyDegraded) {
     logger.error('CRITICAL: all data sources failed, sending degradation alert');
     await alerter.criticalNoData(archiveDate);
+    emitAlert({
+      key: `critical-no-data:market-digest:${archiveDate}`,
+      type: 'critical-no-data',
+      source: 'market-digest',
+      component: 'phase4',
+      title: `${archiveDate} 所有資料源失敗`,
+      data: { date: archiveDate }
+    }).catch(() => {});
     const result = { phase: 'phase4', date: archiveDate, status: 'critical-degraded', duration: Date.now() - startTime };
     _saveResult(result);
     return result;
@@ -214,10 +223,31 @@ async function runPhase4(config = {}) {
   // 降級欄位告警
   const degradedFields = phase3.validationReport?.degradedFields || [];
   await alerter.degradationAlert(degradedFields, 7); // 7 個以上才告警
+  if (degradedFields.length >= 3) {
+    emitAlert({
+      key: 'degradation:market-digest:multi-field',
+      type: 'degradation',
+      source: 'market-digest',
+      component: 'validator',
+      title: `${degradedFields.length} 個欄位降級`,
+      data: { fields: degradedFields.slice(0, 5), count: degradedFields.length }
+    }).catch(() => {});
+  }
 
   // 交叉比對告警
   const crossCheckWarns = phase3.validationReport?.crossCheckWarnings || [];
   await alerter.crossCheckAlert(crossCheckWarns);
+  for (const warn of crossCheckWarns) {
+    const field = warn.split(' ')[0] || 'unknown';
+    emitAlert({
+      key: `cross-check-fail:market-digest:${field}`,
+      type: 'cross-check-fail',
+      source: 'market-digest',
+      component: field,
+      title: `${field} 交叉比對失敗`,
+      data: { warning: warn }
+    }).catch(() => {});
+  }
 
   // SRE: Lineage 異常告警
   try {

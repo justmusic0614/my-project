@@ -8,6 +8,13 @@ const path = require('path');
 const { execSync } = require('child_process');
 const crypto = require('crypto');
 
+let _emitAlert;
+try {
+  _emitAlert = require('../../../core/alert-system').emitAlert;
+} catch (_) {
+  _emitAlert = () => Promise.resolve(null); // VPS 獨立執行時 fallback
+}
+
 const DATA_DIR = path.join(__dirname, '../data');
 const STORE_FILE = path.join(DATA_DIR, 'knowledge-store.jsonl');
 const INDEX_FILE = path.join(DATA_DIR, 'index.json');
@@ -652,6 +659,14 @@ async function ingestBrain(chunksFile, opts = {}) {
     chunksData = JSON.parse(fs.readFileSync(chunksFile, 'utf8'));
   } catch (e) {
     console.error(`❌ 無法讀取 ${chunksFile}：${e.message}`);
+    _emitAlert({
+      key: 'ingest-fail:knowledge-digest:brain-ingest',
+      type: 'ingest-fail',
+      source: 'knowledge-digest',
+      component: 'brain-ingest',
+      title: 'brain-ingest 讀取失敗',
+      data: { error: e.message, file: chunksFile }
+    }).catch(() => {});
     process.exit(1);
   }
 
@@ -823,6 +838,14 @@ async function ingestBrain(chunksFile, opts = {}) {
     console.error('✖ memory index failed (exit code ' + (e.status || '?') + ')');
     console.error('Digest entries were saved successfully.');
     console.error('Manual retry: openclaw memory index --force');
+    _emitAlert({
+      key: 'memory-index-fail:knowledge-digest:openclaw-memory',
+      type: 'memory-index-fail',
+      source: 'knowledge-digest',
+      component: 'openclaw-memory',
+      title: 'OpenClaw memory index 失敗',
+      data: { error: `exit code ${e.status || '?'}` }
+    }).catch(() => {});
   }
 }
 

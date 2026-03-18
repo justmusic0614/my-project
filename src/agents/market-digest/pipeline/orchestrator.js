@@ -27,6 +27,7 @@ const { getCalendarGuard } = require('../shared/calendar-guard');
 const { validate } = require('../shared/schemas/daily-brief.schema');
 const { LineageTracker } = require('../sre/lineage-tracker');
 const { getManager: getCBManager } = require('../sre/circuit-breaker');
+const { emitAlert, resolveAlert } = require('../../../core/alert-system');
 
 const { runPhase1 } = require('./phase1-us-collect');
 const { runPhase2 } = require('./phase2-tw-collect');
@@ -144,12 +145,31 @@ class Orchestrator {
         logger.error(`${phase} failed after retries: ${err.message}`);
         results[phase] = { error: err.message, failed: true };
 
+        // Global Alert: phase 失敗
+        emitAlert({
+          key: `pipeline-fail:market-digest:${phase}`,
+          type: 'pipeline-fail',
+          source: 'market-digest',
+          component: phase,
+          title: `${phase} 執行失敗`,
+          data: { error: err.message }
+        }).catch(() => {});
+
         if (cfg.required) {
           logger.error(`Required phase ${phase} failed, aborting pipeline`);
           break;
         }
         // 非必要 phase 失敗不阻斷
         logger.warn(`Non-required ${phase} failed, continuing`);
+      }
+    }
+
+    // Global Alert: 成功的 phase resolve
+    for (const phase of phases) {
+      if (results[phase] && !results[phase].failed) {
+        resolveAlert(`pipeline-fail:market-digest:${phase}`, {
+          source: 'market-digest', component: phase, mode: 'hard'
+        }).catch(() => {});
       }
     }
 

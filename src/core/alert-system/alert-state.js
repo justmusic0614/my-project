@@ -2,8 +2,17 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
-const DEFAULT_STATE_PATH = path.join(__dirname, '../../../data/runtime/alert-state.json');
+function _findRepoRoot() {
+  try {
+    return execSync('git rev-parse --show-toplevel', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  } catch {
+    return path.join(__dirname, '../../..');
+  }
+}
+
+const DEFAULT_STATE_PATH = path.join(_findRepoRoot(), 'data/runtime/alert-state.json');
 
 class AlertState {
   constructor(options = {}) {

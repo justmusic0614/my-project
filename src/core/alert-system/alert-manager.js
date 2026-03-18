@@ -1,5 +1,8 @@
 'use strict';
 
+const fs   = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 const config = require('./config');
 const { normalizeEvent, validateEvent } = require('./schemas');
 const { classifySeverity } = require('./severity');
@@ -9,6 +12,95 @@ const { narrate } = require('./ai-narrator');
 const AlertState = require('./alert-state');
 const AlertAggregator = require('./alert-aggregator');
 const TelegramNotifier = require('./notifier-telegram');
+
+// ── Memory Log 輔助 ──────────────────────────────────────────────────────────
+
+function _findRepoRoot() {
+  try {
+    return execSync('git rev-parse --show-toplevel', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  } catch {
+    return path.join(__dirname, '../../..');
+  }
+}
+
+const _REPO_ROOT = _findRepoRoot();
+
+// Coalesce cache：key → last write timestamp（in-memory，同 process 內）
+const _coalesceCache = new Map();
+const COALESCE_MS = 5 * 60 * 1000; // 5 分鐘
+
+/**
+ * 寫入 alert event 到 workspace memory daily log
+ * 格式：/home/clawbot/clawd/memory/YYYY-MM-DD.md
+ * 只收 WARN/ERROR/CRITICAL，INFO 不進 memory
+ */
+function _appendAlertMemory(event, severity) {
+  try {
+    if (!['WARN', 'ERROR', 'CRITICAL'].includes(severity)) return;
+
+    const key = event.key;
+    const now = Date.now();
+
+    // Coalesce：5 分鐘內同 key 只寫一筆
+    const lastWrite = _coalesceCache.get(key);
+    if (lastWrite && (now - lastWrite) < COALESCE_MS) return;
+    _coalesceCache.set(key, now);
+
+    const isoNow  = new Date(now).toISOString();
+    const dateStr = isoNow.slice(0, 10); // YYYY-MM-DD
+    const hhmm    = isoNow.slice(11, 16); // HH:MM (UTC)
+
+    const memDir  = path.join(_REPO_ROOT, 'memory');
+    const memFile = path.join(memDir, `${dateStr}.md`);
+
+    if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true });
+
+    // 若檔案不存在，建立標題
+    if (!fs.existsSync(memFile)) {
+      fs.writeFileSync(memFile, `# ${dateStr}\n\n## Alert Events\n`, 'utf8');
+    }
+
+    const impact  = event.data?.impact || '';
+    const line1   = `- ${hhmm} ${event.title || key} <!-- ${isoNow} -->`;
+    const line2   = `  - severity: ${severity} | source: ${event.source} | key: ${key}`;
+    const line3   = impact ? `  - impact: ${impact}` : null;
+
+    const entry   = [line1, line2, ...(line3 ? [line3] : [])].join('\n') + '\n';
+    fs.appendFileSync(memFile, entry, 'utf8');
+  } catch {
+    // memory log 失敗不中斷主流程
+  }
+}
+
+/**
+ * 寫入 resolve event 到 workspace memory daily log
+ */
+function _appendResolveMemory(key, source, isoNow) {
+  try {
+    const dateStr = isoNow.slice(0, 10);
+    const hhmm    = isoNow.slice(11, 16);
+
+    const memDir  = path.join(_REPO_ROOT, 'memory');
+    const memFile = path.join(memDir, `${dateStr}.md`);
+
+    if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true });
+
+    if (!fs.existsSync(memFile)) {
+      fs.writeFileSync(memFile, `# ${dateStr}\n\n## Resolved\n`, 'utf8');
+    }
+
+    // 若 ## Resolved 區塊不存在，追加
+    const content = fs.readFileSync(memFile, 'utf8');
+    if (!content.includes('## Resolved')) {
+      fs.appendFileSync(memFile, '\n## Resolved\n', 'utf8');
+    }
+
+    const line = `- ${hhmm} ${key} resolved (source: ${source || 'unknown'}) <!-- ${isoNow} -->\n`;
+    fs.appendFileSync(memFile, line, 'utf8');
+  } catch {
+    // memory log 失敗不中斷主流程
+  }
+}
 
 class AlertManager {
   constructor(options = {}) {
@@ -91,6 +183,9 @@ class AlertManager {
         this._log('warn', `recovery notify failed: ${sendResult.reason}`, { key });
       }
 
+      // Memory log：寫入 resolved 記錄
+      _appendResolveMemory(key, meta.source || result.snapshot?.source, new Date().toISOString());
+
       return { notified: sendResult.ok };
 
     } catch (err) {
@@ -114,6 +209,10 @@ class AlertManager {
         if (!sendResult.ok) {
           this._log('warn', `notify failed for ${group.key}: ${sendResult.reason}`);
         }
+
+        // Memory log：寫入 workspace memory daily log
+        _appendAlertMemory(group, stateContext?.lastSeverity || group.severity || 'WARN');
+
       } catch (err) {
         this._log('error', `flush handler error for ${group.key}: ${err.message}`);
       }

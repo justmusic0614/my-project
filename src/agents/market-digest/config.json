@@ -1,4 +1,5 @@
 {
+  "name": "market-digest",
   "version": "2.0",
   "lastUpdated": "2026-02-19",
 
@@ -429,6 +430,8 @@
   },
 
   "paths": {
+    "src": "backend",
+    "runtime": "data/runtime",
     "data": "data",
     "cache": "data/cache",
     "output": "data/output",

@@ -224,8 +224,15 @@ async function main() {
       break;
     }
 
+    // ── help ──────────────────────────────────────────────────────────────
+    case 'help':
+    case '--help':
+      _printUsage();
+      break;
+
     // ── 未知命令 ───────────────────────────────────────────────────────────
     default:
+      console.error(`Unknown command: ${command}`);
       _printUsage();
       process.exit(1);
   }

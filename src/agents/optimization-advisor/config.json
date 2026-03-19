@@ -1,0 +1,9 @@
+{
+  "name": "optimization-advisor",
+  "version": "1.0.0",
+  "description": "SRE rule-based system optimization advisor",
+  "paths": {
+    "src": "scripts",
+    "runtime": "data/runtime"
+  }
+}

@@ -702,8 +702,13 @@ async function main() {
         result = dbStats();
         break;
       case 'help':
-      default:
+      case '--help':
         result = help();
+        break;
+      default:
+        console.error(`Unknown command: ${command}`);
+        result = help();
+        process.exitCode = 1;
         break;
     }
 

@@ -1,6 +1,6 @@
 # CLAUDE.md - my-project
 
-> **最後更新**: 2026-02-24
+> **最後更新**: 2026-03-20
 > **描述**: JavaScript CLI 工具 + Task Agents
 
 ## 編碼規範
@@ -38,7 +38,8 @@ tools/                # 開發工具
 新 agent 必須遵循 `src/shared/agent-template/`：
 - 強制：`agent.js`、`config.json`、`README.md`、`src/`、`data/runtime/`
 - 選用：`sre/`、`logs/`、`references/`
-- 例外：market-digest 維持 `backend/`
+- 例外：market-digest 維持 `backend/`（替代 `src/`）
+- 例外：kanban-dashboard 是 Web 服務（Express + PM2），無 `agent.js`/`src/`/`data/runtime/`，透過 `node server/index.js` 或 PM2 啟動，這是預期行為
 - 詳細規範見 `.claude/skills/agent-scaffold/SKILL.md`
 
 ## .claude/ 結構

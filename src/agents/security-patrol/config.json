@@ -26,7 +26,7 @@
     { "name": "node", "type": "ps" }
   ],
   "telegram": {
-    "chat_id": "REDACTED_CHAT_ID",
+    "chat_id": "${TELEGRAM_CHAT_ID}",
     "enable_instant_alerts": true,
     "enable_daily_report": true
   }

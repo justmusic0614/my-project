@@ -1,0 +1,9 @@
+{
+  "name": "deploy-monitor",
+  "version": "1.0.0",
+  "description": "Service health monitoring and deployment agent",
+  "paths": {
+    "src": "scripts",
+    "runtime": "data/runtime"
+  }
+}

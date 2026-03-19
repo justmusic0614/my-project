@@ -1,0 +1,9 @@
+{
+  "name": "knowledge-digest",
+  "version": "1.0.0",
+  "description": "Personal knowledge base management agent",
+  "paths": {
+    "src": "scripts",
+    "runtime": "data/runtime"
+  }
+}

@@ -30,6 +30,7 @@ const ArchivePublisher    = require('../publishers/archive-publisher');
 const AlertPublisher      = require('../publishers/alert-publisher');
 const { analyzeRiskOff }  = require('../analyzers/risk-off-analyzer');
 const { emitAlert }       = require('../../../core/alert-system');
+const { appendDailySummary } = require('../../../core/memory/daily-writer');
 
 const logger = createLogger('pipeline:phase4');
 
@@ -46,6 +47,15 @@ async function runPhase4(config = {}) {
   logger.info('=== Phase 4: Assemble & Publish starting ===');
   const startTime = Date.now();
   costLedger.startRun('phase4');
+
+  // ── Daily Writer 追蹤變數 ─────────────────────────────────────────────────
+  let _dwStatus  = 'FAILED';
+  let _dwSummary = '';
+  let _dwAlerts  = 'none';
+  let _dwActions = [];
+  let _dwDate    = _today(); // fallback，正常會被 reportDate 覆蓋
+
+  try {
 
   // 讀取 Phase 3 結果
   const phase3 = _loadPhase3();
@@ -108,6 +118,8 @@ async function runPhase4(config = {}) {
     }).catch(() => {});
     const result = { phase: 'phase4', date: archiveDate, status: 'critical-degraded', duration: Date.now() - startTime };
     _saveResult(result);
+    _dwStatus = 'FAILED'; _dwDate = reportDate; _dwSummary = 'all data sources failed (critical degraded)';
+    _dwAlerts = `critical-no-data:${archiveDate}`; _dwActions = ['pipeline aborted'];
     return result;
   }
 
@@ -307,7 +319,35 @@ async function runPhase4(config = {}) {
     cost:          `$${dailyCost.totalCost?.toFixed(4) ?? '0.0000'}`
   });
 
+  // ── Daily Writer: 設定成功追蹤變數 ──────────────────────────────────────
+  _dwStatus  = result.status === 'ok' ? 'SUCCESS' : 'PARTIAL';
+  _dwDate    = reportDate;
+  _dwSummary = `sent=${telegramResult.sent} brief=${fullBriefText.length}ch cost=$${dailyCost.totalCost?.toFixed(4) ?? '0'}`;
+  _dwAlerts  = degradedFields.length > 0
+    ? `${degradedFields.length} degraded fields`
+    : 'none';
+  _dwActions = [
+    `telegram: ${telegramResult.sent} sent, ${telegramResult.failed} failed`,
+    `archive: ${archiveResult.jsonPath ? 'ok' : 'skipped'}`
+  ];
+
   return result;
+
+  } finally {
+    // ── Daily Writer: 無論成功失敗都寫入 daily log ────────────────────────
+    const dwResult = appendDailySummary({
+      dateStr: _dwDate,
+      summary: _dwSummary,
+      status:  _dwStatus,
+      alerts:  _dwAlerts,
+      actions: _dwActions,
+      context: 'market-digest phase4'
+    }, logger);
+
+    if (!dwResult.ok) {
+      logger.warn('[phase4] daily summary write failed');
+    }
+  }
 }
 
 // ── 輔助函式 ───────────────────────────────────────────────────────────────

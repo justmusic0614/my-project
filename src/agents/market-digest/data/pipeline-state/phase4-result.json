@@ -1,15 +1,15 @@
 {
   "phase": "phase4",
-  "date": "2026-02-19",
+  "date": "2026-03-20",
   "status": "ok",
-  "duration": 2116,
+  "duration": 1454,
   "telegram": {
-    "sent": 1,
+    "sent": 0,
     "failed": 0
   },
   "archive": {
-    "jsonPath": "/Users/suweicheng/projects/my-project/src/agents/market-digest/data/daily-brief/2026-02-19.json",
-    "txtPath": "/Users/suweicheng/projects/my-project/src/agents/market-digest/data/daily-brief/2026-02-19.txt"
+    "jsonPath": "/Users/suweicheng/projects/my-project/src/agents/market-digest/data/daily-brief/2026-03-20.json",
+    "txtPath": "/Users/suweicheng/projects/my-project/src/agents/market-digest/data/daily-brief/2026-03-20.txt"
   },
-  "briefLength": 531
+  "briefLength": 1351
 }

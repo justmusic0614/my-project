@@ -648,6 +648,55 @@ function scanV2(options = {}) {
   return { total: rawFindings.length, notify: toNotify.length, findings: rawFindings, toNotify };
 }
 
+// ── Knowledge-Digest 自動 ingest（HIGH findings）────────────────────────────
+// 每次 scanV2 後把 HIGH priority findings 寫入 knowledge-digest
+// doc_id: advisor:<rule_id>:<entity>（跨週共用，upsert 自動覆蓋）
+
+async function _ingestHighFindingsToKnowledge(findings) {
+  const highFindings = findings.filter(f => f.priority === 'HIGH');
+  if (highFindings.length === 0) return;
+
+  const os   = require('os');
+  const digestScript = path.join(_REPO_ROOT, 'src/agents/knowledge-digest/scripts/digest.js');
+  if (!fs.existsSync(digestScript)) return;
+
+  const chunks = highFindings.map(f => {
+    const text = [
+      `問題：${f.problem}`,
+      `影響：${f.impact}`,
+      `可能原因：${f.possible_cause || '未知'}`,
+      `建議動作：${f.action}`,
+    ].join('\n');
+    // chunk 長度 < 100 → skip（無語意）
+    if (text.length < 100) return null;
+    return { section: `${f.rule_id}:${f.entity}`, text, char_count: text.length };
+  }).filter(Boolean);
+
+  if (chunks.length === 0) return;
+
+  const tmpFile = path.join(os.tmpdir(), `advisor-chunks-${Date.now()}.json`);
+  const chunksData = {
+    document_id: `advisor-sre-findings`,
+    title: `SRE Advisor HIGH Findings`,
+    parser_version: '1.0',
+    metadata: { source_url: '', source_basename: 'advisor.js' },
+    chunks,
+  };
+
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify(chunksData, null, 2), 'utf8');
+    _execSync(
+      `node "${digestScript}" ingest "${tmpFile}" --yes --tags=optimization`,
+      { encoding: 'utf8', stdio: 'inherit' }
+    );
+    console.log(`[advisor] knowledge-digest ingest: ${chunks.length} HIGH findings`);
+  } catch (err) {
+    console.warn(`[advisor] knowledge-digest ingest failed: ${err.message}`);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
 // ── Telegram 推播 ────────────────────────────────────────────────────────────
 
 function _pushAdvisorReport(findings) {
@@ -727,6 +776,8 @@ if (require.main === module) {
       if (!push && result.toNotify.length > 0) {
         console.log(`\n（加上 --push 可推播到 Telegram）`);
       }
+      // 自動 ingest HIGH findings 到 knowledge-digest
+      _ingestHighFindingsToKnowledge(result.findings).catch(() => {});
       break;
     }
 
@@ -742,4 +793,4 @@ Optimization Advisor
   }
 }
 
-module.exports = { scan, generateReport, scanV2 };
+module.exports = { scan, generateReport, scanV2, _ingestHighFindingsToKnowledge };

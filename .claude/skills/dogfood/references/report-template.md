@@ -8,7 +8,10 @@
 | **環境** | local / VPS |
 | **Node.js** | vXX.XX.X |
 | **測試範圍** | CLI + N 個 agents |
+| **環境覆蓋** | local-only / local+VPS |
 | **重點發現** | {一句話 ≤20 字，e.g., "5 個 agents 缺 agent.js；exit code 問題"} |
+
+> 環境覆蓋描述的是本次 dogfood run 的覆蓋情況，不是歷史趨勢。填寫規則：僅 local 執行填 `local-only`；包含 VPS 檢查（`--vps`）填 `local+VPS`。
 
 | 嚴重度 | 數量 |
 | --- | --- |
@@ -71,6 +74,7 @@ node agent.js help
 | E. SRE 設施 | X | Y | |
 | F. 錯誤處理 | X | Y | |
 | G. 跨 Agent 一致性 | X | Y | |
+| H. Golden Scenarios | X | Y | |
 
 ---
 

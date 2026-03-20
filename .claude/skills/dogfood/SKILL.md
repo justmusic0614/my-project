@@ -37,6 +37,7 @@ cat package.json | grep -E '"name"|"version"'
 - 確認環境：local 或 VPS
 - 列出所有 agents 和 CLI 命令
 - 初始化報告檔案：複製 `references/report-template.md` 到 `docs/dogfood-reports/YYYY-MM-DD.md`
+- 檢查環境覆蓋：若 `docs/dogfood-reports/trend.jsonl` 存在且至少 3 行，讀最近 3 行的 `env` 欄位，若全部等於 `"local"`，在報告摘要備註「⚠️ 建議下次搭配 --vps」。若檔案不存在或少於 3 行，跳過此檢查。
 
 ### Step 2 — 系統性探索（主體）
 
@@ -46,6 +47,7 @@ cat package.json | grep -E '"name"|"version"'
 2. 逐一測試每個 agent（checklist B-E 區塊）
 3. 測試錯誤處理（checklist F 區塊）
 4. 檢查跨 agent 一致性（checklist G 區塊）
+5. 端到端行為驗證（依 checklist H 區塊指引選擇代表性 agent）
 
 **每個測試記錄**：
 - 執行的指令
@@ -207,6 +209,9 @@ cat package.json | grep -E '"name"|"version"'
 
 ❌ 發現問題就開始修 code
 ✅ 只記錄，不修復。修復是另一個 session 的事
+
+❌ 連續 3 次 dogfood 都只跑 local（查 trend.jsonl 最近 3 行 env 欄位，全部等於 "local" 才觸發）
+✅ 至少每 2 次 local dogfood 搭配 1 次 --vps dogfood
 ```
 
 ## 參考文件

@@ -80,6 +80,21 @@
 - [ ] config.json schema 統一（都遵循 agent-template 基準）
 - [ ] README.md 格式統一（都有功能、使用方式、資料目錄段落）
 
+## H. Golden Scenarios（端到端行為驗證）
+
+每次 dogfood 選擇 2-3 個代表性 agent，驗證完整使用者旅程（不只是「能跑」，而是「行為正確」）：
+
+- [ ] 目標 agent: `node agent.js help` → 輸出涵蓋 README.md 已承諾的主要使用方式（以 README 中明確列出的 CLI 指令、子命令、旗標範例為準；一般敘述性介紹不納入逐項比對）；若 README 記載了不存在的指令，記為問題
+- [ ] 目標 agent: `node agent.js status`（若支援）→ 輸出包含有意義的狀態資訊，非空白或 placeholder
+- [ ] 目標 agent: 連續執行 `status` 兩次 → 除時間戳等預期波動欄位外，核心狀態欄位應一致，不得出現 race condition 或狀態殘留（「核心狀態欄位」指與 agent 功能狀態相關、且在短時間重跑下不應無故變動的欄位）
+- [ ] 目標 agent: `node agent.js run --dry-run`（若支援）→ 完整流程、無真實 API 呼叫或外部副作用、exit code 0
+
+> **此區塊的重點不是「有沒有這個功能」而是「功能的行為是否符合預期」。**
+> 預期行為來自 README.md 和 help 輸出的承諾。
+> 不追求全 agent 全覆蓋，重點是高價值旅程。
+> 若 agent 不支援某指令，該項記為 N/A，不視為失敗；若 README/help 已承諾支援但實際不存在，才記為問題。
+> N/A 項目不計入附錄的「完成」和「總數」統計。
+
 ## VPS 額外檢查（`--vps` 時）
 
 透過 vps-operator subagent 執行：

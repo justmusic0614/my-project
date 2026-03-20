@@ -8,6 +8,7 @@
 | **環境** | local / VPS |
 | **Node.js** | vXX.XX.X |
 | **測試範圍** | CLI + N 個 agents |
+| **重點發現** | {一句話 ≤20 字，e.g., "5 個 agents 缺 agent.js；exit code 問題"} |
 
 | 嚴重度 | 數量 |
 | --- | --- |
@@ -70,3 +71,19 @@ node agent.js help
 | E. SRE 設施 | X | Y | |
 | F. 錯誤處理 | X | Y | |
 | G. 跨 Agent 一致性 | X | Y | |
+
+---
+
+## 備忘：trend 更新（Step 4）
+
+**trend.md** append 格式：
+
+| YYYY-MM-DD | env | scope | P0 | P1 | P2 | P3 | total | score | 趨勢 | 重點發現 |
+
+**trend.jsonl** append 格式（v1 schema，一次性寫入完整一行）：
+
+```json
+{"v":1,"date":"YYYY-MM-DD","env":"local","scope":"...","P0":0,"P1":0,"P2":0,"P3":0,"total":0,"score":0,"score_delta":null,"trend_marker":"—","highlight_short":"...","highlight_tags":["ERR","CFG"],"highlight_type":"error"}
+```
+
+> trend 更新失敗時，告知使用者但不影響報告和 Step 5。

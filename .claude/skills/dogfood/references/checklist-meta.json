@@ -1,0 +1,13 @@
+{
+  "description": "已加入 checklist 的建議紀錄，供 Step 5 去重。key 是語意描述（kebab-case，檢查目標+驗證條件）。key 在 items 中不可重複。",
+  "item_schema": {
+    "key": "string — 語意 key，kebab-case，items 中唯一",
+    "block": "string — A-G 區塊代號",
+    "cmd": "string — 完整可執行指令",
+    "expect": "string — 正常時的具體輸出",
+    "fail": "string — 異常時的具體輸出",
+    "source_issue": "string — ISSUE-NNN",
+    "added_at": "string — YYYY-MM-DD 格式"
+  },
+  "items": []
+}

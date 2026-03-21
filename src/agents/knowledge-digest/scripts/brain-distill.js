@@ -21,8 +21,20 @@ const { execSync } = require('child_process');
 
 const SCRIPT_DIR = __dirname;
 const AGENT_ROOT = path.resolve(SCRIPT_DIR, '..');
-const SHARED_DIR = path.resolve(AGENT_ROOT, '..', '..', 'shared');
-const PROJECT_ROOT = path.resolve(AGENT_ROOT, '..', '..', '..');
+
+// PROJECT_ROOT: 向上搜尋含 .env 的目錄（相容 my-project src/ 結構和 VPS 無 src/ 結構）
+function findProjectRoot(startDir) {
+  let dir = startDir;
+  for (let i = 0; i < 6; i++) {
+    if (fs.existsSync(path.join(dir, '.env'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(AGENT_ROOT, '..', '..', '..'); // fallback
+}
+const PROJECT_ROOT = findProjectRoot(AGENT_ROOT);
+const SHARED_DIR = path.join(PROJECT_ROOT, 'shared');
 
 const PROMPT_PATH = path.join(SHARED_DIR, 'prompts', 'brain_v1.md');
 const BRAIN_PARSER_PATH = path.join(PROJECT_ROOT, 'tools', 'brain-parser.py');

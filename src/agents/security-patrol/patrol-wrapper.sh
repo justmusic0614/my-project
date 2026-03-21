@@ -97,7 +97,7 @@ send_telegram() {
 # CRITICAL 告警永遠推播；MEDIUM/HIGH 在冷卻期內不重複推播
 should_send_alert() {
   local ALERT_TYPE="$1"
-  local SEVERITY="$2"
+  local SEVERITY="${2:-}"
 
   # CRITICAL 永遠推播，不受冷卻限制
   [ "$SEVERITY" = "CRITICAL" ] && return 0
@@ -308,7 +308,7 @@ mode_report() {
   LARGE_LOGS=$(find "$WORKSPACE/agents" "$HOME/.openclaw/logs" -maxdepth 4 \
     \( -name "*.log" -o -name "*.jsonl" \) -size +50M \
     -not -path "*/node_modules/*" 2>/dev/null)
-  LARGE_LOG_COUNT=$(echo "$LARGE_LOGS" | grep -c . 2>/dev/null || echo "0")
+  LARGE_LOG_COUNT=$([ -n "$LARGE_LOGS" ] && echo "$LARGE_LOGS" | grep -c . || echo 0)
   if [ "${LARGE_LOG_COUNT:-0}" -gt 0 ]; then
     DEBT_LINES="${DEBT_LINES}⚠️ 大型日誌 (>50MB) ${LARGE_LOG_COUNT} 個：\n"
     while IFS= read -r logfile; do

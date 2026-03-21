@@ -2,7 +2,7 @@
 // 供 server/routes/telegram.js 和 scripts/telegram-poller.js 共用
 
 const https = require('https');
-const { execSync } = require('child_process');
+const { execSync, exec } = require('child_process');
 
 /**
  * 發送 Telegram 訊息
@@ -127,4 +127,62 @@ async function forwardToOpenClaw(text) {
   }
 }
 
-module.exports = { sendTelegramReply, forwardToOpenClaw };
+/**
+ * 執行 brain-distill.js 蒸餾腳本
+ * @param {string} payload - 使用者輸入（純文字或 URL）
+ * @param {string} jobId - 任務 ID（brain-{timestamp}）
+ * @returns {Promise<{ok: boolean, summary?: string, docId?: string, error?: string}>}
+ */
+async function executeBrainDistill(payload, jobId) {
+  return new Promise((resolve) => {
+    const escapedPayload = payload.replace(/'/g, "'\\''");
+    const nvmBinDir = '/home/clawbot/.nvm/versions/node/v22.22.0/bin';
+    const scriptPath = '/home/clawbot/clawd/agents/knowledge-digest/scripts/brain-distill.js';
+
+    // 動態 timeout：YouTube 240s，其他 120s
+    const isYoutube = /youtube\.com|youtu\.be/i.test(payload);
+    const timeoutMs = isYoutube ? 240000 : 120000;
+
+    const command = [
+      `export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh"`,
+      `export PATH="$HOME/.local/bin:${nvmBinDir}:$PATH"`,
+      `export GROQ_API_KEY="$(grep '^export GROQ_API_KEY=' ~/.bashrc | sed 's/^export GROQ_API_KEY=//' | tr -d '"')"`,
+      `export SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP=1`,
+      `node "${scriptPath}" '${escapedPayload}' --job-id='${jobId}'`,
+    ].join(' && ');
+
+    exec(command, {
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: 20 * 1024 * 1024,
+      shell: '/bin/bash',
+      env: { ...process.env, PATH: `${nvmBinDir}:${process.env.PATH || ''}` },
+    }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[BrainDistill:${jobId}] Error:`, error.message);
+        if (stderr) console.error(`[BrainDistill:${jobId}] stderr:`, stderr.substring(0, 500));
+        const msg = error.signal === 'SIGTERM'
+          ? `蒸餾超時（${timeoutMs / 1000}秒）`
+          : error.message;
+        resolve({ ok: false, error: msg });
+        return;
+      }
+      // 用 delimiter 精準擷取 JSON（避免 summarize/parser log 干擾）
+      const match = stdout.match(/---RESULT_START---([\s\S]*?)---RESULT_END---/);
+      if (!match) {
+        console.error(`[BrainDistill:${jobId}] No result delimiter found. stdout:`, stdout.substring(0, 500));
+        resolve({ ok: false, error: '蒸餾腳本未輸出結果' });
+        return;
+      }
+      try {
+        const result = JSON.parse(match[1].trim());
+        resolve(result);
+      } catch (e) {
+        console.error(`[BrainDistill:${jobId}] Invalid JSON:`, match[1].substring(0, 500));
+        resolve({ ok: false, error: '蒸餾腳本輸出格式錯誤' });
+      }
+    });
+  });
+}
+
+module.exports = { sendTelegramReply, forwardToOpenClaw, executeBrainDistill };

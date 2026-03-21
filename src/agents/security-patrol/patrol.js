@@ -518,7 +518,7 @@ function checkMemoryHealth() {
       escalate('ERROR');
       return { ...defaultResult, status: 'ERROR' };
     }
-    const rawPaths = ocConfig?.memorySearch?.paths;
+    const rawPaths = ocConfig?.memorySearch?.paths ?? ocConfig?.agents?.defaults?.memorySearch?.paths;
     if (!Array.isArray(rawPaths) || rawPaths.length === 0) {
       escalate('WARNING');
       return { configured: false, contains_workspace_memory: false, contains_memory_dir: false, expanded_paths: [], status: 'WARNING' };

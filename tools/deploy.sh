@@ -19,7 +19,7 @@ BACKUP_DIR="/home/clawbot/clawd/backups/pre-deploy"
 DEPLOY_LOG="/home/clawbot/clawd/logs/deploy.log"
 
 # ── 支援的 agent 清單（bash 3.2 相容，不用 declare -A）────────────────────────
-ALL_AGENTS="kanban-dashboard market-digest security-patrol knowledge-digest deploy-monitor social-digest shared"
+ALL_AGENTS="kanban-dashboard market-digest security-patrol knowledge-digest optimization-advisor deploy-monitor social-digest shared"
 
 # 查詢 agent 要同步的子路徑（"." = 整個目錄）
 get_agent_paths() {
@@ -28,8 +28,9 @@ get_agent_paths() {
     kanban-dashboard) echo "server scripts sre ecosystem.config.js package.json" ;;
     market-digest)    echo "." ;;
     security-patrol)  echo "patrol.js patrol-wrapper.sh config.json setup-cron.sh" ;;
-    knowledge-digest) echo "scripts" ;;
-    deploy-monitor)   echo "scripts" ;;
+    knowledge-digest)      echo "scripts" ;;
+    optimization-advisor)  echo "scripts" ;;
+    deploy-monitor)        echo "scripts" ;;
     social-digest)    echo "." ;;
     shared)           echo "." ;;
     *) echo ""; return 1 ;;

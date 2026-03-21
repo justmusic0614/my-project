@@ -21,7 +21,7 @@
     "processes"
   ],
   "processes": [
-    { "name": "openclaw-gateway", "type": "systemd", "restartAlertThreshold": 10, "memoryAlertMB": 200 },
+    { "name": "openclaw-gateway", "type": "systemd", "restartAlertThreshold": 10, "memoryAlertMB": 600 },
     { "name": "kanban-dashboard", "type": "pm2" },
     { "name": "node", "type": "ps" }
   ],

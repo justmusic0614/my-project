@@ -1,6 +1,8 @@
 'use strict';
 
 const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 // SILENT_REPLY_TOKEN: handler 回傳此值代表不自動回覆
 const SILENT_REPLY_TOKEN = 'NO_REPLY';
@@ -53,11 +55,55 @@ function executeBrainDistill(payload, jobId) {
   });
 }
 
+const BRAIN_DATA_DIR = '/home/clawbot/clawd/agents/knowledge-digest/data/runtime/brain';
+
 // ── Plugin Entry ────────────────────────────────────────────────────────────
 
 module.exports = function brainCommandPlugin(api) {
   const sendTelegram = api.runtime.channel.telegram.sendMessageTelegram;
 
+  // ── brain-search command ─────────────────────────────────────────────────
+  api.registerCommand({
+    name: 'brain-search',
+    description: '查詢蒸餾全文：/brain-search <jobId>',
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: async (ctx) => {
+      const jobId = (ctx.args || '').trim();
+
+      if (!jobId) {
+        return { text: '請提供 Job ID\n用法：/brain-search <jobId>\n例如：/brain-search brain-1774106895702' };
+      }
+
+      // 只允許 brain-<digits> 格式，防止 path traversal
+      if (!/^brain-\d+$/.test(jobId)) {
+        return { text: `無效的 Job ID 格式：${jobId}\n格式應為 brain-<timestamp>，例如 brain-1774106895702` };
+      }
+
+      const filePath = path.join(BRAIN_DATA_DIR, `${jobId}.md`);
+
+      let content;
+      try {
+        content = fs.readFileSync(filePath, 'utf8');
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          return { text: `找不到 Job ID：${jobId}\n請確認 ID 是否正確` };
+        }
+        console.error(`[brain-search] Read error for ${jobId}:`, err.message);
+        return { text: `讀取失敗：${err.message}` };
+      }
+
+      // Telegram 訊息限制 4096 字元，超過就截斷
+      const MAX_LEN = 4000;
+      const reply = content.length > MAX_LEN
+        ? content.substring(0, MAX_LEN) + `\n\n…（已截斷，全文共 ${content.length} 字元）`
+        : content;
+
+      return { text: reply };
+    },
+  });
+
+  // ── brain command ────────────────────────────────────────────────────────
   api.registerCommand({
     name: 'brain',
     description: '知識蒸餾：/brain <文字或URL>',

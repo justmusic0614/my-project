@@ -364,8 +364,50 @@ mode_report() {
     DEBT_LINES="${DEBT_LINES}✅ 無過期 cleanup 備份\n"
   fi
 
-  # 4. 組合完整日報並推播
-  log "  [3/3] 推播日報..."
+  # 4. Memory Pipeline 健康診斷
+  log "  [3/4] Memory Pipeline 健康診斷..."
+  MEMORY_HEALTH_TEXT="（無法取得）"
+  MEMORY_HEALTH_JSON=""
+  MEMORY_HEALTH_SEVERITY="UNKNOWN"
+
+  MEMORY_HEALTH_RESULT=$(node -e "
+    try {
+      const { checkMemoryHealth, formatMemoryHealthText } = require('$PATROL_JS');
+      const health = checkMemoryHealth();
+      console.log(JSON.stringify({ text: formatMemoryHealthText(health), json: health }));
+    } catch(e) {
+      console.log(JSON.stringify({ text: '🔴 Memory health check failed: ' + e.message, json: null }));
+    }
+  " 2>/dev/null || echo '{"text":"（health check 執行失敗）","json":null}')
+
+  MEMORY_HEALTH_TEXT=$(echo "$MEMORY_HEALTH_RESULT" | node -e "
+    const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+    console.log(d.text || '（無法取得）');
+  " 2>/dev/null || echo "（health check 輸出解析失敗）")
+
+  MEMORY_HEALTH_SEVERITY=$(echo "$MEMORY_HEALTH_RESULT" | node -e "
+    const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+    console.log((d.json && d.json.severity) || 'UNKNOWN');
+  " 2>/dev/null || echo "UNKNOWN")
+
+  # 儲存 JSON 結果
+  echo "$MEMORY_HEALTH_RESULT" | node -e "
+    const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+    if (d.json) require('fs').writeFileSync('$SCRIPT_DIR/data/runtime/memory-health-latest.json', JSON.stringify(d.json, null, 2));
+  " 2>/dev/null || true
+
+  # 若 WARNING/ERROR 且符合 cooldown，單獨推播 memory health 告警
+  if [ "$MEMORY_HEALTH_SEVERITY" = "WARNING" ] || [ "$MEMORY_HEALTH_SEVERITY" = "ERROR" ]; then
+    if should_send_alert "memory_health"; then
+      send_telegram "🧠 Memory Pipeline 告警
+
+$MEMORY_HEALTH_TEXT" || true
+      update_cooldown "memory_health"
+    fi
+  fi
+
+  # 5. 組合完整日報並推播
+  log "  [4/4] 推播日報..."
   DEBT_STATUS_ICON="✅"
   [ "$DEBT_ISSUES" -gt 0 ] && DEBT_STATUS_ICON="⚠️"
 
@@ -376,6 +418,8 @@ $PATROL_SUMMARY
 
 【技術債掃描】 $DEBT_STATUS_ICON ($DEBT_ISSUES/7 項異常)
 $(echo -e "$DEBT_LINES" | head -14)
+【Memory Pipeline】
+$MEMORY_HEALTH_TEXT
 ━━━━━━━━━━━━━━━━━━
 ⚠️ 免責聲明：本報告僅供運維參考
 📡 Security Patrol + Tech Debt Monitor"

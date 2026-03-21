@@ -396,6 +396,194 @@ async function generateAiInsight(results) {
   }
 }
 
+// ── Memory Pipeline Health Check ─────────────────────────────────────────────
+
+const HOME_DIR = process.env.HOME || '/home/clawbot';
+
+const MEMORY_HEALTH_PATHS = {
+  memory_dir:          path.join(HOME_DIR, 'clawd/memory'),
+  knowledge_store:     path.join(HOME_DIR, 'clawd/agents/knowledge-digest/data/knowledge-store.jsonl'),
+  openclaw_memory_md:  path.join(HOME_DIR, '.openclaw/MEMORY.md'),
+  workspace_memory_md: path.join(HOME_DIR, 'clawd/MEMORY.md'),
+  openclaw_config:     path.join(HOME_DIR, '.openclaw/openclaw.json'),
+};
+
+function checkMemoryHealth() {
+  const now = Date.now();
+  const checks = {};
+  let overallSeverity = 'INFO';
+
+  const escalate = (level) => {
+    if (level === 'ERROR') overallSeverity = 'ERROR';
+    else if (level === 'WARNING' && overallSeverity !== 'ERROR') overallSeverity = 'WARNING';
+  };
+
+  // ── check 1: daily_log ──────────────────────────────────────────────────────
+  const dailyLogCheck = (() => {
+    try {
+      if (!fs.existsSync(MEMORY_HEALTH_PATHS.memory_dir)) {
+        escalate('ERROR');
+        return { latest_file: null, age_days: null, recent_files: [], status: 'ERROR' };
+      }
+      const all = fs.readdirSync(MEMORY_HEALTH_PATHS.memory_dir)
+        .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+        .sort();
+      if (all.length === 0) {
+        escalate('WARNING');
+        return { latest_file: null, age_days: null, recent_files: [], status: 'WARNING' };
+      }
+      const latest = all[all.length - 1];
+      const latestPath = path.join(MEMORY_HEALTH_PATHS.memory_dir, latest);
+      const mtime = fs.statSync(latestPath).mtime.getTime();
+      const ageDays = Math.floor((now - mtime) / 86400000);
+      const recentFiles = all.slice(-3).reverse();
+      let status = 'OK';
+      if (ageDays >= 5) { status = 'ERROR'; escalate('ERROR'); }
+      else if (ageDays >= 2) { status = 'WARNING'; escalate('WARNING'); }
+      return { latest_file: latest, age_days: ageDays, recent_files: recentFiles, status };
+    } catch (e) {
+      escalate('ERROR');
+      return { latest_file: null, age_days: null, recent_files: [], status: 'ERROR' };
+    }
+  })();
+  checks.daily_log = dailyLogCheck;
+
+  // ── check 2: knowledge_digest ───────────────────────────────────────────────
+  const kdCheck = (() => {
+    if (!fs.existsSync(MEMORY_HEALTH_PATHS.knowledge_store)) {
+      escalate('WARNING');
+      return { entries_count: 0, latest_update: null, parse_errors: 0, status: 'WARNING' };
+    }
+    try {
+      const lines = fs.readFileSync(MEMORY_HEALTH_PATHS.knowledge_store, 'utf8').split('\n');
+      let count = 0;
+      let parseErrors = 0;
+      let latestUpdate = null;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          count++;
+          const ts = entry.updated_at || entry.created_at || null;
+          if (ts) {
+            const t = new Date(ts).getTime();
+            if (!isNaN(t) && (!latestUpdate || t > new Date(latestUpdate).getTime())) {
+              latestUpdate = ts;
+            }
+          }
+        } catch {
+          parseErrors++;
+        }
+      }
+      let status = 'OK';
+      if (parseErrors > 0) { status = 'WARNING'; escalate('WARNING'); }
+      if (count < 10) { status = 'WARNING'; escalate('WARNING'); }
+      return { entries_count: count, latest_update: latestUpdate, parse_errors: parseErrors, status };
+    } catch (e) {
+      escalate('ERROR');
+      return { entries_count: 0, latest_update: null, parse_errors: 0, status: 'ERROR' };
+    }
+  })();
+  checks.knowledge_digest = kdCheck;
+
+  // ── check 3: memory_md ──────────────────────────────────────────────────────
+  const memMdCheck = (() => {
+    const getBytes = (p) => {
+      if (!fs.existsSync(p)) return null;
+      return fs.statSync(p).size;
+    };
+    const ocBytes = getBytes(MEMORY_HEALTH_PATHS.openclaw_memory_md);
+    const wsBytes = getBytes(MEMORY_HEALTH_PATHS.workspace_memory_md);
+    let status = 'OK';
+    if (ocBytes === null || wsBytes === null) { status = 'ERROR'; escalate('ERROR'); }
+    else if (ocBytes === 0 || wsBytes === 0) { status = 'WARNING'; escalate('WARNING'); }
+    return { openclaw_bytes: ocBytes, workspace_bytes: wsBytes, status };
+  })();
+  checks.memory_md = memMdCheck;
+
+  // ── check 4: memory_search_paths ────────────────────────────────────────────
+  const pathsCheck = (() => {
+    const defaultResult = {
+      configured: false, contains_workspace_memory: false,
+      contains_memory_dir: false, expanded_paths: [], status: 'ERROR',
+    };
+    if (!fs.existsSync(MEMORY_HEALTH_PATHS.openclaw_config)) {
+      escalate('ERROR');
+      return defaultResult;
+    }
+    let ocConfig;
+    try {
+      ocConfig = JSON.parse(fs.readFileSync(MEMORY_HEALTH_PATHS.openclaw_config, 'utf8'));
+    } catch {
+      escalate('ERROR');
+      return { ...defaultResult, status: 'ERROR' };
+    }
+    const rawPaths = ocConfig?.memorySearch?.paths;
+    if (!Array.isArray(rawPaths) || rawPaths.length === 0) {
+      escalate('WARNING');
+      return { configured: false, contains_workspace_memory: false, contains_memory_dir: false, expanded_paths: [], status: 'WARNING' };
+    }
+    // 展開 ~ 為實際 home 路徑
+    const expanded = rawPaths.map(p => p.replace(/^~/, HOME_DIR));
+    const wsMemMd = MEMORY_HEALTH_PATHS.workspace_memory_md;
+    const memDir = MEMORY_HEALTH_PATHS.memory_dir;
+    const containsWs = expanded.some(p => p === wsMemMd || p === wsMemMd + '/');
+    const containsDir = expanded.some(p => p === memDir || p === memDir + '/');
+    let status = 'OK';
+    if (!containsWs) { status = 'WARNING'; escalate('WARNING'); }
+    return { configured: true, contains_workspace_memory: containsWs, contains_memory_dir: containsDir, expanded_paths: expanded, status };
+  })();
+  checks.memory_search_paths = pathsCheck;
+
+  return {
+    report_version: '1',
+    ok: true,
+    severity: overallSeverity,
+    timestamp: new Date().toISOString(),
+    checked_paths: MEMORY_HEALTH_PATHS,
+    checks,
+  };
+}
+
+function formatMemoryHealthText(health) {
+  const { severity, checks } = health;
+  const icon = severity === 'ERROR' ? '🔴' : severity === 'WARNING' ? '🟡' : '✅';
+  const lines = [`${icon} Memory Pipeline — ${severity}`];
+
+  const dl = checks.daily_log;
+  if (dl.status === 'OK') {
+    lines.push(`  ✅ Daily log: ${dl.latest_file}（${dl.age_days}天前）`);
+  } else if (dl.latest_file) {
+    lines.push(`  ${dl.status === 'ERROR' ? '🔴' : '🟡'} Daily log: ${dl.latest_file}（${dl.age_days}天前）`);
+  } else {
+    lines.push(`  🔴 Daily log: 目錄不存在或無合法檔案`);
+  }
+
+  const kd = checks.knowledge_digest;
+  const kdIcon = kd.status === 'OK' ? '✅' : kd.status === 'ERROR' ? '🔴' : '🟡';
+  lines.push(`  ${kdIcon} Knowledge-digest: ${kd.entries_count} entries${kd.parse_errors > 0 ? `（${kd.parse_errors} parse errors）` : ''}`);
+
+  const mm = checks.memory_md;
+  if (mm.status === 'OK') {
+    lines.push(`  ✅ MEMORY.md: openclaw ${mm.openclaw_bytes}B / workspace ${mm.workspace_bytes}B`);
+  } else {
+    const ocStr = mm.openclaw_bytes === null ? '❌不存在' : `${mm.openclaw_bytes}B`;
+    const wsStr = mm.workspace_bytes === null ? '❌不存在' : `${mm.workspace_bytes}B`;
+    lines.push(`  ${mm.status === 'ERROR' ? '🔴' : '🟡'} MEMORY.md: openclaw ${ocStr} / workspace ${wsStr}`);
+  }
+
+  const mp = checks.memory_search_paths;
+  if (mp.status === 'OK') {
+    lines.push(`  ✅ memorySearch.paths: 正確設定`);
+  } else if (!mp.configured) {
+    lines.push(`  🟡 memorySearch.paths: 空陣列或未設定`);
+  } else if (!mp.contains_workspace_memory) {
+    lines.push(`  🟡 memorySearch.paths: 未包含 workspace MEMORY.md`);
+  }
+
+  return lines.join('\n');
+}
+
 // 主程式
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -437,4 +625,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { patrol, generateReport };
+module.exports = { patrol, generateReport, checkMemoryHealth, formatMemoryHealthText };

@@ -138,6 +138,10 @@ Telegram 輸入「市場摘要」→ agent 呼叫 `get_market_summary` 工具
 
 若能有一個統一的「memory pipeline 健康報告」，每天自動產出並在 Telegram 通知，這類問題可在發生當天即被察覺。
 
+### Follow-up（來自計劃 3）
+
+`memorySearch.paths` 為空陣列，導致 watch 無法監控 `~/clawd/MEMORY.md` 變動。需在 `openclaw.json` 的 `memorySearch.paths` 補入正確路徑，讓 file watcher 能偵測 MEMORY.md 和 daily log 的寫入。
+
 ### 解法
 
 在 security-patrol 或 deploy-monitor 中新增一個 `memory-health` 檢查，每日（例如 08:00 UTC）輸出：
@@ -146,6 +150,7 @@ Telegram 輸入「市場摘要」→ agent 呼叫 `get_market_summary` 工具
 - knowledge-digest entries 數量
 - `openclaw memory status` 中各 store 的 Dirty 狀態
 - `~/.openclaw/MEMORY.md` vs `~/clawd/MEMORY.md` 的 bytes（確認兩者都非空）
+- `memorySearch.paths` 是否為空（計劃 3 發現的問題）
 
 若 daily log 超過 2 天未更新 → Telegram 發出 WARNING。
 
@@ -154,6 +159,7 @@ Telegram 輸入「市場摘要」→ agent 呼叫 `get_market_summary` 工具
 1. 在 `src/agents/security-patrol/` 或 `src/agents/deploy-monitor/` 新增 `checkMemoryHealth()` 函式
 2. 加入 crontab（08:00 UTC）
 3. 出現異常時透過現有 Telegram notifier 發出警報
+4. 補設定 `memorySearch.paths`（從計劃 3 follow-up）
 
 ### 關鍵檔案
 

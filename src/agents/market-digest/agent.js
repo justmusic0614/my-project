@@ -127,13 +127,46 @@ async function approveReport() {
 ${report}`;
 }
 
-async function showStatus() {
+async function showStatus(format) {
   const fetcher = new MarketDataFetcher(config);
   const recentNews = fetcher.getRecentNews(24);
-  
+
   const cacheFile = path.join(__dirname, 'data/cache/news-raw.json');
   const cache = fetcher.loadCache(cacheFile);
-  
+
+  // --format json: 統一六欄位契約
+  if (format === 'json') {
+    const now = new Date().toISOString();
+    const stateFile = path.join(__dirname, 'data/pipeline-state/phase4-result.json');
+    const engineFile = path.join(__dirname, 'data/pipeline-state/phase-engine-state.json');
+    let phase4 = null, engine = null;
+    try { phase4 = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}
+    try { engine = JSON.parse(fs.readFileSync(engineFile, 'utf8')); } catch {}
+
+    const lastDate = phase4?.date || null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const status = !lastDate ? 'not_ready'
+      : lastDate === todayStr ? 'ready'
+      : 'stale';
+
+    return JSON.stringify({
+      ok: true,
+      agent: 'market-digest',
+      generatedAt: now,
+      summary: `Market digest ${status}, phase ${engine?.currentPhase || 'UNKNOWN'}, ${cache.length} cached / ${recentNews.length} recent news`,
+      data: {
+        asOf: phase4?.date ? `${phase4.date}T00:00:00+08:00` : null,
+        date: lastDate,
+        phase: engine?.currentPhase || 'UNKNOWN',
+        confidence: engine?.phaseDays > 3 ? 'HIGH' : 'LOW',
+        newsCount: cache.length,
+        recentNewsCount: recentNews.length,
+        status,
+      },
+      error: null,
+    });
+  }
+
   return `📊 系統狀態
 
 快取新聞：${cache.length} 則
@@ -257,12 +290,24 @@ function generateReportFromRuntime_DEPRECATED(runtimeInput) {
 if (require.main === module) {
   const command = process.argv[2] || '/help';
   const args = process.argv.slice(3);
-  
-  handleCommand(command, args).then(result => {
-    console.log(result);
-  }).catch(err => {
-    console.error('錯誤:', err);
-  });
+  const format = args.includes('--format') ? args[args.indexOf('--format') + 1] : null;
+
+  // status --format json 直接走 JSON 路徑
+  if (command === 'status' || command === '/status') {
+    showStatus(format).then(result => console.log(result)).catch(err => {
+      if (format === 'json') {
+        console.log(JSON.stringify({ ok: false, agent: 'market-digest', generatedAt: new Date().toISOString(), summary: 'Failed to retrieve market-digest status', data: null, error: err.message }));
+      } else {
+        console.error('錯誤:', err);
+      }
+    });
+  } else {
+    handleCommand(command, args).then(result => {
+      console.log(result);
+    }).catch(err => {
+      console.error('錯誤:', err);
+    });
+  }
 }
 
 module.exports = { handleCommand };

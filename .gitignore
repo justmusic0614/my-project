@@ -60,3 +60,4 @@ src/agents/*/data/*.db
 
 # Brain parser 輸出
 data/
+tools/openclaw/.cache-*.json

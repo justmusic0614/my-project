@@ -1,18 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { asyncHandler } = require('../middleware/error-handler');
-const { sendTelegramReply, forwardToOpenClaw, executeBrainDistill } = require('../lib/telegram-utils');
+const { sendTelegramReply, forwardToOpenClaw } = require('../lib/telegram-utils');
 const https = require('https');
 
 // Environment variables（必須在 .env 中設定，不提供預設值）
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
-const ALLOWED_CHAT_ID = parseInt(process.env.TELEGRAM_CHAT_ID, 10);
-
-// ── /brain 並發控制 + rate limit ────────────────────────────────────────────
-let _activeJobs = 0;
-const MAX_BRAIN_JOBS = 1;
-const _lastBrainCall = {};
-const BRAIN_COOLDOWN_MS = 60000;
 
 /**
  * POST /api/telegram/webhook
@@ -45,59 +38,7 @@ router.post('/webhook', asyncHandler(async (req, res) => {
     text: text.substring(0, 100)
   });
 
-  // ── /brain 指令攔截 ─────────────────────────────────────
-  if (text.startsWith('/brain ') || text === '/brain') {
-    // 白名單驗證
-    if (chatId !== ALLOWED_CHAT_ID) {
-      return res.json({ ok: true }); // 靜默忽略
-    }
-
-    const payload = text.slice(7).trim();
-    if (!payload) {
-      sendTelegramReply(chatId, '請提供文字或 URL\n用法：/brain <文字或URL>');
-      return res.json({ ok: true });
-    }
-
-    // 並發控制（MAX_JOBS = 1，防 OOM）
-    if (_activeJobs >= MAX_BRAIN_JOBS) {
-      sendTelegramReply(chatId, '系統忙碌中，請稍後再試');
-      return res.json({ ok: true });
-    }
-
-    // rate limit（60 秒冷卻，防手滑連發）
-    const now = Date.now();
-    if (_lastBrainCall[chatId] && now - _lastBrainCall[chatId] < BRAIN_COOLDOWN_MS) {
-      sendTelegramReply(chatId, '冷卻中，請稍後再試');
-      return res.json({ ok: true });
-    }
-    _lastBrainCall[chatId] = now;
-
-    // jobId 貫穿整個 flow
-    const jobId = `brain-${now}`;
-
-    // 立即回覆確認 + 先回應 webhook
-    sendTelegramReply(chatId, `收到，蒸餾中...（ID: ${jobId}）`);
-    res.json({ ok: true });
-
-    // 非同步蒸餾（不阻塞 webhook）
-    _activeJobs++;
-    executeBrainDistill(payload, jobId)
-      .then(result => {
-        if (result.ok) {
-          sendTelegramReply(chatId, `✅ 蒸餾完成（ID: ${jobId}）\n\n${result.summary}`);
-        } else {
-          sendTelegramReply(chatId, `❌ 蒸餾失敗（ID: ${jobId}）：${result.error}`);
-        }
-      })
-      .catch(err => {
-        sendTelegramReply(chatId, `❌ 蒸餾異常（ID: ${jobId}）：${err.message}`);
-      })
-      .finally(() => { _activeJobs--; });
-
-    return; // 不走 OpenClaw
-  }
-
-  // ── 原有邏輯：轉發到 OpenClaw gateway ────────────────────
+  // 直接轉發到 OpenClaw gateway
   const reply = await forwardToOpenClaw(text);
 
   if (reply) {

@@ -396,15 +396,8 @@ mode_report() {
     if (d.json) require('fs').writeFileSync('$SCRIPT_DIR/data/runtime/memory-health-latest.json', JSON.stringify(d.json, null, 2));
   " 2>/dev/null || true
 
-  # 若 WARNING/ERROR 且符合 cooldown，單獨推播 memory health 告警
-  if [ "$MEMORY_HEALTH_SEVERITY" = "WARNING" ] || [ "$MEMORY_HEALTH_SEVERITY" = "ERROR" ]; then
-    if should_send_alert "memory_health"; then
-      send_telegram "🧠 Memory Pipeline 告警
-
-$MEMORY_HEALTH_TEXT" || true
-      update_cooldown "memory_health"
-    fi
-  fi
+  # Memory health is included in FULL_REPORT below.
+  # Do not send a separate Telegram alert here — report mode will duplicate notifications.
 
   # 5. 組合完整日報並推播
   log "  [4/4] 推播日報..."

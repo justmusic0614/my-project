@@ -4,9 +4,6 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// SILENT_REPLY_TOKEN: handler 回傳此值代表不自動回覆
-const SILENT_REPLY_TOKEN = 'NO_REPLY';
-
 // ── 並發 + 冷卻（global singleton job slot）─────────────────────────────────
 let _activeJobs = 0;
 const MAX_BRAIN_JOBS = 1;
@@ -62,17 +59,17 @@ const BRAIN_DATA_DIR = '/home/clawbot/clawd/agents/knowledge-digest/data/runtime
 module.exports = function brainCommandPlugin(api) {
   const sendTelegram = api.runtime.channel.telegram.sendMessageTelegram;
 
-  // ── brain-search command ─────────────────────────────────────────────────
+  // ── brainsearch command ──────────────────────────────────────────────────
   api.registerCommand({
-    name: 'brain-search',
-    description: '查詢蒸餾全文：/brain-search <jobId>',
+    name: 'brainsearch',
+    description: '查詢蒸餾全文：/brainsearch <jobId>',
     acceptsArgs: true,
     requireAuth: true,
     handler: async (ctx) => {
       const jobId = (ctx.args || '').trim();
 
       if (!jobId) {
-        return { text: '請提供 Job ID\n用法：/brain-search <jobId>\n例如：/brain-search brain-1774106895702' };
+        return { text: '請提供 Job ID\n用法：/brainsearch <jobId>\n例如：/brainsearch brain-1774106895702' };
       }
 
       // 只允許 brain-<digits> 格式，防止 path traversal
@@ -89,7 +86,7 @@ module.exports = function brainCommandPlugin(api) {
         if (err.code === 'ENOENT') {
           return { text: `找不到 Job ID：${jobId}\n請確認 ID 是否正確` };
         }
-        console.error(`[brain-search] Read error for ${jobId}:`, err.message);
+        console.error(`[brainsearch] Read error for ${jobId}:`, err.message);
         return { text: `讀取失敗：${err.message}` };
       }
 
@@ -164,8 +161,8 @@ module.exports = function brainCommandPlugin(api) {
         })
         .finally(() => { _activeJobs--; });
 
-      // 不自動回覆（我們自己控制回覆時機）
-      return { text: SILENT_REPLY_TOKEN };
+      // 回傳 null = 不自動回覆（我們自己控制回覆時機）
+      return null;
     },
   });
 };

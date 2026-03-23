@@ -57,6 +57,23 @@ user-invocable: false
 - 路徑檢查方式（具體指令或檢查方式，不可寫「人工檢查」）：___
 - smoke test 指令（可直接在 VPS 執行）：___
 
+## 多 Phase 任務強制驗證節奏
+
+當任務分多個 Phase 交付時：
+
+- 每個 Phase 完成後 → commit + deploy + VPS 驗證
+- **VPS 驗證通過後才能開始下一個 Phase**
+- 不可批次累積多個 Phase 後才一起驗證
+
+## Dogfood 前置化
+
+功能完成後、deploy 前的必做步驟順序：
+
+1. feat 完成（local 測試通過）
+2. **dogfood**（以使用者角度實際操作，發現邊界問題）
+3. deploy 到 VPS
+4. VPS smoke test
+
 ## 配置/閾值修改規則
 
 修改配置值時：

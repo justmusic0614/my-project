@@ -20,6 +20,7 @@
 - **GITHUB 備份** — 每次提交後: `git push origin main`
 - **Task Agents** — 長時間操作（>30 秒）使用 Task agents
 - **債務預防** — 建立新檔案前，檢查是否有現有功能可擴展
+- **路徑安全** — VPS agent 禁止硬編碼絕對路徑，一律用 `git rev-parse --show-toplevel` 或 `__dirname`
 
 ## 專案結構
 

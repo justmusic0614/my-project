@@ -44,6 +44,19 @@ user-invocable: false
 2. 列出完整影響範圍，讓用戶確認
 3. 按 Pipeline 依賴模型逐層檢查（見 references/pipeline-model.md）
 
+## VPS 模組 Fail Gate
+
+當任務涉及會部署到 VPS 的模組時，**以下任一未通過 → 不可進入 Implementation**：
+
+- [ ] 無硬編碼絕對路徑（用 `git rev-parse` 或 `__dirname`）
+- [ ] 已規劃 deploy + SSH 驗證步驟
+- [ ] Plugin 開發：已閱讀 `feedback_openclaw_plugin.md`，列出本次最相關的風險點：___
+- [ ] shell script：確認 `set -u` 相容（變數有 default value）
+
+**VERIFY（必填，在 Plan 中寫明）**
+- 路徑檢查方式（具體指令或檢查方式，不可寫「人工檢查」）：___
+- smoke test 指令（可直接在 VPS 執行）：___
+
 ## 配置/閾值修改規則
 
 修改配置值時：

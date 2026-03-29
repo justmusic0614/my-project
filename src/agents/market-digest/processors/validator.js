@@ -25,7 +25,7 @@ const CROSS_CHECK_TOLERANCE = {
   SP500:  0.003,  // FMP vs Yahoo 0.3%
   NASDAQ: 0.003,
   USDTWD: 0.005,
-  VIX:    0.10,   // VIX 波動大且 FRED 為 T+1，允許 10% 差異
+  VIX:    0.03,   // VIX：FMP vs Yahoo 即時比對，允許 3% 差異
   US10Y:  0.05    // 5 個基點容差（5% of value）
 };
 
@@ -78,10 +78,11 @@ class Validator {
       yahoo?.USDTWD
     ], CROSS_CHECK_TOLERANCE.USDTWD, report);
 
-    // VIX（主：FMP/Yahoo，交叉：FRED VIXCLS T+1）
+    // VIX（主：FMP，交叉：Yahoo；不使用 FRED VIXCLS，因 FRED 為 T+1 且報告在台北 08:00 產生，
+    //      此時 FRED 最新值為前一個交易日，與 FMP 昨日收盤值差一天，必然超出容差）
     marketData.VIX = this._mergeDataPoint('VIX', [
-      fmp?.VIX || yahoo?.VIX,
-      fred?.VIX_FRED
+      fmp?.VIX,
+      yahoo?.VIX
     ], CROSS_CHECK_TOLERANCE.VIX, report);
 
     // DXY（主：FMP/Yahoo，FRED 無對應數據）

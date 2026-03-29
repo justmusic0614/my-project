@@ -30,6 +30,7 @@ const ArchivePublisher    = require('../publishers/archive-publisher');
 const AlertPublisher      = require('../publishers/alert-publisher');
 const { analyzeRiskOff }  = require('../analyzers/risk-off-analyzer');
 const { emitAlert }       = require('../../../core/alert-system');
+const { getCalendarGuard } = require('../shared/calendar-guard');
 const { appendDailySummary } = require('../../../core/memory/daily-writer');
 
 const logger = createLogger('pipeline:phase4');
@@ -235,14 +236,28 @@ async function runPhase4(config = {}) {
   // 降級欄位告警
   const degradedFields = phase3.validationReport?.degradedFields || [];
   await alerter.degradationAlert(degradedFields, 7); // 7 個以上才告警
-  if (degradedFields.length >= 3) {
+
+  // 台股非交易日（週末 + 國定假日）TAIEX 無資料是預期行為，不納入 multi-field 計算
+  // fail-closed：只有 isTradingDay 明確為 false 才 suppress，不明確時保留 degraded
+  const calendarGuard = getCalendarGuard();
+  const twseResult = calendarGuard.isTradingDay('TWSE', archiveDate);
+  const isTwseTrading =
+    typeof twseResult === 'boolean' ? twseResult :
+    typeof twseResult?.isTradingDay === 'boolean' ? twseResult.isTradingDay :
+    null;
+  const unexpectedDegraded = degradedFields.filter(f => {
+    if (f === 'TAIEX' && isTwseTrading === false) return false;
+    return true;
+  });
+
+  if (unexpectedDegraded.length >= 3) {
     emitAlert({
       key: 'degradation:market-digest:multi-field',
       type: 'degradation',
       source: 'market-digest',
       component: 'validator',
-      title: `${degradedFields.length} 個欄位降級`,
-      data: { fields: degradedFields.slice(0, 5), count: degradedFields.length }
+      title: `${unexpectedDegraded.length} 個欄位降級`,
+      data: { fields: unexpectedDegraded.slice(0, 5), count: unexpectedDegraded.length }
     }).catch(() => {});
   }
 

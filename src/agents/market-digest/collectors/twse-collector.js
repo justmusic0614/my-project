@@ -13,6 +13,7 @@ const BaseCollector = require('./base-collector');
 
 const TWSE_BASE = 'https://openapi.twse.com.tw/v1';
 const TWSE_FUND = 'https://www.twse.com.tw/rwd/zh/fund';
+const TWSE_AFTER = 'https://www.twse.com.tw/rwd/zh/afterTrading';
 const CACHE_TTL = 3600000; // 1h
 
 class TWSECollector extends BaseCollector {
@@ -53,7 +54,7 @@ class TWSECollector extends BaseCollector {
           changePct: idx.changePct,
           source:    'twse'
         });
-        result.taiexVolume = idx.volume; // 億元
+        result.taiexVolume = idx.volume; // 成交金額（元）；renderer 以 /1e8 顯示為億元
       } else {
         result.TAIEX = { value: null, degraded: 'NA', source: 'twse', fetchedAt: new Date().toISOString() };
         this.logger.warn('TAIEX fetch failed, degraded to NA');
@@ -85,23 +86,85 @@ class TWSECollector extends BaseCollector {
     });
   }
 
-  /** 加權指數（TWSE openapi） */
+  /** 加權指數（TWSE FMTQIK，MI_INDEX 為 fallback）
+   *
+   * FMTQIK 單一請求即含指數 + 漲跌 + 成交金額，優先使用。
+   * 欄位：[日期, 成交股數, 成交金額, 成交筆數, 發行量加權股價指數, 漲跌點數]
+   * 日期為民國年格式（115/08/25），需轉換後比對。
+   *
+   * MI_INDEX fallback 只有價格無成交量，回傳 volume: null。
+   * 其回應結構為 { tables: [{ fields, data }] }，指數名稱為「發行量加權股價指數」。
+   */
   async _fetchIndex(date) {
-    const data = await this._get(`${TWSE_BASE}/exchangeReport/STOCK_DAY_ALL`);
-    // TWSE STOCK_DAY_ALL 不含大盤指數，改用 MI_INDEX
-    const miData = await this._get(`https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?type=IND&date=${date.replace(/-/g, '')}`);
+    const dateStr = date.replace(/-/g, '');
 
-    if (!miData || !miData.data) return null;
+    // 主來源：FMTQIK
+    const qik = await this._get(`${TWSE_AFTER}/FMTQIK?date=${dateStr}`)
+      .catch(() => null);
+    const qikRows = Array.isArray(qik?.data) ? qik.data : null;
+    if (qikRows?.length) {
+      const target = this._toRocDate(date);
+      const row = qikRows.find(r => r[0] === target) || qikRows[qikRows.length - 1];
+      const close  = this._parseNum(row?.[4]);
+      const change = this._parseNum(row?.[5]);
+      const volume = this._parseNum(row?.[2]); // 成交金額（元），renderer 會 /1e8 轉億元
+      if (close != null) {
+        return {
+          close,
+          change: change ?? 0,
+          changePct: (change != null && close - change !== 0)
+            ? (change / (close - change)) * 100 : 0,
+          volume
+        };
+      }
+    }
 
-    // 找加權指數（代碼 Y999）
-    const row = miData.data.find(r => r[0] === 'Y999' || r[1] === '加權股價指數');
-    if (!row) return null;
+    // Fallback：MI_INDEX（無成交量）
+    const miData = await this._get(
+      `${TWSE_AFTER}/MI_INDEX?type=IND&date=${dateStr}`
+    ).catch(() => null);
 
-    const close  = parseFloat(row[4]?.replace(/,/g, '') || '0');
-    const change = parseFloat(row[7]?.replace(/,/g, '').replace(/▲|▼/g, m => m === '▲' ? '' : '-') || '0');
-    const volume = parseFloat(row[2]?.replace(/,/g, '') || '0') / 100; // 轉換為億元
+    const tables = Array.isArray(miData?.tables) ? miData.tables : [];
+    for (const table of tables) {
+      const rows = Array.isArray(table?.data) ? table.data : [];
+      const row = rows.find(r => typeof r?.[0] === 'string' && r[0].includes('發行量加權股價指數'));
+      if (!row) continue;
 
-    return { close, change, changePct: close ? (change / (close - change)) * 100 : 0, volume };
+      const close = this._parseNum(row[1]);
+      if (close == null) continue;
+
+      // 漲跌符號包在 HTML 中（<p style='color:red'>+</p> / >-<），需另外判斷方向
+      const isNegative = /[->]\s*-\s*</.test(row[2] || '') || String(row[2] || '').includes('-');
+      const magnitude  = this._parseNum(row[3]);
+      const change     = magnitude == null ? null : (isNegative ? -magnitude : magnitude);
+      const changePct  = this._parseNum(row[4]);
+
+      this.logger.info('TAIEX from MI_INDEX fallback (no volume)');
+      return {
+        close,
+        change: change ?? 0,
+        changePct: changePct != null
+          ? (isNegative ? -Math.abs(changePct) : Math.abs(changePct))
+          : 0,
+        volume: null
+      };
+    }
+
+    return null;
+  }
+
+  /** 西元日期 → 民國年格式（2026-08-25 → 115/08/25） */
+  _toRocDate(date) {
+    const [y, m, d] = date.split('-');
+    return `${Number(y) - 1911}/${m}/${d}`;
+  }
+
+  /** 解析含千分位／HTML 的數字字串 */
+  _parseNum(raw) {
+    if (raw == null) return null;
+    const cleaned = String(raw).replace(/<[^>]*>/g, '').replace(/,/g, '').trim();
+    const n = parseFloat(cleaned);
+    return Number.isFinite(n) ? n : null;
   }
 
   /** 三大法人買賣超（BFI82U）

@@ -55,6 +55,8 @@ class TWSECollector extends BaseCollector {
           source:    'twse'
         });
         result.taiexVolume = idx.volume; // 成交金額（元）；renderer 以 /1e8 顯示為億元
+        // 實際交易日（收盤前執行時會早於 result.date），供歷史序列正確標記日期
+        result.taiexTradeDate = idx.tradeDate || today;
       } else {
         result.TAIEX = { value: null, degraded: 'NA', source: 'twse', fetchedAt: new Date().toISOString() };
         this.logger.warn('TAIEX fetch failed, degraded to NA');
@@ -104,17 +106,26 @@ class TWSECollector extends BaseCollector {
     const qikRows = Array.isArray(qik?.data) ? qik.data : null;
     if (qikRows?.length) {
       const target = this._toRocDate(date);
-      const row = qikRows.find(r => r[0] === target) || qikRows[qikRows.length - 1];
+      // Pipeline 於台北 08:10 執行，早於台股收盤（13:30），故當日尚無資料。
+      // 此時退回最後一個交易日，並回傳其實際日期供上層正確標記，
+      // 避免把前一交易日的收盤誤記成今日（會造成歷史序列整體位移一天）。
+      const exact = qikRows.find(r => r[0] === target);
+      const row   = exact || qikRows[qikRows.length - 1];
       const close  = this._parseNum(row?.[4]);
       const change = this._parseNum(row?.[5]);
       const volume = this._parseNum(row?.[2]); // 成交金額（元），renderer 會 /1e8 轉億元
       if (close != null) {
+        const tradeDate = this._fromRocDate(row?.[0]) || date;
+        if (!exact) {
+          this.logger.info(`TAIEX: ${date} 尚無資料（收盤前），使用最後交易日 ${tradeDate}`);
+        }
         return {
           close,
           change: change ?? 0,
           changePct: (change != null && close - change !== 0)
             ? (change / (close - change)) * 100 : 0,
-          volume
+          volume,
+          tradeDate
         };
       }
     }
@@ -146,7 +157,9 @@ class TWSECollector extends BaseCollector {
         changePct: changePct != null
           ? (isNegative ? -Math.abs(changePct) : Math.abs(changePct))
           : 0,
-        volume: null
+        volume: null,
+        // MI_INDEX 為單日查詢，有回應即代表該日已收盤
+        tradeDate: date
       };
     }
 
@@ -157,6 +170,13 @@ class TWSECollector extends BaseCollector {
   _toRocDate(date) {
     const [y, m, d] = date.split('-');
     return `${Number(y) - 1911}/${m}/${d}`;
+  }
+
+  /** 民國年格式 → 西元日期（115/08/25 → 2026-08-25） */
+  _fromRocDate(roc) {
+    const m = /^(\d{2,3})\/(\d{2})\/(\d{2})$/.exec(String(roc || '').trim());
+    if (!m) return null;
+    return `${Number(m[1]) + 1911}-${m[2]}-${m[3]}`;
   }
 
   /** 解析含千分位／HTML 的數字字串 */

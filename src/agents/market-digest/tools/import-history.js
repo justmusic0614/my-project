@@ -324,11 +324,19 @@ function backfillSeriesFromDb(dataDir, dryRun) {
   const db = new Database(DB_PATH, { readonly: true });
 
   // SQLite欄位 → series JSON 檔名
+  // 注意：phase3 的 _updateSeries() 會寫入所有這些序列，因此回填也需涵蓋，
+  // 否則 series JSON 與 SQLite 長期不同步（taiex.json 曾因未列入而從未建立）。
   const seriesMap = [
     { dbCol: 'dxy',       name: 'dxy'       },
     { dbCol: 'vix',       name: 'vix'       },
     { dbCol: 'us10y',     name: 'us10y'     },
-    { dbCol: 'hy_spread', name: 'hy-spread' }
+    { dbCol: 'hy_spread', name: 'hy-spread' },
+    { dbCol: 'taiex',     name: 'taiex'     },
+    { dbCol: 'sp500',     name: 'sp500'     },
+    { dbCol: 'nasdaq',    name: 'nasdaq'    },
+    { dbCol: 'gold',      name: 'gold'      },
+    { dbCol: 'btc',       name: 'btc'       },
+    { dbCol: 'fed_rate',  name: 'fed-rate'  }
   ];
 
   for (const { dbCol, name } of seriesMap) {
